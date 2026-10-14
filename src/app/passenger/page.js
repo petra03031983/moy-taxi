@@ -14,6 +14,60 @@ const CLASSES = [
 
 const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";
 
+async function searchPhotonAddresses(query, nearPoint) {
+  const clean = String(query || "").trim();
+  if (clean.length < 3) return [];
+  const hasCity = /(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
+  const nearAstana = nearPoint && nearPoint.lat > 50 && nearPoint.lat < 52 && nearPoint.lng > 69 && nearPoint.lng < 73;
+  const queries = [clean];
+  if (!hasCity) {
+    if (nearAstana) queries.push(clean + ", Астана, Казахстан");
+    queries.push(clean + ", Казахстан");
+  }
+  const unique = [...new Set(queries)];
+  for (const q of unique) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6500);
+    try {
+      const params = new URLSearchParams({ q, limit: "8", lang: "ru" });
+      if (nearPoint && Number.isFinite(nearPoint.lat) && Number.isFinite(nearPoint.lng)) {
+        params.set("lat", String(nearPoint.lat));
+        params.set("lon", String(nearPoint.lng));
+      }
+      const response = await fetch("https://photon.komoot.io/api/?" + params.toString(), {
+        headers: { "Accept": "application/json" },
+        signal: controller.signal
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const rows = (data?.features || []).map(feature => {
+        const props = feature?.properties || {};
+        const coords = feature?.geometry?.coordinates;
+        const street = [props.street, props.housenumber].filter(Boolean).join(" ");
+        const name = props.name || props.street || props.suburb || "Адрес";
+        const city = props.city || props.town || props.village || props.county || props.state || "Казахстан";
+        const label = [...new Set([name !== street ? name : "", street, props.district || props.suburb, city, props.state].filter(Boolean))].join(", ");
+        return {
+          label, name, city,
+          lat: Number(coords?.[1]), lng: Number(coords?.[0])
+        };
+      }).filter(item => item.label && Number.isFinite(item.lat) && Number.isFinite(item.lng) &&
+        item.lat >= -90 && item.lat <= 90 && item.lng >= -180 && item.lng <= 180);
+      if (rows.length) {
+        const sorted = nearPoint
+          ? rows.sort((a, b) => Math.hypot(a.lat-nearPoint.lat, a.lng-nearPoint.lng) - Math.hypot(b.lat-nearPoint.lat, b.lng-nearPoint.lng))
+          : rows;
+        return sorted.slice(0, 8);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") console.warn("Address search unavailable", error);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return [];
+}
+
 function routeUrl(a, b) {
   return "https://2gis.kz/directions/points/" + a.lng + "," + a.lat + "|" + b.lng + "," + b.lat;
 }
@@ -28,6 +82,8 @@ export default function PassengerPage() {
   const [destinationPoint, setDestinationPoint] = useState(null);
   const [pickupSuggestions, setPickupSuggestions] = useState([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState([]);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [ratingStars, setRatingStars] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
@@ -79,21 +135,45 @@ export default function PassengerPage() {
   }, [pickup, pickupPoint]);
 
   useEffect(() => {
-    if (destination.trim().length < 3 || destinationPoint) { setDestinationSuggestions([]); return; }
+    const clean = destination.trim();
+    if (clean.length < 3 || destinationPoint) {
+      setDestinationSuggestions([]);
+      setSuggestionError("");
+      setSuggestionLoading(false);
+      return;
+    }
     let active = true;
-    const timer = setTimeout(() => {
-      callApi("address_suggest", { query: destination, near_lat: pickupPoint?.lat ?? null, near_lng: pickupPoint?.lng ?? null }).then(result => {
-        if (active) setDestinationSuggestions(result.suggestions || []);
-      }).catch(() => { if (active) setDestinationSuggestions([]); });
-    }, 450);
+    const timer = setTimeout(async () => {
+      setSuggestionLoading(true);
+      setSuggestionError("");
+      try {
+        let results = await searchPhotonAddresses(clean, pickupPoint);
+        // If the browser cannot reach Photon directly, try the server-side Photon search once.
+        if (!results.length) {
+          try {
+            const fallback = await callApi("address_suggest", {
+              query: clean,
+              near_lat: pickupPoint?.lat ?? null,
+              near_lng: pickupPoint?.lng ?? null
+            });
+            results = fallback.suggestions || [];
+          } catch {}
+        }
+        if (active) {
+          setDestinationSuggestions(results);
+          setSuggestionError(results.length ? "" : "Не нашли совпадение. Добавь город или название объекта (например, «Астана, аэропорт»), затем выбери подсказку.");
+        }
+      } catch {
+        if (active) {
+          setDestinationSuggestions([]);
+          setSuggestionError("Поиск адресов временно недоступен. Проверь интернет и попробуй ещё раз.");
+        }
+      } finally {
+        if (active) setSuggestionLoading(false);
+      }
+    }, 650);
     return () => { active = false; clearTimeout(timer); };
   }, [destination, destinationPoint, pickupPoint?.lat, pickupPoint?.lng]);
-
-  useEffect(() => {
-    if (!pickupPoint || !destination.trim() || destination.trim().length < 4 || destinationPoint || route || order) return;
-    const timer = setTimeout(() => { void calculateRouteData(); }, 1100);
-    return () => clearTimeout(timer);
-  }, [destination, pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng, route, order?.id]);
 
   useEffect(() => {
     if (pickupPoint && destinationPoint && destination.trim() && !route) {
@@ -286,7 +366,7 @@ export default function PassengerPage() {
           <div className="pickup-auto-copy"><b>{locating ? "Определяем ваше местоположение…" : pickupPoint ? "Место подачи определено" : "Нужно разрешить GPS"}</b><span>{pickupPoint ? (pickup && pickup !== "Моё местоположение" ? pickup : "Точка подачи определена автоматически по GPS") : "Разреши доступ к геопозиции — адрес подачи вводить не нужно."}</span></div>
           {!pickupPoint && <button type="button" className="button secondary" onClick={detectPickup} disabled={locating}>Разрешить GPS</button>}
         </div>
-        <div className="field address-field"><label>Куда едем?</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);setError("");}} placeholder="Например: Достык 9, ТРЦ Керуен" autoComplete="off" />{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setRoute(null);setError("");}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}{item.distance_km!=null ? " · "+item.distance_km+" км по дороге" : ""}</small></button>)}</div>}
+        <div className="field address-field"><label>Куда едем?</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);setError("");setSuggestionError("");}} onKeyDown={e=>{if(e.key==="Enter"&&destinationSuggestions.length){e.preventDefault();const item=destinationSuggestions[0];setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setRoute(null);}}} placeholder="Например: аэропорт, улица, дом или ТРЦ" autoComplete="off" />{suggestionLoading && <p className="muted small">🔎 Ищем адреса…</p>}{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setRoute(null);setError("");}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}{suggestionError && !suggestionLoading && <p className="muted small address-search-help">{suggestionError}</p>}
           {busy && !route && <p className="muted small">📏 Рассчитываем маршрут и цены…</p>}
           {route && <p className="route-result-note">Маршрут {route.distanceKm.toFixed(1)} км · около {route.durationMin} мин. Цены рассчитаны автоматически.</p>}
         </div>
