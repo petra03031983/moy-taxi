@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import MapPicker from "../MapPicker";
-import { callApi, statusLabel } from "../api";
+import MapPicker from "../../MapPicker";
+import { callApi, statusLabel } from "../../api";
 
 export default function ClientOrder() {
   const params = useParams();
@@ -70,8 +70,9 @@ export default function ClientOrder() {
         pickup_lat: point?.lat, pickup_lng: point?.lng,
       });
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
-      localStorage.setItem("moyTaxiOrder:" + driverCode, JSON.stringify(result.order));
-      setOrder(result.order);
+      const savedOrder = { ...result.order, pickup_address: pickup, destination_address: destination };
+      localStorage.setItem("moyTaxiOrder:" + driverCode, JSON.stringify(savedOrder));
+      setOrder(savedOrder);
     } catch (e) { setError(e.message || "Не удалось отправить заказ."); }
     finally { setBusy(false); }
   }
@@ -103,8 +104,8 @@ export default function ClientOrder() {
       <h2>{order.status === "completed" ? "Поездка завершена" : order.status === "cancelled" ? "Заказ отменён" : "Заказ отправлен"}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
       <p><b>Номер заказа:</b> {String(order.id).slice(0, 8).toUpperCase()}</p>
-      <p><b>Откуда:</b> {pickup || "Адрес сохранён в заказе"}</p>
-      <p><b>Куда:</b> {destination || "Адрес сохранён в заказе"}</p>
+      <p><b>Откуда:</b> {order.pickup_address || pickup || "Адрес сохранён в заказе"}</p>
+      <p><b>Куда:</b> {order.destination_address || destination || "Адрес сохранён в заказе"}</p>
       <p className="muted">Статус обновляется автоматически, пока эта страница открыта.</p>
       {order.status === "new" && <button type="button" className="button danger" onClick={cancel}>Отменить заказ</button>}
       {["completed", "cancelled"].includes(order.status) && <button type="button" className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
