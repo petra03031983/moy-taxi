@@ -269,7 +269,7 @@ export default function ClientOrder() {
     {error && <div className="error" role="alert">{error}</div>}
     {order ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div>
-      <h2>{order.status === "completed" ? "Поездка завершена" : order.status === "cancelled" ? "Заказ отменён" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : "Заказ отправлен"}</h2>
+      <h2>{order.status === "completed" ? "Поездка завершена" : order.status === "cancelled" ? "Заказ отменён" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "client_ready" ? "Вы выходите к машине" : order.status === "started" ? "Поездка началась" : "Заказ отправлен"}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
       {order.status === "new" && <div className="success"><b>⏳ Заказ отправлен водителю. Ждём подтверждение.</b></div>}
       {order.status === "accepted" && <div className="success"><b>🚕 Водитель направляется к вам.</b>{etaMinutes != null && <div style={{ marginTop: 6 }}>Прибытие ориентировочно через <b>{etaMinutes} мин.</b></div>}{driverDistance != null && <div className="small" style={{ marginTop: 5 }}>Расстояние до подачи: {driverDistance.toFixed(1)} км</div>}<div className="small" style={{ marginTop: 5 }}>Геопозиция обновляется автоматически, пока водитель на линии и разрешил доступ к местоположению.</div></div>}
