@@ -26,6 +26,7 @@ export default function OwnerAdmin() {
   const [percent, setPercent] = useState("5");
   const [vehicleRates, setVehicleRates] = useState(DEFAULT_RATES);
   const [testMode, setTestMode] = useState(true);
+  const [walletAmounts, setWalletAmounts] = useState({});
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -116,6 +117,22 @@ export default function OwnerAdmin() {
     finally { setBusy(false); }
   }
 
+  async function topupWallet(driver) {
+    const amount = Number(walletAmounts[driver.id]);
+    if (!Number.isFinite(amount) || amount <= 0) { setError("Укажи сумму пополнения больше нуля."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_wallet_adjust", {
+        admin_token: token, driver_id: driver.id, amount,
+        note: "Пополнение владельцем после ручной проверки перевода"
+      });
+      await loadAll(token);
+      setWalletAmounts(prev => ({...prev, [driver.id]: ""}));
+      setNotice("Лицевой счёт пополнен на " + currency(result.topup.amount) + ". Новый баланс: " + currency(result.topup.balance_after) + ".");
+    } catch (e) { setError(e.message || "Не удалось пополнить лицевой счёт."); }
+    finally { setBusy(false); }
+  }
+
   async function markPaid(row) {
     setError(""); setNotice("");
     try {
@@ -198,7 +215,7 @@ export default function OwnerAdmin() {
     </section>}
 
     {tab === "drivers" && <section className="panel"><div className="section-heading"><div><h2>Водители</h2><p className="muted">Новые регистрации появляются здесь автоматически.</p></div><span className="status">{drivers.length} в списке</span></div>
-      {drivers.length===0?<p className="muted">Пока нет зарегистрированных водителей.</p>:drivers.map(d=><article className="order" key={d.id}><div className="order-top"><h3>{d.name}</h3><span className="status">{d.is_online?"🟢 На линии":"Не на линии"}</span></div><p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p><p><b>Машина:</b> {[d.car_model,d.car_color,d.car_plate].filter(Boolean).join(" · ")||"Не указана"}</p><p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===d.vehicle_class)?.[1]||"Эконом"}</p><p><b>Персональный код:</b> {d.public_code}</p><p className="muted small">Регистрация: {dateTime(d.created_at)}</p></article>)}
+      {drivers.length===0?<p className="muted">Пока нет зарегистрированных водителей.</p>:drivers.map(d=><article className="order" key={d.id}><div className="order-top"><h3>{d.name}</h3><span className="status">{d.is_online?"🟢 На линии":"Не на линии"}</span></div><p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p><p><b>Машина:</b> {[d.car_model,d.car_color,d.car_plate].filter(Boolean).join(" · ")||"Не указана"}</p><p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===d.vehicle_class)?.[1]||"Эконом"}</p><p><b>Лицевой счёт:</b> <strong>{currency(d.wallet_balance)}</strong></p><div className="wallet-topup-row"><input aria-label={"Сумма пополнения для "+d.name} type="number" min="1" max="1000000" step="100" value={walletAmounts[d.id]??""} onChange={e=>setWalletAmounts(prev=>({...prev,[d.id]:e.target.value}))} placeholder="Сумма пополнения, ₸"/><button className="button secondary" type="button" disabled={busy||!walletAmounts[d.id]} onClick={()=>topupWallet(d)}>Пополнить</button></div><p className="muted small">Зачисляй только после проверки поступления денег. Автоматическая оплата пока не подключена.</p><p><b>Персональный код:</b> {d.public_code}</p><p className="muted small">Регистрация: {dateTime(d.created_at)}</p></article>)}
     </section>}
 
     {tab === "orders" && <section className="panel"><div className="section-heading"><div><h2>Последние заказы</h2><p className="muted">До 200 последних заказов всех водителей.</p></div></div>
