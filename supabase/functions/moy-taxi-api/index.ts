@@ -11,7 +11,15 @@ async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.ra
 function km(a:number,b:number,c:number,d:number){const R=6371,r=(x:number)=>x*Math.PI/180,da=r(c-a),db=r(d-b),x=Math.sin(da/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null){
  const clean=String(address||"").trim();
- if(!clean)throw new Error("Введи адрес, улицу и дом.");
+ if(!clean)throw new Error("Введи конечный адрес.");
+ // The user's common destination: Keruen mall at Dostyk 9, Astana.
+ // Verified address: https://www.keruen.kz/contacts
+ if(/керуен|keruen|keruyen/i.test(clean) && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
+  return {lat:51.128020,lng:71.425381};
+ }
+ if(/достык\\s*,?\\s*9/i.test(clean) && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
+  return {lat:51.128020,lng:71.425381};
+ }
  if(/^(мо[её]\\s+)?местоположение$/i.test(clean)){
   if(nearPoint)return nearPoint;
   throw new Error("GPS не определился. Нажми «Определить моё местоположение» или выбери адрес подачи из подсказок.");
@@ -417,7 +425,7 @@ if(a==="client_accept_offer"||a==="client_decline_offer"){
 }
 if(a==="client_accept_price"||a==="client_decline_price"){const id=String(p.order_id||""),token=String(p.client_token||"");if(!id||!token)return fail("Не хватает номера заказа.");const {data:o,error}=await c.from("orders").select("id,status,price_status,driver_price").eq("id",id).eq("client_token",token).maybeSingle();if(error||!o)return fail("Заказ не найден.",404);if(o.status!=="new"||o.price_status!=="driver_offered"||!Number(o.driver_price))return fail("Предложение цены уже недоступно.");const accept=a==="client_accept_price";const patch=accept?{price_status:"accepted",agreed_price:o.driver_price}:{price_status:"declined"};const {data:u,error:ue}=await c.from("orders").update(patch).eq("id",id).eq("client_token",token).select("*").single();if(ue||!u)return fail("Не удалось сохранить ответ на цену.",500);return reply({ok:true,order:u})}
 if(a==="cancel_order"){const id=String(p.order_id||""),token=String(p.client_token||"");const {data:o}=await c.from("orders").select("id,status").eq("id",id).eq("client_token",token).maybeSingle();if(!o)return fail("Заказ не найден.",404);if(o.status!=="new")return fail("Этот заказ уже принят водителем.");const {data:u,error}=await c.from("orders").update({status:"cancelled"}).eq("id",id).select("id,status").single();if(error)return fail("Не удалось отменить заказ.",500);return reply({ok:true,order:u})}
-if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","driver_toggle_online","driver_update_profile","driver_logout","driver_location","driver_offer_price","driver_skip_order"].includes(a)){const s=await sess(c,p);if(!s.driver)return fail(s.error||"Нужен вход.",s.status||401);const d=s.driver;if(a==="driver_me"){
+if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","driver_toggle_online","driver_update_profile","driver_logout","driver_location","driver_offer_price","driver_accept_broadcast","driver_skip_order"].includes(a)){const s=await sess(c,p);if(!s.driver)return fail(s.error||"Нужен вход.",s.status||401);const d=s.driver;if(a==="driver_me"){
  const {data:ratingRows}=await c.from("driver_ratings").select("stars").eq("driver_id",d.id).limit(10000);
  const scores=(ratingRows||[]).map((x:any)=>Number(x.stars)).filter((x:number)=>x>=1&&x<=5);
  return reply({ok:true,driver:{...pub(d),rating_average:scores.length?Number((scores.reduce((a:number,b:number)=>a+b,0)/scores.length).toFixed(2)):null,rating_count:scores.length}});
@@ -427,7 +435,32 @@ if(a==="driver_wallet"){
  const {data:transactions,error}=await c.from("wallet_transactions").select("id,order_id,kind,amount,balance_before,balance_after,status,note,created_at").eq("driver_id",d.id).order("created_at",{ascending:false}).limit(50);
  if(error)return fail("Не удалось загрузить операции лицевого счёта.",500);
  return reply({ok:true,wallet_balance:Number(d.wallet_balance||0),test_mode:settingsRow?.test_mode!==false,minimum_wallet_balance:Number(settingsRow?.minimum_wallet_balance||500),transactions:transactions||[]});
-}if(a==="driver_logout"){await c.from("drivers").update({session_token_hash:null,session_expires_at:null}).eq("id",d.id);return reply({ok:true});}if(a==="driver_location"){const lat=Number(p.lat),lng=Number(p.lng);if(!Number.isFinite(lat)||!Number.isFinite(lng))return fail("Некорректная геопозиция.");const {error}=await c.from("drivers").update({current_lat:lat,current_lng:lng,location_accuracy:Number(p.accuracy)||null,location_updated_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",d.id);if(error)return fail("Не удалось обновить геопозицию.",500);return reply({ok:true})}if(a==="driver_offer_price"){
+}if(a==="driver_logout"){await c.from("drivers").update({session_token_hash:null,session_expires_at:null}).eq("id",d.id);return reply({ok:true});}if(a==="driver_location"){const lat=Number(p.lat),lng=Number(p.lng);if(!Number.isFinite(lat)||!Number.isFinite(lng))return fail("Некорректная геопозиция.");const {error}=await c.from("drivers").update({current_lat:lat,current_lng:lng,location_accuracy:Number(p.accuracy)||null,location_updated_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",d.id);if(error)return fail("Не удалось обновить геопозицию.",500);return reply({ok:true})}if(a==="driver_accept_broadcast"){
+ const id=String(p.order_id||"");
+ if(!id)return fail("Не указан заказ.");
+ if(!d.is_online)return fail("Сначала выйди на линию.");
+ const {data:o,error:oe}=await c.from("orders").select("*").eq("id",id).maybeSingle();
+ if(oe||!o)return fail("Заказ не найден.",404);
+ if(o.status!=="new"||o.driver_id)return fail("Этот заказ уже принят другим водителем.");
+ if(vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Заказ относится к другому классу автомобиля.");
+ const {data:settingsRow,error:se}=await c.from("platform_settings").select("test_mode,minimum_wallet_balance").eq("id",true).maybeSingle();
+ if(se||!settingsRow)return fail("Не удалось проверить настройки кошелька.",500);
+ if(settingsRow.test_mode!==true&&Number(d.wallet_balance||0)<Number(settingsRow.minimum_wallet_balance||500))return fail("Недостаточно денег на лицевом счёте. Пополни баланс перед принятием заказов.");
+ const fare=amount(o.client_price);
+ if(!fare)return fail("У заказа нет рассчитанной цены. Пассажир должен пересчитать маршрут.");
+ const {data:claimed,error:claimError}=await c.from("orders").update({
+  driver_id:d.id,status:"accepted",accepted_at:new Date().toISOString(),
+  agreed_price:fare,driver_price:fare,price_status:"accepted"
+ }).eq("id",id).eq("status","new").is("driver_id",null).select("*,clients(name,phone)").maybeSingle();
+ if(claimError||!claimed)return fail("Другой водитель уже принял заказ. Обнови список.",409);
+ const {data:selected,error:selectedError}=await c.from("order_offers").upsert({
+  order_id:id,driver_id:d.id,price:fare,status:"accepted",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()
+ },{onConflict:"order_id,driver_id"}).select("*").single();
+ if(selectedError)console.error("accept order offer ledger failed",selectedError);
+ await c.from("order_offers").update({status:"declined",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("order_id",id).eq("status","pending").neq("driver_id",d.id);
+ return reply({ok:true,order:enrich(claimed,claimed.clients),fare});
+}
+if(a==="driver_offer_price"){
  const id=String(p.order_id||""),price=Math.round(Number(p.price));
  if(!id||!Number.isFinite(price)||price<100||price>1000000)return fail("Укажи корректную цену от 100 до 1 000 000 ₸.");
  const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,vehicle_class,client_price").eq("id",id).maybeSingle();
