@@ -104,8 +104,10 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
  if(clean.length<3)return [];
  const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
  const nearAstana=nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73;
+ const englishQuery=clean.replace(/аэропорт/ig,"airport").replace(/терминал/ig,"terminal").replace(/улица/ig,"street").replace(/проспект/ig,"avenue").replace(/дом/ig,"house");
  const queries=[clean];
- if(!hasCity){if(nearAstana)queries.push(clean+", Астана, Казахстан");queries.push(clean+", Казахстан")}
+ if(englishQuery.toLowerCase()!==clean.toLowerCase())queries.push(englishQuery);
+ if(!hasCity){if(nearAstana){queries.push(clean+", Астана, Казахстан");queries.push(englishQuery+", Astana, Kazakhstan")}queries.push(clean+", Казахстан");if(englishQuery.toLowerCase()!==clean.toLowerCase())queries.push(englishQuery+", Kazakhstan")}
  for(const q of [...new Set(queries)]){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),6500);
