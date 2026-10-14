@@ -112,3 +112,13 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .moy-route-marker span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px #0003;color:white;font-weight:900;font-size:13px}
 .route-map-panel>.muted{padding:0 14px 10px}
 @media(max-width:600px){.route-map-panel{border-radius:17px}.route-map{height:220px}.route-map-heading{padding:12px 13px}}
+
+/* Compact taxi class picker: class name at left and whole-trip fare at right. */
+.class-grid.class-list{display:flex;flex-direction:column;gap:0;margin:5px 0 2px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.class-option{display:grid!important;grid-template-columns:30px minmax(0,1fr) auto!important;align-items:center;justify-content:initial;gap:10px;width:100%;min-width:0;padding:12px 10px!important;border:0!important;border-bottom:1px solid var(--line)!important;border-radius:0!important;background:#fff!important;color:var(--ink);text-align:left;cursor:pointer}
+.class-option:last-child{border-bottom:0!important}
+.class-option.selected{background:#edf7f0!important;box-shadow:inset 3px 0 0 var(--green);padding-left:7px!important}
+.class-option .class-icon{font-size:22px;line-height:1}
+.class-option .class-name{font-size:15px;font-weight:750;line-height:1.25;min-width:0;overflow-wrap:normal}
+.class-option .class-price{font-size:16px;font-weight:850;color:var(--green);white-space:nowrap;word-break:normal;overflow-wrap:normal;width:auto;max-width:none;justify-self:end;text-align:right}
+@media(max-width:380px){.class-grid.class-list{grid-template-columns:none}.class-option{display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;gap:8px;padding:11px 8px!important}.class-option.selected{padding-left:5px!important}.class-option .class-price{font-size:15px}}
