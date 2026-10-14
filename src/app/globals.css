@@ -146,3 +146,16 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .wallet-topup-row input{min-width:0;width:100%;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:15px;background:#fbfcfb}
 .wallet-topup-row .button{width:auto;padding:11px 13px;font-size:13px}
 @media(max-width:380px){.wallet-topup-row{grid-template-columns:1fr}.wallet-topup-row .button{width:100%}}
+
+/* Passenger should enter only the destination. Pickup is always GPS-driven. */
+.pickup-auto-bar{display:flex;align-items:center;gap:11px;margin:14px 0 18px;padding:12px;background:#f1f8f3;border:1px solid #d8eade;border-radius:14px;min-width:0}
+.pickup-auto-icon{width:36px;height:36px;flex:0 0 36px;display:flex;align-items:center;justify-content:center;border-radius:11px;background:#dff1e5;font-size:19px}
+.pickup-auto-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.pickup-auto-copy b{font-size:13px;color:var(--green)}
+.pickup-auto-copy span{font-size:12px;line-height:1.35;color:var(--muted);overflow-wrap:anywhere}
+.pickup-auto-bar .button{width:auto;flex:0 0 auto;padding:10px 12px;min-height:40px;font-size:12px;white-space:nowrap}
+.route-result-note{font-size:12px;color:var(--green);font-weight:700;background:#edf7f0;padding:9px 11px;border-radius:10px;margin:8px 0 0}
+.route-summary{display:flex;align-items:baseline;gap:8px}
+.route-summary b{font-size:24px;color:var(--green)}
+.route-summary span{font-size:13px;color:var(--muted)}
+@media(max-width:430px){.pickup-auto-bar{gap:8px;padding:10px}.pickup-auto-icon{width:32px;height:32px;flex-basis:32px}.pickup-auto-bar .button{padding:9px 8px;font-size:11px}.pickup-auto-copy b{font-size:12px}}
