@@ -88,7 +88,13 @@ export default function PassengerPage() {
   }, [destination, destinationPoint, pickupPoint?.lat, pickupPoint?.lng]);
 
   useEffect(() => {
-    if (pickupPoint && destinationPoint && pickup.trim() && destination.trim() && !route) {
+    if (!pickupPoint || !destination.trim() || destination.trim().length < 4 || destinationPoint || route || order) return;
+    const timer = setTimeout(() => { void calculateRouteData(); }, 1100);
+    return () => clearTimeout(timer);
+  }, [destination, pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng, route, order?.id]);
+
+  useEffect(() => {
+    if (pickupPoint && destinationPoint && destination.trim() && !route) {
       void calculateRouteData();
     }
   }, [pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng]);
@@ -115,13 +121,13 @@ export default function PassengerPage() {
 
   async function calculateRouteData() {
     if (routeRequestRef.current || busy) return;
-    if (!pickup.trim()) { setError("Разреши GPS или укажи адрес подачи."); return; }
-    if (!destination.trim()) { setError("Укажи город, улицу и дом назначения."); return; }
+    if (!pickupPoint) { setError("Разреши доступ к геопозиции телефона — приложение само определит точку подачи."); return; }
+    if (!destination.trim()) { setError("Введи конечный адрес — точка подачи определится автоматически."); return; }
     routeRequestRef.current = true;
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await callApi("calculate_route", {
-        pickup_address: pickup,
+        pickup_address: pickup || "Моё местоположение",
         destination_address: destination,
         pickup_lat: pickupPoint?.lat ?? null,
         pickup_lng: pickupPoint?.lng ?? null,
@@ -142,11 +148,11 @@ export default function PassengerPage() {
         estimated_prices: result.estimated_prices,
       });
       if (Array.isArray(result.online_classes)) setOnlineClasses(result.online_classes);
-      if (pickup !== "Моё местоположение") setPickup(pickup.trim());
-      setNotice("Автомобильный маршрут построен. Цены по классам рассчитаны.");
+      setPickup(current => current || "Моё местоположение");
+      setNotice("");
     } catch (e) {
       setRoute(null);
-      setError(e.message || "Не удалось найти адрес. Укажи город, улицу и дом.");
+      setError(e.message || "Не получилось найти этот адрес. Выбери точный адрес в подсказках ниже.");
     } finally {
       routeRequestRef.current = false;
       setBusy(false);
@@ -158,7 +164,8 @@ export default function PassengerPage() {
   }
 
   async function submitOrder() {
-    if (!route || !pickupPoint || !destinationPoint) { setError("Сначала рассчитай автомобильный маршрут."); return; }
+    if (!pickupPoint) { setError("Разреши доступ к геопозиции телефона, чтобы определить точку подачи."); return; }
+    if (!route || !destinationPoint) { setError("Подожди, пока рассчитается маршрут и появятся цены."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
       const fare = Number(route.estimated_prices?.[selectedClass] || 0);
@@ -266,13 +273,21 @@ export default function PassengerPage() {
         <div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div>
         <div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
         <div className="field"><label>Тип поездки</label><div className="switcher"><button type="button" className={tripType==="city"?"switch active":"switch"} onClick={()=>setTripType("city")}>🏙️ Город</button><button type="button" className={tripType==="intercity"?"switch active":"switch"} onClick={()=>setTripType("intercity")}>🛣️ Межгород</button></div></div>
-        <div className="field address-field"><label>Откуда забрать (точка A)</label><p className="muted small">{locating ? "📍 Определяем местоположение…" : pickupPoint ? "✅ Место подачи определено GPS." : "GPS недоступен — введи адрес вручную."}</p><input required maxLength={300} value={pickup} onChange={e=>{setPickup(e.target.value); setPickupPoint(null);setRoute(null);}} placeholder="Адрес подачи или нажми GPS" autoComplete="street-address" />{pickupSuggestions.length>0&&<div className="address-suggestions">{pickupSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setPickup(item.label);setPickupPoint({lat:item.lat,lng:item.lng});setPickupSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}{item.distance_km!=null ? " · "+item.distance_km+" км по дороге" : ""}</small></button>)}</div>}<button type="button" className="button secondary" onClick={detectPickup}>📍 Определить моё местоположение</button></div>
-        <div className="field address-field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} placeholder="Например: Астана, улица Достык, 9" autoComplete="off" />{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}{item.distance_km!=null ? " · "+item.distance_km+" км по дороге" : ""}</small></button>)}</div>}</div>
-        <div className="field"><label>Класс автомобиля</label><div className="class-grid class-list">{CLASSES.map(item=>{const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-option selected":"class-option"} onClick={()=>setSelectedClass(item.id)} aria-pressed={selectedClass===item.id}><span className="class-icon">{item.icon}</span><b className="class-name">{item.label}</b><span className="class-price">{estimated?money(estimated):"—"}</span></button>})}</div></div>
+        <div className="pickup-auto-bar">
+          <div className="pickup-auto-icon">📍</div>
+          <div className="pickup-auto-copy"><b>{locating ? "Определяем ваше местоположение…" : pickupPoint ? "Место подачи определено" : "Нужно разрешить GPS"}</b><span>{pickupPoint ? (pickup && pickup !== "Моё местоположение" ? pickup : "Точка подачи определена автоматически по GPS") : "Разреши доступ к геопозиции — адрес подачи вводить не нужно."}</span></div>
+          {!pickupPoint && <button type="button" className="button secondary" onClick={detectPickup} disabled={locating}>Разрешить GPS</button>}
+        </div>
+        <div className="field address-field"><label>Куда едем?</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);setError("");}} placeholder="Например: Достык 9, ТРЦ Керуен" autoComplete="off" />{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setRoute(null);setError("");}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}{item.distance_km!=null ? " · "+item.distance_km+" км по дороге" : ""}</small></button>)}</div>}
+          {busy && !route && <p className="muted small">📏 Рассчитываем маршрут и цены…</p>}
+          {route && <p className="route-result-note">Маршрут {route.distanceKm.toFixed(1)} км · около {route.durationMin} мин. Цены рассчитаны автоматически.</p>}
+        </div>
+        {route && <div className="field"><label>Выбери класс и цену</label><div className="class-grid class-list">{CLASSES.map(item=>{const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-option selected":"class-option"} onClick={()=>setSelectedClass(item.id)} aria-pressed={selectedClass===item.id} disabled={!estimated}><span className="class-icon">{item.icon}</span><b className="class-name">{item.label}</b><span className="class-price">{estimated?money(estimated):"—"}</span></button>})}</div></div>}
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
-        <button className="button primary submit-order" type="submit" disabled={busy || !name.trim() || !phone.trim() || !pickup.trim() || !destination.trim()}>{busy ? "Рассчитываем…" : "🗺️ Рассчитать маршрут и цену"}</button>
+        {route && <div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi Gold</b></button></div></div>}
+        <button className="button primary submit-order" type="button" onClick={submitOrder} disabled={busy || !name.trim() || !phone.trim() || !pickupPoint || !destinationPoint || !route || !onlineClasses.includes(selectedClass)}>{busy ? "Подождите…" : route ? "🚕 Заказать такси · "+money(quote) : "Введите адрес назначения"}</button>
       </form>
-      {route && destinationPoint && <div className="quote-panel"><div className="eyebrow">ПРЕДВАРИТЕЛЬНЫЙ РАСЧЁТ</div><h2>{route.distanceKm.toFixed(1)} км</h2><p className="muted">В пути ориентировочно {route.durationMin} мин. · автомобильный маршрут</p><div className="route-price-list">{CLASSES.map(item=><div className={selectedClass===item.id?"route-price-row active":"route-price-row"} key={item.id}><span>{item.icon} {item.label}</span><b>{route.estimated_prices?.[item.id]?money(route.estimated_prices[item.id]):"—"}</b></div>)}</div><div className="success"><b>Выбрано: {CLASSES.find(x=>x.id===selectedClass)?.label} — {money(quote)}</b></div><div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b><small>Оплата водителю после поездки</small></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi Gold</b><small>Перевод водителю вручную</small></button></div><p className="muted small">Kaspi Gold пока не подключён как встроенный платёж: система сохранит выбор, а перевод делается напрямую водителю.</p></div><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">Посмотреть маршрут A → B в 2ГИС</a><button className="button primary" disabled={busy || !onlineClasses.includes(selectedClass)} onClick={submitOrder}>{busy?"Отправляем…":onlineClasses.includes(selectedClass) ? "Подтвердить цену и вызвать такси" : "Нет водителей этого класса"}</button><p className="muted small">Стоимость ориентировочная. Тарифы пока тестовые.</p></div>}
+      {route && destinationPoint && <div className="quote-panel"><div className="route-summary"><b>{route.distanceKm.toFixed(1)} км</b><span>· около {route.durationMin} мин.</span></div><p className="muted small">Цена примерная и может измениться, если водитель предложит другую.</p><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">🗺️ Посмотреть маршрут</a></div>}
     </section>}
     <p className="muted small footer-note">Мой Такси · при расчёте используются дорожные маршруты OSRM и адресный поиск Photon/OpenStreetMap.</p>
   </main>;
