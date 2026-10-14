@@ -45,7 +45,24 @@ export default function Home(){
    return true;
   }catch(e){setError(e.message);return false}
  }
- async function acceptOrderAndNavigate(o){const mapTab=window.open("about:blank","_blank");const ok=await updateOrder(o.id,"accepted");if(!ok){mapTab?.close();return}if(mapTab){mapTab.location.href=twoGisRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)}else{setNotice("Заказ принят. Нажми «Маршрут к клиенту в 2GIS», чтобы открыть навигатор.")}}
+ async function acceptOrderAndNavigate(o){
+  const mapTab=window.open("about:blank","_blank");
+  try{
+    let acceptedOrder=o;
+    if(o.driver_id){
+      const ok=await updateOrder(o.id,"accepted");
+      if(!ok){mapTab?.close();return}
+    }else{
+      const result=await callApi("driver_accept_broadcast",{...session,order_id:o.id});
+      acceptedOrder=result.order||o;
+      const list=await callApi("driver_list",session);
+      setOrders(list.orders||[]);
+      setNotice("Заказ принят за "+Number(result.fare||o.client_price||0).toLocaleString("ru-RU")+" ₸. Открываем маршрут к клиенту.");
+    }
+    if(mapTab){mapTab.location.href=twoGisRoute(acceptedOrder.pickup_lat,acceptedOrder.pickup_lng,acceptedOrder.pickup_address)}
+    else{setNotice("Заказ принят. Нажми «Маршрут к клиенту в 2GIS», чтобы открыть навигатор.")}
+  }catch(e){mapTab?.close();setError(e.message||"Не удалось принять заказ.")}
+}
  async function offerPrice(o,overridePrice){const amount=Number(overridePrice??offerPrices[o.id]);if(!Number.isFinite(amount)||amount<100){setError("Укажи свою цену не ниже 100 ₸.");return}setError("");try{await callApi("driver_offer_price",{...session,order_id:o.id,price:amount});const d=await callApi("driver_list",session);setOrders(d.orders||[]);setNotice("Предложение отправлено пассажиру. Он решит, принимать ли твою цену.");setOfferPrices(prev=>({...prev,[o.id]:""}))}catch(e){setError(e.message||"Не удалось отправить цену.")}}
  async function skipOrder(o){try{await callApi("driver_skip_order",{...session,order_id:o.id});setOrders(prev=>prev.filter(item=>item.id!==o.id));setNotice("Заказ скрыт только у тебя. Пассажир продолжит получать предложения других водителей.")}catch(e){setError(e.message||"Не удалось убрать заказ из списка.")}}
  async function saveProfile(e){e.preventDefault();setBusy(true);try{const d=await callApi("driver_update_profile",{...session,name:form.name,car_model:form.car_model,car_plate:form.car_plate,car_color:form.car_color,vehicle_class:form.vehicle_class||"economy",photo_url:form.photo_url||""});setDriver(d.driver);setNotice("Профиль сохранён.")}catch(e){setError(e.message)}finally{setBusy(false)}}
@@ -63,7 +80,7 @@ export default function Home(){
 {o.price_status==="declined"&&<p className="muted">Клиент отклонил цену. Можешь предложить другую.</p>}
 {o.status==="new"&&<div className="field"><label htmlFor={`offer-${o.id}`}>Твоя цена пассажиру, ₸</label>{o.my_offer?.status==="pending"&&<p className="success small">Ты уже предложил {Number(o.my_offer.price).toLocaleString("ru-RU")} ₸ — ждём ответа.</p>}<input id={`offer-${o.id}`} type="number" min="100" max="1000000" step="50" value={offerPrices[o.id]??""} onChange={e=>setOfferPrices(prev=>({...prev,[o.id]:e.target.value}))} placeholder={o.client_price?`Цена пассажира ${Number(o.client_price).toLocaleString("ru-RU")} ₸`:"Введите цену поездки"}/><button className="button secondary" type="button" disabled={!offerPrices[o.id]} onClick={()=>offerPrice(o)}>💬 Отправить свою цену</button></div>}
 <div className="order-actions actions">
-{o.status==="new"&&<><button className="button primary" onClick={()=>o.driver_id?acceptOrderAndNavigate(o):offerPrice(o,Number(o.client_price))}>{o.driver_id?(Number(o.agreed_price)>0?`Принять за ${Number(o.agreed_price).toLocaleString("ru-RU")} ₸`:Number(o.client_price)>0?`Принять за ${Number(o.client_price).toLocaleString("ru-RU")} ₸`:"Принять заказ"): `Предложить ${Number(o.client_price||0).toLocaleString("ru-RU")} ₸`}</button>{!o.driver_id&&<button className="button danger" onClick={()=>skipOrder(o)}>Не беру</button>}{o.driver_id&&<button className="button danger" onClick={()=>updateOrder(o.id,"cancelled")}>Отклонить</button>}</>}
+{o.status==="new"&&<><button className="button primary" disabled={!o.driver_id&&o.my_offer?.status==="pending"} onClick={()=>acceptOrderAndNavigate(o)}>{!o.driver_id&&o.my_offer?.status==="pending"?"Ждём ответа клиента":Number(o.agreed_price||o.client_price)>0?("Принять за "+Number(o.agreed_price||o.client_price).toLocaleString("ru-RU")+" ₸"):"Принять заказ"}</button>{!o.driver_id&&<button className="button danger" onClick={()=>skipOrder(o)}>Не беру</button>}{o.driver_id&&<button className="button danger" onClick={()=>updateOrder(o.id,"cancelled")}>Отклонить</button>}</>}
 {o.status==="accepted"&&<><a className="button secondary" href={twoGisRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут к клиенту в 2GIS</a><button className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
 {o.status==="arrived"&&<div className="success"><b>Ты на месте.</b><p className="small" style={{margin:"5px 0 0"}}>Ждём, пока пассажир нажмёт «Я выхожу». После этого появится кнопка начала поездки.</p></div>}
 {o.status==="client_ready"&&<a className="button primary" href={twoGisTripRoute(o.pickup_lat,o.pickup_lng,o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer" onClick={()=>updateOrder(o.id,"started")}>▶️ Пассажир выходит · начать поездку A → B</a>}
