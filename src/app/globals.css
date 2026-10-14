@@ -45,3 +45,19 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .price-offer{background:#f4f8f5;border:1px solid #dcece0;border-radius:15px;padding:14px;margin:12px 0}
 .price-offer h3{margin-bottom:6px}.price-offer p{margin-bottom:10px}
 @media(max-width:600px){.owner-dashboard{padding:12px}.owner-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.owner-balance{grid-template-columns:1fr 1fr;padding:13px}.owner-balance strong{font-size:19px}.owner-tabs{top:66px}.owner-logout{font-size:12px;padding:9px 10px}}
+
+
+/* Passenger fare quote and vehicle-class selector */
+.class-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:8px 0}
+.class-card{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;padding:13px;border:1px solid var(--line);border-radius:15px;background:#fff;color:var(--ink);min-width:0;cursor:pointer}
+.class-card.selected{border:2px solid var(--green);background:#edf7f0;padding:12px}
+.class-card:disabled{opacity:.45;cursor:not-allowed}
+.class-icon{font-size:24px}
+.class-card b{font-size:15px}
+.class-card .small{line-height:1.3;overflow-wrap:anywhere}
+.quote-panel{border:1px solid #dcece0;background:#f9fcfa;border-radius:17px;padding:16px;margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.quote-panel h2{font-size:28px;margin:0}
+.quote-panel .button{margin-top:3px}
+.class-card .muted{margin:0}
+@media(min-width:520px){.class-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:380px){.class-grid{grid-template-columns:1fr}.class-card{display:grid;grid-template-columns:36px 1fr;align-items:center}.class-card .small{grid-column:2}}
