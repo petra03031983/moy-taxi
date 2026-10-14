@@ -1,1 +1,21 @@
-{"name":"Мой Такси","short_name":"Мой Такси","start_url":"/","display":"standalone","background_color":"#f5f7f5","theme_color":"#146b4b","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml"}]}
+{
+  "id": "/",
+  "name": "Мой Такси",
+  "short_name": "Мой Такси",
+  "description": "Приложение водителя для заказов, маршрутов и связи с клиентами.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f5",
+  "theme_color": "#146b4b",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
