@@ -9,12 +9,14 @@ export async function GET(_request, context) {
     name: "Мой Такси — заказ у водителя",
     short_name: "Мой Такси",
     description: "Постоянная ссылка на заказ такси у выбранного водителя.",
+    prefer_related_applications: false,
+    orientation: "portrait-primary",
     start_url: startUrl,
     scope: startUrl,
     display: "standalone",
     background_color: "#f5f7f5",
     theme_color: "#146b4b",
-    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }]
+    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }]
   };
   return new Response(JSON.stringify(manifest), {
     headers: {
