@@ -27,6 +27,8 @@ export default function OwnerAdmin() {
   const [vehicleRates, setVehicleRates] = useState(DEFAULT_RATES);
   const [testMode, setTestMode] = useState(true);
   const [walletAmounts, setWalletAmounts] = useState({});
+  const [dgisApiKey, setDgisApiKey] = useState("");
+  const [dgisApiConfigured, setDgisApiConfigured] = useState(false);
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,6 +46,7 @@ export default function OwnerAdmin() {
     setPercent(String(summary.stats.commission_percent ?? 5));
     setVehicleRates(summary.stats.vehicle_rates && Object.keys(summary.stats.vehicle_rates).length ? summary.stats.vehicle_rates : DEFAULT_RATES);
     setTestMode(summary.stats.test_mode !== false);
+    setDgisApiConfigured(Boolean(summary.stats.dgis_api_configured));
     setDrivers(driverData.drivers || []);
     setOrders(orderData.orders || []);
     setCommissions(commissionData.commissions || []);
@@ -103,6 +106,30 @@ export default function OwnerAdmin() {
       await loadAll(token);
       setNotice("Тарифы сохранены. Новые расчёты пассажиров будут использовать эти ставки.");
     } catch (e) { setError(e.message || "Не удалось сохранить тарифы."); }
+    finally { setBusy(false); }
+  }
+
+  async function saveDgisApiKey(event) {
+    event.preventDefault();
+    const key = dgisApiKey.trim();
+    if (key.length < 8) { setError("Вставь API-ключ 2ГИС из кабинета разработчика."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await callApi("admin_set_2gis_api_key", { admin_token: token, api_key: key });
+      setDgisApiConfigured(true);
+      setDgisApiKey("");
+      await loadAll(token);
+      setNotice("Ключ 2ГИС сохранён в закрытых настройках сервера. Он не показывается в публичной части сайта.");
+    } catch (e) { setError(e.message || "Не удалось сохранить ключ 2ГИС."); }
+    finally { setBusy(false); }
+  }
+
+  async function testDgisApi() {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_test_2gis", { admin_token: token });
+      setNotice(result.message || "Поиск 2ГИС отвечает.");
+    } catch (e) { setError(e.message || "Проверка 2ГИС не удалась."); }
     finally { setBusy(false); }
   }
 
@@ -194,6 +221,15 @@ export default function OwnerAdmin() {
       <h2>Режим сервиса</h2>
       <div className={testMode ? "success" : "error"}><b>{testMode ? "ТЕСТОВЫЙ РЕЖИМ ВКЛЮЧЁН" : "РАБОЧИЙ РЕЖИМ"}</b><p style={{margin:"6px 0 0"}}>{testMode ? "Комиссия не начисляется. Тарифы используются только для проверки заказов." : "Комиссия начнёт учитываться, но электронный кошелёк и автоматическое списание ещё не подключены."}</p></div>
       <button type="button" className={testMode ? "button secondary" : "button primary"} disabled={busy || testMode} onClick={setTestingMode}>{testMode ? "Тестовый режим включён — списания выключены" : "Вернуть бесплатный тестовый режим"}</button>
+      <div className="divider-owner" />
+      <h2>2ГИС — поиск адресов и маршруты</h2>
+      <div className={dgisApiConfigured ? "success" : "error"}><b>{dgisApiConfigured ? "Ключ 2ГИС сохранён" : "Ключ 2ГИС ещё не настроен"}</b><p style={{margin:"6px 0 0"}}>{dgisApiConfigured ? "Пассажирский поиск и расчёт маршрута будут обращаться к 2ГИС. Проверь, что у ключа есть права Suggest/Geocoder и Routing API." : "Раньше приложение открывало 2ГИС только как навигатор. Для поиска адресов внутри приложения нужен API-ключ 2ГИС с доступом к поиску и маршрутам."}</p></div>
+      <form onSubmit={saveDgisApiKey}>
+        <div className="field"><label htmlFor="dgisApiKey">API-ключ 2ГИС (вставь ключ из кабинета разработчика)</label><input id="dgisApiKey" type="password" autoComplete="off" spellCheck={false} value={dgisApiKey} onChange={e=>setDgisApiKey(e.target.value)} placeholder={dgisApiConfigured ? "Ключ сохранён — вставь новый, чтобы заменить" : "Вставь ключ 2ГИС"} required /></div>
+        <button className="button primary" disabled={busy || dgisApiKey.trim().length<8}>Сохранить ключ 2ГИС</button>
+      </form>
+      <button type="button" className="button secondary" disabled={busy || !dgisApiConfigured} onClick={testDgisApi}>Проверить поиск 2ГИС</button>
+      <p className="muted small">Ключ хранится в закрытой базе владельца и не передаётся пассажирам. Проверь, чтобы в кабинете 2ГИС для него были включены сервисы Search/Suggest/Geocoder и Routing API.</p>
       <div className="divider-owner" />
       <h2>Тарифы по классам автомобилей</h2>
       <p className="muted">Цена рассчитывается по автомобильному маршруту: расстояние × ставка за километр, но не ниже минимального тарифа. Значения ниже пока тестовые — перед запуском скорректируй их под реальную цену в своём городе.</p>
