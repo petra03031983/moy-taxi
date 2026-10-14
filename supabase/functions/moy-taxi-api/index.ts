@@ -56,7 +56,7 @@ async function getDb() {
   if (!url || !serviceRole) throw new Error("Server configuration is incomplete");
   return createClient(url, serviceRole, { auth: { persistSession: false, autoRefreshToken: false } });
 }
-async function driverSession(db: any, payload: any) {
+async function driverSession(db: any, payload: any): Promise<{ driver?: any; error?: string; status?: number }> {
   const id = String(payload.driver_id || "");
   const token = String(payload.session_token || "");
   if (!id || token.length < 20) return { error: "Сессия истекла. Войди снова.", status: 401 };
