@@ -28,6 +28,9 @@ export default function PassengerPage() {
   const [pickupSuggestions, setPickupSuggestions] = useState([]);
   const [destinationSuggestions, setDestinationSuggestions] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [ratingStars, setRatingStars] = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
+  const [savingRating, setSavingRating] = useState(false);
   const [onlineClasses, setOnlineClasses] = useState(CLASSES.map(x => x.id));
   const [testMode, setTestMode] = useState(true);
   const [tripType, setTripType] = useState("city");
@@ -97,7 +100,7 @@ export default function PassengerPage() {
       try {
         const data = await callApi("order_status", { order_id: order.id, client_token: order.client_token });
         if (!active) return;
-        const updated = { ...order, ...data.order, offers: data.offers || [] };
+        const updated = { ...order, ...data.order, offers: data.offers || [], rating: data.rating || null };
         setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
       } catch {}
     };
@@ -108,7 +111,7 @@ export default function PassengerPage() {
 
   const quote = route?.estimated_prices?.[selectedClass] ?? null;
   const driver = order?.drivers || order?.assigned_driver || null;
-  const showBooking = !order || ["cancelled", "completed"].includes(order.status);
+  const showBooking = !order || order.status === "cancelled";
 
   async function calculateRouteData() {
     if (routeRequestRef.current || busy) return;
@@ -177,6 +180,27 @@ export default function PassengerPage() {
     finally { setBusy(false); }
   }
 
+  async function markClientReady() {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("client_mark_ready", { order_id: order.id, client_token: order.client_token });
+      const updated = { ...order, ...result.order };
+      setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
+      setNotice("Водитель получил сообщение: ты выходишь.");
+    } catch (e) { setError(e.message || "Не удалось сообщить водителю."); }
+    finally { setBusy(false); }
+  }
+  async function submitRating() {
+    if (!order?.id || order?.rating?.id) return;
+    setSavingRating(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("client_rate_driver", { order_id: order.id, client_token: order.client_token, stars: ratingStars, comment: ratingComment });
+      const updated = { ...order, rating: result.rating };
+      setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
+      setNotice("Спасибо! Оценка водителя сохранена.");
+    } catch (e) { setError(e.message || "Не удалось сохранить оценку."); }
+    finally { setSavingRating(false); }
+  }
   async function cancelOrder() {
     if (!order?.id) return;
     setBusy(true); setError("");
@@ -228,10 +252,14 @@ export default function PassengerPage() {
       <p><b>💰 Цена:</b> {money(order.agreed_price || order.client_price || order.driver_price)}</p>
       <p><b>Оплата:</b> {order.payment_method==="kaspi_gold"?"Kaspi Gold — перевод водителю":"Наличные водителю"}</p>
       {driver?.name && <><p><b>Водитель:</b> {driver.name}</p><p><b>Автомобиль:</b> {driver.car_model || "—"} · {driver.car_color || "цвет не указан"} · {driver.car_plate || "номер не указан"}</p><p><b>Телефон:</b> <a href={"tel:"+driver.phone}>{driver.phone}</a></p></>}
+      {order.status === "arrived" && <div className="searching-panel"><h3>Водитель на месте</h3><p className="muted">Водитель приехал за тобой. Нажми кнопку, когда выходишь к машине.</p><button className="button primary" disabled={busy} onClick={markClientReady}>👋 Я выхожу</button></div>}
+      {order.status === "client_ready" && <div className="success"><b>Ты сообщил водителю, что выходишь.</b><p className="small" style={{margin:"5px 0 0"}}>Садись в автомобиль; водитель начнёт поездку после посадки.</p></div>}
       {order.status === "new" && <div className="searching-panel"><div className="searching-pulse">⌕</div><h3>Ищем водителей</h3><p className="muted">Водители выбранного класса рядом получат заказ и смогут предложить свою цену.</p><p><b>Предложений: {(order.offers||[]).filter(offer=>offer.status==="pending").length}</b></p>
         {(order.offers||[]).filter(offer=>offer.status==="pending").map(offer=><article className="driver-offer-card" key={offer.id}><div className="order-top"><h3>{offer.drivers?.name||"Водитель"}</h3><span className="status">{CLASSES.find(x=>x.id===offer.drivers?.vehicle_class)?.label||"Водитель"}</span></div><p><b>{money(offer.price)}</b></p><p>{offer.drivers?.car_model||"Автомобиль"}{offer.drivers?.car_color?" · "+offer.drivers.car_color:""}{offer.drivers?.car_plate?" · "+offer.drivers.car_plate:""}</p>{offer.drivers?.phone&&<p><a href={"tel:"+offer.drivers.phone}>{offer.drivers.phone}</a></p>}<div className="actions"><button className="button primary" disabled={busy} onClick={()=>priceAnswer("client_accept_offer",offer.id)}>Принять</button><button className="button danger" disabled={busy} onClick={()=>priceAnswer("client_decline_offer",offer.id)}>Отклонить</button></div></article>)}
         <button className="button danger" disabled={busy} onClick={cancelOrder}>Отменить заказ</button></div>}
       {["accepted","arrived","started"].includes(order.status) && order.pickup_lat != null && order.destination_lat != null && <a className="button secondary" href={routeUrl({lat:order.pickup_lat,lng:order.pickup_lng},{lat:order.destination_lat,lng:order.destination_lng})} target="_blank" rel="noreferrer">🗺️ Открыть маршрут A → B в 2ГИС</a>}
+      {order.status === "completed" && !order.rating?.id && <section className="panel rating-panel"><h2>Как прошла поездка?</h2><p className="muted">Оцени водителя — это поможет улучшать сервис.</p><div className="rating-stars" role="group" aria-label="Оценка от 1 до 5 звёзд">{[1,2,3,4,5].map(star=><button type="button" key={star} className={star<=ratingStars?"rating-star active":"rating-star"} aria-label={star+" из 5"} aria-pressed={ratingStars===star} onClick={()=>setRatingStars(star)}>★</button>)}</div><div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={ratingComment} onChange={e=>setRatingComment(e.target.value)} placeholder="Что понравилось или что улучшить?" /></div><button className="button primary" disabled={savingRating} onClick={submitRating}>{savingRating?"Сохраняем…":"Отправить оценку"}</button></section>}
+      {order.status === "completed" && order.rating?.id && <div className="success"><b>Спасибо за оценку!</b><p style={{margin:"5px 0 0"}}>{"★".repeat(order.rating.stars)}{"☆".repeat(5-order.rating.stars)}{order.rating.comment?" · "+order.rating.comment:""}</p></div>}
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
     </section> : <section className="panel">
       <form onSubmit={calculateRoute}>
