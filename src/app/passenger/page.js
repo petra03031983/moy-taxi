@@ -54,6 +54,9 @@ export default function PassengerPage() {
     navigator.geolocation.getCurrentPosition(position => {
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
       setPickupPoint(point); setPickup(current => current.trim() ? current : "Моё местоположение");
+      callApi("address_reverse", point).then(result => setPickup(current =>
+        !current.trim() || current === "Моё местоположение" ? result.label : current
+      )).catch(() => {});
       setLocating(false);
     }, () => setLocating(false), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   }, []);
@@ -193,8 +196,11 @@ export default function PassengerPage() {
   function detectPickup() {
     setLocating(true);
     navigator.geolocation?.getCurrentPosition(position => {
-      setPickupPoint({ lat: position.coords.latitude, lng: position.coords.longitude });
-      setPickup("Моё местоположение"); setLocating(false); setError("");
+      const point = { lat: position.coords.latitude, lng: position.coords.longitude };
+      setPickupPoint(point); setPickup("Моё местоположение"); setLocating(false); setError("");
+      callApi("address_reverse", point).then(result => setPickup(current =>
+        current === "Моё местоположение" ? result.label : current
+      )).catch(() => {});
     }, () => { setPickupPoint(null); setLocating(false); setError("Не удалось определить GPS. Введи адрес подачи вручную."); },
     { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   }
@@ -223,8 +229,8 @@ export default function PassengerPage() {
         <div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div>
         <div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
         <div className="field"><label>Тип поездки</label><div className="switcher"><button type="button" className={tripType==="city"?"switch active":"switch"} onClick={()=>setTripType("city")}>🏙️ Город</button><button type="button" className={tripType==="intercity"?"switch active":"switch"} onClick={()=>setTripType("intercity")}>🛣️ Межгород</button></div></div>
-        <div className="field address-field"><label>Откуда забрать (точка A)</label><p className="muted small">{locating ? "📍 Определяем местоположение…" : pickupPoint ? "✅ Место подачи определено GPS." : "GPS недоступен — введи адрес вручную."}</p><input required maxLength={300} value={pickup} onChange={e=>{setPickup(e.target.value); setPickupPoint(null);setRoute(null);}} placeholder="Адрес подачи или нажми GPS" autoComplete="street-address" />{pickupSuggestions.length>0&&<div className="address-suggestions">{pickupSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setPickup(item.label);setPickupPoint({lat:item.lat,lng:item.lng});setPickupSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}<button type="button" className="button secondary" onClick={detectPickup}>📍 Определить моё местоположение</button></div>
-        <div className="field address-field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} placeholder="Например: Астана, улица Достык, 9" autoComplete="off" />{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}</div>
+        <div className="field address-field"><label>Откуда забрать (точка A)</label><p className="muted small">{locating ? "📍 Определяем местоположение…" : pickupPoint ? "✅ Место подачи определено GPS." : "GPS недоступен — введи адрес вручную."}</p><input required maxLength={300} value={pickup} onChange={e=>{setPickup(e.target.value); setPickupPoint(null);setRoute(null);}} placeholder="Адрес подачи или нажми GPS" autoComplete="street-address" />{pickupSuggestions.length>0&&<div className="address-suggestions">{pickupSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setPickup(item.label);setPickupPoint({lat:item.lat,lng:item.lng});setPickupSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}{item.distance_km!=null ? " · "+item.distance_km+" км по дороге" : ""}</small></button>)}</div>}<button type="button" className="button secondary" onClick={detectPickup}>📍 Определить моё местоположение</button></div>
+        <div className="field address-field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} placeholder="Например: Астана, улица Достык, 9" autoComplete="off" />{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}{item.distance_km!=null ? " · "+item.distance_km+" км по дороге" : ""}</small></button>)}</div>}</div>
         <div className="field"><label>Класс автомобиля</label><p className="muted small">После расчёта маршрута покажем примерную стоимость для каждого класса.</p><div className="class-grid">{CLASSES.map(item=>{const available=onlineClasses.includes(item.id);const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-card selected":"class-card"} onClick={()=>setSelectedClass(item.id)}><span className="class-icon">{item.icon}</span><b>{item.label}</b><span className="class-price">{estimated?money(estimated):"Цена после расчёта"}</span><span className="small muted">{available?"Есть водитель":"Пока нет на линии"}</span></button>})}</div></div>
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
         <button className="button primary submit-order" type="submit" disabled={busy || !name.trim() || !phone.trim() || !pickup.trim() || !destination.trim()}>{busy ? "Рассчитываем…" : "🗺️ Рассчитать маршрут и цену"}</button>
