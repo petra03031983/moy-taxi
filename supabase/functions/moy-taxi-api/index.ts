@@ -9,73 +9,75 @@ async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABAS
 async function sess(c:any,p:any){const id=String(p.driver_id||""),t=String(p.session_token||"");if(!id||t.length<20)return {error:"Сессия истекла. Войди снова.",status:401};const {data,error}=await c.from("drivers").select("*").eq("id",id).maybeSingle();if(error||!data)return {error:"Не удалось проверить вход. Войди снова.",status:401};const exp=data.session_expires_at?Date.parse(data.session_expires_at):0;if(!data.session_token_hash||!equal(await sha256(t),data.session_token_hash)||exp<Date.now())return {error:"Сессия истекла. Войди снова.",status:401};return {driver:data}}
 async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");const h=await sha256(t),exp=new Date(Date.now()+30*86400000).toISOString();const {error}=await c.from("drivers").update({session_token_hash:h,session_expires_at:exp,updated_at:new Date().toISOString()}).eq("id",id);if(error)throw error;return t}
 function km(a:number,b:number,c:number,d:number){const R=6371,r=(x:number)=>x*Math.PI/180,da=r(c-a),db=r(d-b),x=Math.sin(da/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
-async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null){
+async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null,key:string){
  const clean=String(address||"").trim();
  if(!clean)throw new Error("Введи конечный адрес.");
- // The user's common destination: Keruen mall at Dostyk 9, Astana.
- // Verified address: https://www.keruen.kz/contacts
- if(/керуен|keruen|keruyen/i.test(clean) && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
-  return {lat:51.128020,lng:71.425381};
- }
- if(/достык/i.test(clean) && clean.includes("9") && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
-  return {lat:51.128020,lng:71.425381};
- }
  if(/^(мо[её]\\s+)?местоположение$/i.test(clean)){
   if(nearPoint)return nearPoint;
-  throw new Error("GPS не определился. Нажми «Определить моё местоположение» или выбери адрес подачи из подсказок.");
+  throw new Error("Не удалось получить GPS клиента.");
  }
- const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
  const queries=[clean];
- if(!hasCity){
-  queries.push(clean+", Астана, Казахстан");
-  queries.push(clean+", Талапкер, Акмолинская область, Казахстан");
-  queries.push(clean+", Казахстан");
- }else if(!/казахстан|қазақстан|kazakhstan/i.test(clean)){
-  queries.push(clean+", Казахстан");
- }
- const unique=[...new Set(queries)];
- for(const query of unique){
+ if(nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73)queries.push(clean+", Астана, Казахстан");
+ queries.push(clean+", Казахстан");
+ for(const query of [...new Set(queries)]){
+  const params=new URLSearchParams({q:query,fields:"items.point,items.full_address_name,items.address,items.geometry.centroid",locale:"ru_KZ",key});
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7500);
   try{
-   const params=new URLSearchParams({q:query,limit:"6",lang:"ru"});
-   if(nearPoint){params.set("lat",String(nearPoint.lat));params.set("lon",String(nearPoint.lng))}
-   const response=await fetch("https://photon.komoot.io/api/?"+params.toString(),{headers:{"Accept":"application/json"}});
-   if(response.ok){
-    const data=await response.json();
-    const features=(data?.features||[]).filter((item:any)=>Array.isArray(item?.geometry?.coordinates)&&item.geometry.coordinates.length>=2&&Number.isFinite(Number(item.geometry.coordinates[0]))&&Number.isFinite(Number(item.geometry.coordinates[1])));
-    if(features.length){
-     const selected=nearPoint?features.sort((x:any,y:any)=>km(nearPoint.lat,nearPoint.lng,Number(x.geometry.coordinates[1]),Number(x.geometry.coordinates[0]))-km(nearPoint.lat,nearPoint.lng,Number(y.geometry.coordinates[1]),Number(y.geometry.coordinates[0])))[0]:features[0];
-     const coords=selected.geometry.coordinates;
-     return {lat:Number(coords[1]),lng:Number(coords[0])};
-    }
+   const response=await fetch("https://catalog.api.2gis.com/3.0/items/geocode?"+params.toString(),{headers:{"Accept":"application/json"},signal:controller.signal});
+   if(!response.ok)continue;
+   const data=await response.json();
+   const items=data?.result?.items||[];
+   for(const item of items){
+    const point=pointFrom2gis(item);
+    if(point)return point;
    }
-  }catch(e){console.error("Photon address lookup failed",query,String(e))}
+  }catch(e){if((e as any)?.name!=="AbortError")console.error("2GIS geocoder failed",String(e))}
+  finally{clearTimeout(timer)}
  }
- for(const query of unique){
-  try{
-   const params=new URLSearchParams({q:query,format:"jsonv2",limit:"6",countrycodes:"kz","accept-language":"ru","addressdetails":"1"});
-   const response=await fetch("https://nominatim.openstreetmap.org/search?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"MoyTaxi/1.0 (route address lookup)"}});
-   if(response.ok){
-    const data=await response.json();
-    const features=(data||[]).filter((item:any)=>Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon)));
-    if(features.length){
-     const selected=nearPoint?features.sort((x:any,y:any)=>km(nearPoint.lat,nearPoint.lng,Number(x.lat),Number(x.lon))-km(nearPoint.lat,nearPoint.lng,Number(y.lat),Number(y.lon)))[0]:features[0];
-     return {lat:Number(selected.lat),lng:Number(selected.lon)};
-    }
-   }
-  }catch(e){console.error("Nominatim address lookup failed",query,String(e))}
- }
- throw new Error("Не удалось найти адрес. Выбери адрес из подсказок и проверь город, улицу и номер дома. Подачу можно оставить по GPS.");
+ throw new Error("2ГИС не нашёл этот адрес. Добавь название города или выбери точный вариант из подсказок.");
 }
-async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number}){
- const url="https://router.project-osrm.org/route/v1/driving/"+a.lng+","+a.lat+";"+b.lng+","+b.lat+"?overview=full&geometries=geojson&steps=false";
+function wktLinePoints(wkt:string){
+ const match=/LINESTRING(?:\\s+Z)?\\s*\\(([^)]+)\\)/i.exec(String(wkt||""));
+ if(!match)return [];
+ return match[1].split(",").map(part=>{
+  const nums=part.trim().split(/\\s+/).map(Number);
+  return nums.length>=2&&Number.isFinite(nums[0])&&Number.isFinite(nums[1])?[nums[0],nums[1]]:null;
+ }).filter((v:any)=>v!==null);
+}
+function get2gisRouteGeometry(route:any){
+ const points:number[][]=[];
+ const add=(wkt:string)=>{for(const point of wktLinePoints(wkt)){const last=points[points.length-1];if(!last||last[0]!==point[0]||last[1]!==point[1])points.push(point)}};
+ add(route?.begin_pedestrian_path?.geometry?.selection||"");
+ const maneuvers=route?.maneuvers||{};
+ for(const maneuver of Object.values(maneuvers) as any[]){
+  const geometries=maneuver?.outcoming_path?.geometry||{};
+  for(const geometry of Object.values(geometries) as any[])add(geometry?.selection||"");
+ }
+ add(route?.end_pedestrian_path?.geometry?.selection||"");
+ return points;
+}
+async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number},key:string){
+ const url="https://routing.api.2gis.com/routing/7.0.0/global?key="+encodeURIComponent(key);
  let response:Response;
- try{response=await fetch(url)}catch{throw new Error("Сервис автомобильных маршрутов временно недоступен. Попробуй ещё раз.")}
- if(!response.ok)throw new Error("Сервис автомобильных маршрутов временно недоступен. Попробуй ещё раз.");
- const data=await response.json(),route=data?.routes?.[0];
- if(data?.code!=="Ok"||!Number.isFinite(route?.distance)||route.distance<=0)throw new Error("Не удалось построить маршрут между этими адресами. Укажи город, улицу и дом.");
- const distanceKm=route.distance/1000;
- if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адреса.");
- return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.duration||0)/60)),geometry:route.geometry?.coordinates||[]};
+ try{
+  response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({
+   points:[{type:"stop",lon:a.lng,lat:a.lat,start:true},{type:"stop",lon:b.lng,lat:b.lat}],
+   transport:"driving",output:"detailed",locale:"ru",route_mode:"fastest",traffic_mode:"jam"
+  })});
+ }catch{throw new Error("Сервис маршрутов 2ГИС временно недоступен. Попробуй ещё раз.")}
+ if(!response.ok){
+  const body=await response.text().catch(()=> "");
+  console.error("2GIS Routing API error",response.status,body.slice(0,500));
+  throw new Error(response.status===401||response.status===403?"2ГИС отклонил API-ключ или у ключа нет доступа к Routing API. Проверь права ключа в кабинете 2ГИС.":"2ГИС не смог построить маршрут. Попробуй уточнить адрес.");
+ }
+ const data=await response.json(),route=data?.result?.[0];
+ if(data?.status!=="OK"||!Number.isFinite(Number(route?.total_distance))||Number(route.total_distance)<=0){
+  console.error("2GIS route not found",data?.status,data?.message);
+  throw new Error("2ГИС не нашёл автомобильный маршрут между этими точками. Проверь адрес назначения.");
+ }
+ const distanceKm=Number(route.total_distance)/1000;
+ if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адрес.");
+ return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.total_duration||0)/60)),geometry:get2gisRouteGeometry(route)};
 }
 function quoteFor(rates:any,distanceKm:number){
  const quotes:any={};
@@ -99,38 +101,41 @@ async function suggestionDistances(rows:any[],nearPoint:{lat:number,lng:number}|
   return valid.map((item:any,index:number)=>({...item,distance_km:Number.isFinite(distances[index])?Number((distances[index]/1000).toFixed(1)):null}));
  }catch(e){console.error("Suggestion route distances unavailable",String(e));return rows}
 }
-async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null){
+async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null,key:string){
  const clean=String(query||"").trim();
- if(clean.length<3)return [];
- const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
- const nearAstana=nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73;
- const englishQuery=clean.replace(/аэропорт/ig,"airport").replace(/терминал/ig,"terminal").replace(/улица/ig,"street").replace(/проспект/ig,"avenue").replace(/дом/ig,"house");
+ if(clean.length<2)return [];
  const queries=[clean];
- if(englishQuery.toLowerCase()!==clean.toLowerCase())queries.push(englishQuery);
- if(!hasCity){if(nearAstana){queries.push(clean+", Астана, Казахстан");queries.push(englishQuery+", Astana, Kazakhstan")}queries.push(clean+", Казахстан");if(englishQuery.toLowerCase()!==clean.toLowerCase())queries.push(englishQuery+", Kazakhstan")}
+ if(nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73&&!/(астан|казахстан|қазақстан)/i.test(clean))queries.push(clean+", Астана, Казахстан");
  for(const q of [...new Set(queries)]){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),6500);
+  const params=new URLSearchParams({q,suggest_type:"object",fields:"items.point,items.full_address_name,items.address,items.adm_div,items.name",locale:"ru_KZ",page_size:"8",key});
+  if(nearPoint)params.set("location",nearPoint.lng+","+nearPoint.lat);
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7500);
   try{
-   const params=new URLSearchParams({q,limit:"8",lang:"ru"});
-   if(nearPoint){params.set("lat",String(nearPoint.lat));params.set("lon",String(nearPoint.lng))}
-   const response=await fetch("https://photon.komoot.io/api/?"+params.toString(),{headers:{"Accept":"application/json"},signal:controller.signal});
-   if(!response.ok)continue;
-   const data=await response.json();
-   const rows=(data?.features||[]).map((feature:any)=>{
-    const props=feature?.properties||{},coords=feature?.geometry?.coordinates;
-    const street=[props.street,props.housenumber].filter(Boolean).join(" ");
-    const name=props.name||props.street||props.suburb||"Адрес";
-    const city=props.city||props.town||props.village||props.county||props.state||"Казахстан";
-    const label=[...new Set([name!==street?name:"",street,props.district||props.suburb,city,props.state].filter(Boolean))].join(", ");
-    return {label,name,city,lat:Number(coords?.[1]),lng:Number(coords?.[0])};
-   }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng)&&x.lat>=-90&&x.lat<=90&&x.lng>=-180&&x.lng<=180);
-   if(rows.length){
-    const sorted=nearPoint?rows.sort((x:any,y:any)=>Math.hypot(x.lat-nearPoint.lat,x.lng-nearPoint.lng)-Math.hypot(y.lat-nearPoint.lat,y.lng-nearPoint.lng)):rows;
-    return await suggestionDistances(sorted.slice(0,8),nearPoint);
+   const response=await fetch("https://catalog.api.2gis.com/3.0/suggests?"+params.toString(),{headers:{"Accept":"application/json"},signal:controller.signal});
+   if(response.status===401||response.status===403){
+    const body=await response.text().catch(()=> "");
+    console.error("2GIS Suggest API access denied",response.status,body.slice(0,400));
+    throw new Error("2ГИС отклонил ключ поиска. Проверь, что для ключа включён доступ к Suggest/Geocoder API.");
    }
-  }catch(e){if((e as any)?.name!=="AbortError")console.error("Photon suggestions failed",q,String(e))}
-  finally{clearTimeout(timer)}
+   if(!response.ok)continue;
+   const data=await response.json(),items=data?.result?.items||[];
+   const rows=items.map((item:any)=>{
+    const point=pointFrom2gis(item);
+    const address=item.full_address_name||item.address?.full_address_name||item.address?.name||item.address_name||"";
+    const name=item.name||item.address?.building_name||item.address_name||address||"Адрес";
+    const label=address&&address!==name?address:(item.full_name||item.full_address_name||[name,item.address?.address_name].filter(Boolean).join(", "));
+    const divisions=(item.adm_div||[]).map((division:any)=>division.name||division.caption).filter(Boolean);
+    const city=divisions.find((v:string)=>/астана|алматы|тал[аә]пкер|город/i.test(v))||divisions[0]||"Казахстан";
+    return point&&label?{name,label,city,lat:point.lat,lng:point.lng}:null;
+   }).filter((item:any)=>item!==null);
+   if(rows.length){
+    const unique=rows.filter((item:any,index:number,all:any[])=>all.findIndex((other:any)=>other.label===item.label&&other.lat===item.lat&&other.lng===item.lng)===index);
+    return unique.slice(0,8);
+   }
+  }catch(e){
+   if(e instanceof Error&&e.message.includes("2ГИС отклонил"))throw e;
+   if((e as any)?.name!=="AbortError")console.error("2GIS suggestions failed",q,String(e));
+  }finally{clearTimeout(timer)}
  }
  return [];
 }
@@ -152,6 +157,23 @@ async function adminSession(c:any,p:any){
   const exp=data.admin_session_expires_at?Date.parse(data.admin_session_expires_at):0;
   if(!data.admin_session_token_hash||!equal(await sha256(token),data.admin_session_token_hash)||exp<Date.now())return {error:"Сессия владельца истекла. Войди снова.",status:401};
   return {settings:data};
+}
+async function getDgisApiKey(c:any){
+ const {data,error}=await c.from("platform_settings").select("dgis_api_key").eq("id",true).maybeSingle();
+ if(error)throw new Error("Не удалось проверить настройки 2ГИС.");
+ const key=String(data?.dgis_api_key||Deno.env.get("DGIS_API_KEY")||"").trim();
+ if(!key)throw new Error("Ключ API 2ГИС не настроен. Открой кабинет владельца → Настройки → 2ГИС API и сохрани ключ для поиска и маршрутов.");
+ return key;
+}
+function pointFrom2gis(item:any){
+ const point=item?.point||{};
+ let lat=Number(point.lat),lng=Number(point.lon??point.lng);
+ if((!Number.isFinite(lat)||!Number.isFinite(lng))&&typeof item?.geometry?.centroid==="string"){
+  const match=/POINT\\s*\\(\\s*(-?[0-9.]+)\\s+(-?[0-9.]+)/i.exec(item.geometry.centroid);
+  if(match){lng=Number(match[1]);lat=Number(match[2])}
+ }
+ if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return null;
+ return {lat,lng};
 }
 function amount(v:any){const n=Number(v);return Number.isFinite(n)&&n>0?n:0}
 
