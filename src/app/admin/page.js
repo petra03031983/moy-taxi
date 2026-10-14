@@ -5,6 +5,15 @@ import { callApi } from "../api";
 const currency = value => (Number(value || 0)).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " ₸";
 const dateTime = value => value ? new Date(value).toLocaleString("ru-RU") : "—";
 const tabLabels = { overview: "Обзор", drivers: "Водители", orders: "Заказы", commissions: "Комиссия" };
+const VEHICLE_CLASSES = [
+  ["economy","Эконом"],["comfort","Комфорт"],["comfort_plus","Комфорт+"],
+  ["business","Бизнес"],["minivan","Минивэн"],["premium","Премиум"]
+];
+const DEFAULT_RATES = {
+  economy:{rate_per_km:40,minimum_fare:500},comfort:{rate_per_km:50,minimum_fare:700},
+  comfort_plus:{rate_per_km:60,minimum_fare:900},business:{rate_per_km:80,minimum_fare:1500},
+  minivan:{rate_per_km:70,minimum_fare:1200},premium:{rate_per_km:100,minimum_fare:2000}
+};
 
 export default function OwnerAdmin() {
   const [token, setToken] = useState("");
@@ -15,6 +24,8 @@ export default function OwnerAdmin() {
   const [orders, setOrders] = useState([]);
   const [commissions, setCommissions] = useState([]);
   const [percent, setPercent] = useState("5");
+  const [vehicleRates, setVehicleRates] = useState(DEFAULT_RATES);
+  const [testMode, setTestMode] = useState(true);
   const [tab, setTab] = useState("overview");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -30,6 +41,8 @@ export default function OwnerAdmin() {
     ]);
     setStats(summary.stats);
     setPercent(String(summary.stats.commission_percent ?? 5));
+    setVehicleRates(summary.stats.vehicle_rates && Object.keys(summary.stats.vehicle_rates).length ? summary.stats.vehicle_rates : DEFAULT_RATES);
+    setTestMode(summary.stats.test_mode !== false);
     setDrivers(driverData.drivers || []);
     setOrders(orderData.orders || []);
     setCommissions(commissionData.commissions || []);
@@ -78,6 +91,28 @@ export default function OwnerAdmin() {
       await loadAll(token);
       setNotice("Процент комиссии сохранён. Новый процент применяется к новым завершённым поездкам.");
     } catch (e) { setError(e.message || "Не удалось сохранить комиссию."); }
+    finally { setBusy(false); }
+  }
+
+  async function saveVehicleRates(event) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_update_vehicle_rates", { admin_token: token, vehicle_rates: vehicleRates });
+      setVehicleRates(result.vehicle_rates);
+      await loadAll(token);
+      setNotice("Тарифы сохранены. Новые расчёты пассажиров будут использовать эти ставки.");
+    } catch (e) { setError(e.message || "Не удалось сохранить тарифы."); }
+    finally { setBusy(false); }
+  }
+
+  async function setTestingMode(nextValue) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_set_test_mode", { admin_token: token, test_mode: nextValue });
+      setTestMode(result.test_mode);
+      await loadAll(token);
+      setNotice(result.test_mode ? "Тестовый режим включён: комиссия с поездок не начисляется." : "Тестовый режим выключен. Внимание: кошелёк и онлайн-платежи ещё не подключены.");
+    } catch (e) { setError(e.message || "Не удалось изменить режим."); }
     finally { setBusy(false); }
   }
 
@@ -139,7 +174,22 @@ export default function OwnerAdmin() {
     <nav className="tabbar owner-tabs">{Object.entries(tabLabels).map(([key,label])=><button key={key} className={tab===key?"tab active":"tab"} onClick={()=>setTab(key)}>{label}</button>)}</nav>
 
     {tab === "overview" && <section className="panel">
-      <h2>Процент платформы</h2><p className="muted">Сейчас: {stats.commission_percent}%. Процент фиксируется для каждой поездки в момент завершения; изменение ставки влияет на последующие завершённые поездки.</p>
+      <h2>Режим сервиса</h2>
+      <div className={testMode ? "success" : "error"}><b>{testMode ? "ТЕСТОВЫЙ РЕЖИМ ВКЛЮЧЁН" : "РАБОЧИЙ РЕЖИМ"}</b><p style={{margin:"6px 0 0"}}>{testMode ? "Комиссия не начисляется. Тарифы используются только для проверки заказов." : "Комиссия начнёт учитываться, но электронный кошелёк и автоматическое списание ещё не подключены."}</p></div>
+      <button type="button" className={testMode ? "button secondary" : "button primary"} disabled={busy} onClick={()=>setTestingMode(!testMode)}>{testMode ? "Выключить тестовый режим" : "Включить тестовый режим"}</button>
+      <div className="divider-owner" />
+      <h2>Тарифы по классам автомобилей</h2>
+      <p className="muted">Цена рассчитывается по автомобильному маршруту: расстояние × ставка за километр, но не ниже минимального тарифа. Значения ниже пока тестовые — перед запуском скорректируй их под реальную цену в своём городе.</p>
+      <form onSubmit={saveVehicleRates}>
+        {VEHICLE_CLASSES.map(([key,label]) => <article className="order" key={key}>
+          <h3>{label}</h3>
+          <div className="field"><label htmlFor={"rate-"+key}>Цена за километр, ₸</label><input id={"rate-"+key} type="number" min="1" max="10000" step="1" required value={vehicleRates[key]?.rate_per_km ?? ""} onChange={e=>setVehicleRates(prev=>({...prev,[key]:{...prev[key],rate_per_km:e.target.value}}))}/></div>
+          <div className="field"><label htmlFor={"minimum-"+key}>Минимальная стоимость, ₸</label><input id={"minimum-"+key} type="number" min="0" max="1000000" step="50" required value={vehicleRates[key]?.minimum_fare ?? ""} onChange={e=>setVehicleRates(prev=>({...prev,[key]:{...prev[key],minimum_fare:e.target.value}}))}/></div>
+        </article>)}
+        <button className="button primary" disabled={busy}>Сохранить тарифы</button>
+      </form>
+      <div className="divider-owner" />
+      <h2>Процент платформы</h2><p className="muted">Сейчас: {stats.commission_percent}%. Процент фиксируется для каждой поездки в момент завершения; тестовый режим отключает начисление комиссии.</p>
       <form onSubmit={savePercent}><div className="field"><label htmlFor="commissionPercent">Комиссия с поездки, % (0–30)</label><input id="commissionPercent" type="number" min="0" max="30" step="0.5" required value={percent} onChange={e=>setPercent(e.target.value)} /></div><button className="button primary" disabled={busy}>Сохранить процент</button></form>
       <div className="divider-owner" />
       <h2>Сменить пароль кабинета</h2><p className="muted">Используй длинный пароль и не передавай его водителям.</p>
@@ -148,11 +198,11 @@ export default function OwnerAdmin() {
     </section>}
 
     {tab === "drivers" && <section className="panel"><div className="section-heading"><div><h2>Водители</h2><p className="muted">Новые регистрации появляются здесь автоматически.</p></div><span className="status">{drivers.length} в списке</span></div>
-      {drivers.length===0?<p className="muted">Пока нет зарегистрированных водителей.</p>:drivers.map(d=><article className="order" key={d.id}><div className="order-top"><h3>{d.name}</h3><span className="status">{d.is_online?"🟢 На линии":"Не на линии"}</span></div><p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p><p><b>Машина:</b> {[d.car_model,d.car_color,d.car_plate].filter(Boolean).join(" · ")||"Не указана"}</p><p><b>Персональный код:</b> {d.public_code}</p><p className="muted small">Регистрация: {dateTime(d.created_at)}</p></article>)}
+      {drivers.length===0?<p className="muted">Пока нет зарегистрированных водителей.</p>:drivers.map(d=><article className="order" key={d.id}><div className="order-top"><h3>{d.name}</h3><span className="status">{d.is_online?"🟢 На линии":"Не на линии"}</span></div><p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p><p><b>Машина:</b> {[d.car_model,d.car_color,d.car_plate].filter(Boolean).join(" · ")||"Не указана"}</p><p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===d.vehicle_class)?.[1]||"Эконом"}</p><p><b>Персональный код:</b> {d.public_code}</p><p className="muted small">Регистрация: {dateTime(d.created_at)}</p></article>)}
     </section>}
 
     {tab === "orders" && <section className="panel"><div className="section-heading"><div><h2>Последние заказы</h2><p className="muted">До 200 последних заказов всех водителей.</p></div></div>
-      {orders.length===0?<p className="muted">Заказов пока нет.</p>:orders.map(o=><article className="order" key={o.id}><div className="order-top"><h3>{o.clients?.name||"Клиент"} → {o.drivers?.name||"Водитель"}</h3><span className="status">{o.status}</span></div><p><b>Телефон клиента:</b> {o.clients?.phone||"—"}</p><p><b>Откуда:</b> {o.pickup_address}</p><p><b>Куда:</b> {o.destination_address}</p><p><b>Цена:</b> {currency(o.agreed_price||o.driver_price||o.client_price)}</p><p className="muted small">{dateTime(o.created_at)}</p></article>)}
+      {orders.length===0?<p className="muted">Заказов пока нет.</p>:orders.map(o=><article className="order" key={o.id}><div className="order-top"><h3>{o.clients?.name||"Клиент"} → {o.drivers?.name||"Водитель"}</h3><span className="status">{o.status}</span></div><p><b>Телефон клиента:</b> {o.clients?.phone||"—"}</p><p><b>Откуда:</b> {o.pickup_address}</p><p><b>Куда:</b> {o.destination_address}</p><p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===o.vehicle_class)?.[1]||"Эконом"}{Number(o.route_distance_km)>0?" · "+Number(o.route_distance_km).toFixed(1)+" км":""}</p><p><b>Цена:</b> {currency(o.agreed_price||o.driver_price||o.client_price)}</p><p className="muted small">{dateTime(o.created_at)}</p></article>)}
     </section>}
 
     {tab === "commissions" && <section className="panel"><div className="section-heading"><div><h2>Начисления платформы</h2><p className="muted">Отметь комиссию полученной после фактического расчёта с водителем.</p></div></div>
