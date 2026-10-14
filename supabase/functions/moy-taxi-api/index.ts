@@ -121,7 +121,9 @@ if(a==="availability"){const code=String(p.driver_code||"").trim().toUpperCase()
 if(a==="public_tariffs"){
  const {data:settingsRow,error}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
  if(error||!settingsRow)return fail("Не удалось загрузить тарифы.",500);
- return reply({ok:true,vehicle_rates:settingsRow.vehicle_rates||{},test_mode:settingsRow.test_mode!==false});
+ const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
+ const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
+ return reply({ok:true,vehicle_rates:settingsRow.vehicle_rates||{},test_mode:settingsRow.test_mode!==false,online_classes:onlineClasses});
 }
 if(a==="create_order"){
  const code=String(p.driver_code||"").trim().toUpperCase(),name=String(p.name||"").trim().slice(0,100),ph=phone(p.phone),pickup=String(p.pickup_address||"").trim().slice(0,300),dest=String(p.destination_address||"").trim().slice(0,300),comment=String(p.comment||"").trim().slice(0,500);
@@ -133,9 +135,16 @@ if(a==="create_order"){
   if(![lat,lng,destLat,destLng,distance].every(Number.isFinite)||lat < -90||lat>90||lng < -180||lng>180||destLat < -90||destLat>90||destLng < -180||destLng>180||distance<=0||distance>2000)return fail("Не удалось определить автомобильный маршрут. Проверь адреса и попробуй ещё раз.");
   const {data:settingsRow,error:se}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
   if(se||!settingsRow)return fail("Не удалось загрузить тариф.",500);
+  const routeResponse=await fetch("https://router.project-osrm.org/route/v1/driving/"+lng+","+lat+";"+destLng+","+destLat+"?overview=false&steps=false");
+  if(!routeResponse.ok)return fail("Сервис расчёта дорожного маршрута временно недоступен.",503);
+  const routeData=await routeResponse.json();
+  const roadMeters=routeData?.routes?.[0]?.distance;
+  if(routeData?.code!=="Ok"||!Number.isFinite(roadMeters)||roadMeters<=0)return fail("Не удалось найти автомобильный маршрут между адресами.",422);
+  const serverDistance=roadMeters/1000;
+  if(serverDistance>2000)return fail("Маршрут получился слишком длинным. Проверь адреса.",422);
   const rateRow=(settingsRow.vehicle_rates||{})[cls];const rate=Number(rateRow?.rate_per_km||0),minimum=Number(rateRow?.minimum_fare||0);
   if(rate<1)return fail("Для этого класса пока не настроен тариф.");
-  price=Math.max(minimum,Math.ceil(distance*rate/10)*10);
+  price=Math.max(minimum,Math.ceil(serverDistance*rate/10)*10);
   const {data:available,error:de}=await c.from("drivers").select("id,current_lat,current_lng,location_updated_at,vehicle_class").eq("is_online",true).eq("vehicle_class",cls).limit(500);
   if(de)return fail("Не удалось найти свободных водителей.",500);
   if(!available?.length)return fail("Сейчас нет водителей класса «"+cls+"» на линии. Выбери другой класс или попробуй позже.",409);
@@ -160,7 +169,7 @@ if(a==="create_order"){
  const {data:o,error:oe}=await c.from("orders").insert({
   client_id:clRow.id,driver_id:d.id,pickup_address:pickup,pickup_lat:Number.isFinite(lat)?lat:null,pickup_lng:Number.isFinite(lng)?lng:null,
   destination_address:dest,destination_lat:Number.isFinite(destLat)?destLat:null,destination_lng:Number.isFinite(destLng)?destLng:null,
-  route_distance_km:Number.isFinite(distance)&&distance>0?distance:null,trip_type:tripType,vehicle_class:cls,
+  route_distance_km:code==="AUTO"?Number((await Promise.resolve(distance)).toFixed(2)):(Number.isFinite(distance)&&distance>0?distance:null),trip_type:tripType,vehicle_class:cls,
   comment:comment||null,client_token:token,status:"new",client_price:autoPrice?price:(Number.isFinite(price)&&price>0?price:null),
   price_status:autoPrice?"accepted":"pending",agreed_price:autoPrice?price:null
  }).select("*").single();
