@@ -24,6 +24,9 @@ export default function PassengerPage() {
   const [comment, setComment] = useState("");
   const [pickupPoint, setPickupPoint] = useState(null);
   const [destinationPoint, setDestinationPoint] = useState(null);
+  const [pickupSuggestions, setPickupSuggestions] = useState([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState([]);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [onlineClasses, setOnlineClasses] = useState(CLASSES.map(x => x.id));
   const [testMode, setTestMode] = useState(true);
   const [tripType, setTripType] = useState("city");
@@ -56,13 +59,35 @@ export default function PassengerPage() {
   }, []);
 
   useEffect(() => {
+    if (pickup.trim().length < 3 || pickupPoint || pickup === "Моё местоположение") { setPickupSuggestions([]); return; }
+    let active = true;
+    const timer = setTimeout(() => {
+      callApi("address_suggest", { query: pickup }).then(result => {
+        if (active) setPickupSuggestions(result.suggestions || []);
+      }).catch(() => { if (active) setPickupSuggestions([]); });
+    }, 450);
+    return () => { active = false; clearTimeout(timer); };
+  }, [pickup, pickupPoint]);
+
+  useEffect(() => {
+    if (destination.trim().length < 3 || destinationPoint) { setDestinationSuggestions([]); return; }
+    let active = true;
+    const timer = setTimeout(() => {
+      callApi("address_suggest", { query: destination, near_lat: pickupPoint?.lat ?? null, near_lng: pickupPoint?.lng ?? null }).then(result => {
+        if (active) setDestinationSuggestions(result.suggestions || []);
+      }).catch(() => { if (active) setDestinationSuggestions([]); });
+    }, 450);
+    return () => { active = false; clearTimeout(timer); };
+  }, [destination, destinationPoint, pickupPoint?.lat, pickupPoint?.lng]);
+
+  useEffect(() => {
     if (!order?.id || !order?.client_token) return;
     let active = true;
     const load = async () => {
       try {
         const data = await callApi("order_status", { order_id: order.id, client_token: order.client_token });
         if (!active) return;
-        const updated = { ...order, ...data.order };
+        const updated = { ...order, ...data.order, offers: data.offers || [] };
         setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
       } catch {}
     };
@@ -87,6 +112,8 @@ export default function PassengerPage() {
         destination_address: destination,
         pickup_lat: pickupPoint?.lat ?? null,
         pickup_lng: pickupPoint?.lng ?? null,
+        destination_lat: destinationPoint?.lat ?? null,
+        destination_lng: destinationPoint?.lng ?? null,
       });
       const a = result.pickup_point;
       const b = result.destination_point;
@@ -127,9 +154,9 @@ export default function PassengerPage() {
         destination_address: destination, pickup_lat: pickupPoint.lat, pickup_lng: pickupPoint.lng,
         destination_lat: destinationPoint.lat, destination_lng: destinationPoint.lng,
         route_distance_km: route.distanceKm, vehicle_class: selectedClass, trip_type: tripType,
-        client_price: fare, comment,
+        payment_method: paymentMethod, client_price: fare, comment,
       });
-      const saved = { ...result.order, assigned_driver: result.assigned_driver, pickup_point: pickupPoint,
+      const saved = { ...result.order, assigned_driver: result.assigned_driver, offers: [], pickup_point: pickupPoint,
         destination_point: destinationPoint, route_distance_km: route.distanceKm, vehicle_class: selectedClass };
       setOrder(saved); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(saved));
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
@@ -149,19 +176,19 @@ export default function PassengerPage() {
     } catch (e) { setError(e.message || "Не удалось отменить заказ."); }
     finally { setBusy(false); }
   }
-  async function priceAnswer(action) {
+  async function priceAnswer(action, offerId) {
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await callApi(action, { order_id: order.id, client_token: order.client_token });
-      const updated = { ...order, ...result.order };
+      const result = await callApi(action, { order_id: order.id, client_token: order.client_token, offer_id: offerId });
+      const updated = { ...order, ...result.order, offers: (order.offers || []).map(offer => offer.id === offerId ? { ...offer, status: action === "client_accept_offer" ? "accepted" : "declined" } : offer) };
       setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
-      setNotice(action === "client_accept_price" ? "Цена согласована." : "Предложение водителя отклонено.");
-    } catch (e) { setError(e.message || "Не удалось ответить на цену."); }
+      setNotice(action === "client_accept_offer" ? "Ты выбрал водителя. Он направляется к тебе." : "Предложение отклонено. Ищем другие варианты.");
+    } catch (e) { setError(e.message || "Не удалось ответить на предложение."); }
     finally { setBusy(false); }
   }
   function newOrder() {
     localStorage.removeItem("moyTaxiGeneralOrder");
-    setOrder(null); setRoute(null); setDestinationPoint(null); setError(""); setNotice("");
+    setOrder(null); setRoute(null); setDestinationPoint(null); setPickupSuggestions([]); setDestinationSuggestions([]); setError(""); setNotice("");
   }
   function detectPickup() {
     setLocating(true);
@@ -184,9 +211,11 @@ export default function PassengerPage() {
       <p><b>📍 Откуда:</b> {order.pickup_address}</p><p><b>🏁 Куда:</b> {order.destination_address}</p>
       {Number(order.route_distance_km)>0 && <p><b>📏 Маршрут:</b> {Number(order.route_distance_km).toFixed(1)} км · ориентировочно {Math.ceil(Number(order.route_distance_km)/35*60)} мин.</p>}
       <p><b>💰 Цена:</b> {money(order.agreed_price || order.client_price || order.driver_price)}</p>
+      <p><b>Оплата:</b> {order.payment_method==="kaspi_gold"?"Kaspi Gold — перевод водителю":"Наличные водителю"}</p>
       {driver?.name && <><p><b>Водитель:</b> {driver.name}</p><p><b>Автомобиль:</b> {driver.car_model || "—"} · {driver.car_color || "цвет не указан"} · {driver.car_plate || "номер не указан"}</p><p><b>Телефон:</b> <a href={"tel:"+driver.phone}>{driver.phone}</a></p></>}
-      {order.price_status === "driver_offered" && order.status === "new" && <div className="price-offer"><h3>Водитель предлагает цену</h3><p><b>{money(order.driver_price)}</b></p><div className="actions"><button className="button primary" disabled={busy} onClick={()=>priceAnswer("client_accept_price")}>Согласиться</button><button className="button danger" disabled={busy} onClick={()=>priceAnswer("client_decline_price")}>Отказаться</button></div></div>}
-      {order.status === "new" && <button className="button danger" disabled={busy} onClick={cancelOrder}>Отменить заказ</button>}
+      {order.status === "new" && <div className="searching-panel"><div className="searching-pulse">⌕</div><h3>Ищем водителей</h3><p className="muted">Водители выбранного класса рядом получат заказ и смогут предложить свою цену.</p><p><b>Предложений: {(order.offers||[]).filter(offer=>offer.status==="pending").length}</b></p>
+        {(order.offers||[]).filter(offer=>offer.status==="pending").map(offer=><article className="driver-offer-card" key={offer.id}><div className="order-top"><h3>{offer.drivers?.name||"Водитель"}</h3><span className="status">{CLASSES.find(x=>x.id===offer.drivers?.vehicle_class)?.label||"Водитель"}</span></div><p><b>{money(offer.price)}</b></p><p>{offer.drivers?.car_model||"Автомобиль"}{offer.drivers?.car_color?" · "+offer.drivers.car_color:""}{offer.drivers?.car_plate?" · "+offer.drivers.car_plate:""}</p>{offer.drivers?.phone&&<p><a href={"tel:"+offer.drivers.phone}>{offer.drivers.phone}</a></p>}<div className="actions"><button className="button primary" disabled={busy} onClick={()=>priceAnswer("client_accept_offer",offer.id)}>Принять</button><button className="button danger" disabled={busy} onClick={()=>priceAnswer("client_decline_offer",offer.id)}>Отклонить</button></div></article>)}
+        <button className="button danger" disabled={busy} onClick={cancelOrder}>Отменить заказ</button></div>}
       {["accepted","arrived","started"].includes(order.status) && order.pickup_lat != null && order.destination_lat != null && <a className="button secondary" href={routeUrl({lat:order.pickup_lat,lng:order.pickup_lng},{lat:order.destination_lat,lng:order.destination_lng})} target="_blank" rel="noreferrer">🗺️ Открыть маршрут A → B в 2ГИС</a>}
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
     </section> : <section className="panel">
@@ -194,8 +223,9 @@ export default function PassengerPage() {
         <div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div>
         <div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
         <div className="field"><label>Тип поездки</label><div className="switcher"><button type="button" className={tripType==="city"?"switch active":"switch"} onClick={()=>setTripType("city")}>🏙️ Город</button><button type="button" className={tripType==="intercity"?"switch active":"switch"} onClick={()=>setTripType("intercity")}>🛣️ Межгород</button></div></div>
-        <div className="field"><label>Откуда забрать (точка A)</label><p className="muted small">{locating ? "📍 Определяем местоположение…" : pickupPoint ? "✅ Место подачи определено GPS." : "GPS недоступен — введи адрес вручную."}</p><input required maxLength={300} value={pickup} onChange={e=>{setPickup(e.target.value); if(e.target.value!=="Моё местоположение")setPickupPoint(null);}} placeholder="Адрес подачи или нажми GPS" /><button type="button" className="button secondary" onClick={detectPickup}>📍 Определить моё местоположение</button></div>
-        <div className="field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} onBlur={()=>{if(pickup.trim()&&destination.trim()&&!route)calculateRouteData();}} placeholder="Например: Астана, улица Достык, 9" /></div>
+        <div className="field address-field"><label>Откуда забрать (точка A)</label><p className="muted small">{locating ? "📍 Определяем местоположение…" : pickupPoint ? "✅ Место подачи определено GPS." : "GPS недоступен — введи адрес вручную."}</p><input required maxLength={300} value={pickup} onChange={e=>{setPickup(e.target.value); setPickupPoint(null);setRoute(null);}} placeholder="Адрес подачи или нажми GPS" autoComplete="street-address" />{pickupSuggestions.length>0&&<div className="address-suggestions">{pickupSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setPickup(item.label);setPickupPoint({lat:item.lat,lng:item.lng});setPickupSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}<button type="button" className="button secondary" onClick={detectPickup}>📍 Определить моё местоположение</button></div>
+        <div className="field address-field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} placeholder="Например: Астана, улица Достык, 9" autoComplete="off" />{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setRoute(null);}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}</div>
+        <div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b><small>Оплата водителю после поездки</small></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi Gold</b><small>Перевод водителю вручную</small></button></div><p className="muted small">Перевод через Kaspi пока не подключён автоматически — здесь сохраняется выбранный способ оплаты.</p></div>
         <div className="field"><label>Класс автомобиля</label><p className="muted small">После расчёта маршрута покажем примерную стоимость для каждого класса.</p><div className="class-grid">{CLASSES.map(item=>{const available=onlineClasses.includes(item.id);const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-card selected":"class-card"} onClick={()=>setSelectedClass(item.id)}><span className="class-icon">{item.icon}</span><b>{item.label}</b><span className="class-price">{estimated?money(estimated):"Цена после расчёта"}</span><span className="small muted">{available?"Есть водитель":"Пока нет на линии"}</span></button>})}</div></div>
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
         <button className="button primary submit-order" type="submit" disabled={busy || !name.trim() || !phone.trim() || !pickup.trim() || !destination.trim()}>{busy ? "Рассчитываем…" : "🗺️ Рассчитать маршрут и цену"}</button>
