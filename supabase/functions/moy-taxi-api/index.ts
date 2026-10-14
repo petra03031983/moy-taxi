@@ -17,7 +17,7 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
  if(/керуен|keruen|keruyen/i.test(clean) && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
   return {lat:51.128020,lng:71.425381};
  }
- if(/достык\\s*,?\\s*9/i.test(clean) && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
+ if(/достык/i.test(clean) && clean.includes("9") && (!nearPoint || km(nearPoint.lat,nearPoint.lng,51.128020,71.425381)<150)){
   return {lat:51.128020,lng:71.425381};
  }
  if(/^(мо[её]\\s+)?местоположение$/i.test(clean)){
@@ -458,7 +458,7 @@ if(a==="driver_wallet"){
  },{onConflict:"order_id,driver_id"}).select("*").single();
  if(selectedError)console.error("accept order offer ledger failed",selectedError);
  await c.from("order_offers").update({status:"declined",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("order_id",id).eq("status","pending").neq("driver_id",d.id);
- return reply({ok:true,order:enrich(claimed,claimed.clients),fare});
+ return reply({ok:true,order:{...enrich(claimed,d),drivers:pub(d)},fare});
 }
 if(a==="driver_offer_price"){
  const id=String(p.order_id||""),price=Math.round(Number(p.price));
