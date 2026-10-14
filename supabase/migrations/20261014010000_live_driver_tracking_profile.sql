@@ -1,0 +1,10 @@
+alter table public.drivers add column if not exists car_color text;
+alter table public.drivers add column if not exists photo_url text;
+alter table public.drivers add column if not exists current_lat double precision;
+alter table public.drivers add column if not exists current_lng double precision;
+alter table public.drivers add column if not exists location_accuracy double precision;
+alter table public.drivers add column if not exists location_updated_at timestamptz;
+alter table public.drivers add column if not exists documents_verified boolean not null default false;
+alter table public.orders add column if not exists client_price numeric(12,2);
+alter table public.orders add column if not exists driver_price numeric(12,2);
+create index if not exists drivers_location_idx on public.drivers(is_online, location_updated_at desc);
