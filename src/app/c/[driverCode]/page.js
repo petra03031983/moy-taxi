@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import MapPicker from "../../MapPicker";
 import { callApi, statusLabel } from "../../api";
 
 function distanceKm(lat1, lon1, lat2, lon2) {
@@ -23,7 +22,7 @@ export default function ClientOrder() {
   const [destination, setDestination] = useState("");
   const [comment, setComment] = useState("");
   const [pickupPoint, setPickupPoint] = useState(null);
-  const [destinationPoint, setDestinationPoint] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("locating");
   const [order, setOrder] = useState(null);
   const [price, setPrice] = useState("");
   const [error, setError] = useState("");
@@ -32,6 +31,27 @@ export default function ClientOrder() {
   const [installPrompt, setInstallPrompt] = useState(null);
 
   const orderKey = "moyTaxiOrder:" + driverCode;
+
+  function detectPickupLocation() {
+    setLocationStatus("locating");
+    if (!("geolocation" in navigator)) {
+      setLocationStatus("manual");
+      setPickupPoint(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        setPickupPoint({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setPickup(current => current.trim() ? current : "Моё местоположение");
+        setLocationStatus("ready");
+      },
+      () => {
+        setLocationStatus("manual");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  }
+
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     try {
@@ -40,6 +60,7 @@ export default function ClientOrder() {
       setPhone(profile.phone || "");
       const saved = JSON.parse(localStorage.getItem(orderKey) || "null");
       if (saved?.id && saved?.client_token) setOrder(saved);
+      else detectPickupLocation();
       localStorage.setItem("moyTaxiDriverCode", driverCode);
     } catch {}
     const beforeInstall = event => { event.preventDefault(); setInstallPrompt(event); };
@@ -98,17 +119,13 @@ export default function ClientOrder() {
 
   async function submit(event) {
     event.preventDefault();
-    if (!pickupPoint || !destinationPoint) {
-      setError("Для прямого маршрута в 2GIS отметьте на карте и точку A (подача), и точку B (назначение).");
-      return;
-    }
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await callApi("create_order", {
         driver_code: driverCode, name, phone,
         pickup_address: pickup, destination_address: destination, comment,
-        pickup_lat: pickupPoint?.lat, pickup_lng: pickupPoint?.lng,
-        destination_lat: destinationPoint?.lat, destination_lng: destinationPoint?.lng,
+        pickup_lat: pickupPoint?.lat ?? null, pickup_lng: pickupPoint?.lng ?? null,
+        destination_lat: null, destination_lng: null,
         client_price: price ? Number(price) : null,
       });
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
@@ -116,7 +133,7 @@ export default function ClientOrder() {
         ...result.order,
         pickup_address: pickup, destination_address: destination,
         pickup_lat: pickupPoint?.lat ?? null, pickup_lng: pickupPoint?.lng ?? null,
-        destination_lat: destinationPoint?.lat ?? null, destination_lng: destinationPoint?.lng ?? null,
+        destination_lat: null, destination_lng: null,
         client_price: price ? Number(price) : null,
       };
       localStorage.setItem(orderKey, JSON.stringify(saved));
@@ -151,7 +168,8 @@ export default function ClientOrder() {
   function resetForNewOrder() {
     localStorage.removeItem(orderKey);
     setOrder(null); setPickup(""); setDestination(""); setComment("");
-    setPickupPoint(null); setDestinationPoint(null); setPrice(""); setError(""); setNotice("");
+    setPickupPoint(null); setPrice(""); setError(""); setNotice("");
+    detectPickupLocation();
     // Имя и телефон сохраняются: клиенту не нужно регистрироваться снова.
   }
 
@@ -201,10 +219,16 @@ export default function ClientOrder() {
       <form onSubmit={submit}>
         <div className="field"><label htmlFor="client-name">Ваше имя</label><input id="client-name" required maxLength={100} value={name} onChange={e => setName(e.target.value)} placeholder="Как вас зовут?" autoComplete="name" /></div>
         <div className="field"><label htmlFor="client-phone">Номер телефона</label><input id="client-phone" required type="tel" maxLength={40} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 777 000 00 00" autoComplete="tel" /></div>
-        <div className="field"><label htmlFor="pickup-address">Откуда забрать</label><input id="pickup-address" required maxLength={300} value={pickup} onChange={e => setPickup(e.target.value)} placeholder="Адрес подачи" /></div>
-        <div className="field"><label>Точка A — место подачи на карте</label><MapPicker lat={pickupPoint?.lat} lng={pickupPoint?.lng} onPick={setPickupPoint} /><p className="muted small">{pickupPoint ? "Точка подачи выбрана." : "Нажмите на карте в месте, где вас забрать."}</p></div>
-        <div className="field"><label htmlFor="destination-address">Куда ехать</label><input id="destination-address" required maxLength={300} value={destination} onChange={e => setDestination(e.target.value)} placeholder="Адрес назначения" /></div>
-        <div className="field"><label>Точка B — место назначения на карте</label><MapPicker lat={destinationPoint?.lat} lng={destinationPoint?.lng} onPick={setDestinationPoint} /><p className="muted small">{destinationPoint ? "Точка назначения выбрана — водитель сможет открыть маршрут напрямую в 2GIS." : "Отметьте конечную точку на карте для точного маршрута в 2GIS."}</p></div>
+        <div className="field"><label htmlFor="pickup-address">Откуда забрать</label>
+          <p className="muted small">{locationStatus === "locating" ? "📍 Определяем ваше местоположение…" : locationStatus === "ready" ? "✅ Точка подачи определена автоматически по GPS." : "GPS не определился. Введите адрес подачи вручную или нажмите кнопку ниже."}</p>
+          <input id="pickup-address" required maxLength={300} value={pickup} onChange={e => setPickup(e.target.value)} placeholder={locationStatus === "ready" ? "Моё местоположение" : "Улица, дом, ориентир"} />
+          <button type="button" className="button secondary" onClick={detectPickupLocation}>📍 Определить моё местоположение</button>
+          {pickupPoint && <p className="muted small">Координаты подачи сохранены — водитель сможет открыть маршрут к вам в 2ГИС.</p>}
+        </div>
+        <div className="field"><label htmlFor="destination-address">Куда ехать</label>
+          <input id="destination-address" required maxLength={300} value={destination} onChange={e => setDestination(e.target.value)} placeholder="Адрес, улица и дом или название места" />
+          <p className="muted small">Напишите адрес назначения. Отмечать точку на карте не нужно.</p>
+        </div>
         <div className="field"><label htmlFor="client-price">Ваша цена, ₸</label><input id="client-price" type="number" min="100" max="1000000" step="50" value={price} onChange={e => setPrice(e.target.value)} placeholder="Например, 2000" /><p className="muted small">Водитель увидит предложение и сможет принять его или предложить другую стоимость.</p></div>
         <div className="field"><label htmlFor="client-comment">Комментарий</label><textarea id="client-comment" maxLength={500} value={comment} onChange={e => setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
         <button className="button primary submit-order" type="submit" disabled={busy || !driver.is_online}>{busy ? "Отправляем…" : driver.is_online ? "🚕 Заказать такси" : "Водитель не на линии"}</button>
