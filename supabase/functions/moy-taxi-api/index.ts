@@ -30,7 +30,7 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
  }catch(e){console.error("Photon address lookup failed",String(e))}
  try{
   const params=new URLSearchParams({q:query,format:"jsonv2",limit:"5",countrycodes:"kz","accept-language":"ru"});
-  const response=await fetch("https://nominatim.openstreetmap.org/search?"+params.toString(),{headers:{"Accept":"application/json"}});
+  const response=await fetch("https://nominatim.openstreetmap.org/search?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"MoyTaxi/1.0 (route address lookup)"}});
   if(response.ok){
    const data=await response.json();const feature=(data||[]).find((item:any)=>Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon)));
    if(feature)return {lat:Number(feature.lat),lng:Number(feature.lon)};
