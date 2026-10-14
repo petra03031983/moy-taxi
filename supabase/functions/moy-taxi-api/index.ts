@@ -182,10 +182,17 @@ if(a.startsWith("admin_")){
  }
  if(a==="admin_set_test_mode"){
   const testMode=Boolean(p.test_mode);
-  if(!testMode)return fail("Рабочий режим пока закрыт: сначала подключим кошелёк водителя и автоматическое списание. Тестовый режим остаётся бесплатным.",409);
+  if(!testMode)return fail("Рабочий режим пока закрыт: перед запуском нужно подключить и проверить реальное пополнение кошелька. Тестовый режим остаётся бесплатным.",409);
   const {error}=await c.from("platform_settings").update({test_mode:true,updated_at:new Date().toISOString()}).eq("id",true);
   if(error)return fail("Не удалось включить тестовый режим.",500);
   return reply({ok:true,test_mode:true});
+ }
+ if(a==="admin_wallet_adjust"){
+  const driverId=String(p.driver_id||""),amountToAdd=Number(p.amount),note=String(p.note||"").trim().slice(0,300);
+  if(!driverId||!Number.isFinite(amountToAdd)||amountToAdd<=0||amountToAdd>1000000)return fail("Укажи сумму пополнения от 1 до 1 000 000 ₸.");
+  const {data:result,error}=await c.rpc("admin_topup_driver_wallet",{p_driver_id:driverId,p_amount:amountToAdd,p_note:note||"Ручное пополнение после проверки перевода"});
+  if(error||!result)return fail(error?.message||"Не удалось пополнить лицевой счёт.",500);
+  return reply({ok:true,topup:result});
  }
  if(a==="admin_dashboard"){
   const [driversQ,onlineQ,ordersQ,doneQ,clientsQ,clientsRowsQ,commissionsQ]=await Promise.all([
@@ -206,7 +213,7 @@ if(a.startsWith("admin_")){
   return reply({ok:true,stats:{drivers:driversQ.count||0,online_drivers:onlineQ.count||0,orders:ordersQ.count||0,completed_orders:doneQ.count||0,client_order_records:clientsQ.count||0,unique_clients:uniqueClients,commission_total:totalCommission,commission_due:dueCommission,commission_paid:paidCommission,commission_percent:Number(settings.commission_percent),vehicle_rates:settings.vehicle_rates||{},test_mode:settings.test_mode!==false}});
  }
  if(a==="admin_drivers"){
-  const {data,error}=await c.from("drivers").select("id,public_code,name,phone,is_online,car_model,car_plate,car_color,vehicle_class,created_at").order("created_at",{ascending:false}).limit(500);
+  const {data,error}=await c.from("drivers").select("id,public_code,name,phone,is_online,car_model,car_plate,car_color,vehicle_class,wallet_balance,created_at").order("created_at",{ascending:false}).limit(500);
   if(error)return fail("Не удалось загрузить список водителей.",500);return reply({ok:true,drivers:data||[]});
  }
  if(a==="admin_orders"){
