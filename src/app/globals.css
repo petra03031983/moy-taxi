@@ -71,3 +71,26 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .route-price-row.active{border:2px solid var(--green);background:#edf7f0;padding:11px 12px}
 .route-price-row span{font-size:14px;font-weight:700}
 .route-price-row b{font-size:17px;white-space:nowrap}
+
+/* Address suggestions, payment choice and driver-offer search flow */
+.address-field{position:relative}
+.address-suggestions{position:relative;z-index:12;display:flex;flex-direction:column;gap:4px;margin-top:5px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 28px rgba(18,35,26,.12);max-height:300px;overflow:auto}
+.address-suggestion{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;padding:11px 10px;border:0;border-bottom:1px solid #edf0ed;border-radius:8px;background:#fff;text-align:left;color:var(--ink);cursor:pointer}
+.address-suggestion:last-child{border-bottom:0}
+.address-suggestion b{font-size:14px;line-height:1.3}
+.address-suggestion span{font-size:13px;line-height:1.35}
+.address-suggestion small{font-size:12px;color:var(--muted)}
+.payment-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:9px}
+.payment-card{display:flex;flex-direction:column;align-items:flex-start;gap:7px;padding:14px 12px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);text-align:left;cursor:pointer;min-width:0}
+.payment-card.selected{border:2px solid var(--green);background:#edf7f0;padding:13px 11px}
+.payment-card>span{font-size:24px}
+.payment-card b{font-size:15px}
+.payment-card small{font-size:12px;line-height:1.35;color:var(--muted)}
+.searching-panel{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:16px;background:#f9fbfa}
+.searching-pulse{height:40px;width:40px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--mint);color:var(--green);font-size:25px;margin-bottom:8px}
+.driver-offer-card{padding:14px;margin:10px 0;border:1px solid var(--line);border-radius:15px;background:#fff}
+.driver-offer-card h3{margin:0;font-size:16px}
+.driver-offer-card>p:first-of-type{font-size:22px;color:var(--green);font-weight:800;margin:10px 0}
+.driver-offer-card .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.driver-offer-card .button{padding:12px 8px;white-space:normal}
+@media(max-width:360px){.payment-options{grid-template-columns:1fr}}
