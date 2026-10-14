@@ -317,6 +317,6 @@ export default function PassengerPage() {
       </form>
       {route && destinationPoint && <div className="quote-panel"><div className="route-summary"><b>{route.distanceKm.toFixed(1)} км</b><span>· около {route.durationMin} мин.</span></div><p className="muted small">Цена примерная и может измениться, если водитель предложит другую.</p><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">🗺️ Посмотреть маршрут</a></div>}
     </section>}
-    <p className="muted small footer-note">Мой Такси · при расчёте используются дорожные маршруты OSRM и адресный поиск Photon/OpenStreetMap.</p>
+    <p className="muted small footer-note">Мой Такси · адресные подсказки и автомобильное расстояние рассчитываются через 2ГИС.</p>
   </main>;
 }
