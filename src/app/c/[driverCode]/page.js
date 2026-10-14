@@ -46,6 +46,7 @@ export default function ClientOrder() {
         setLocationStatus("ready");
       },
       () => {
+        setPickupPoint(null);
         setLocationStatus("manual");
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
