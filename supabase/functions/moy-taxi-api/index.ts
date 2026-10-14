@@ -354,7 +354,7 @@ if(["driver_me","driver_list","driver_history","driver_update","driver_toggle_on
  if(o.status!=="new"||(o.driver_id&&o.driver_id!==d.id))return fail("Этот заказ уже недоступен.");
  if(!o.driver_id&&vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Этот заказ для другого класса автомобиля.");
  const {data:existing}=await c.from("order_offers").select("id,status").eq("order_id",id).eq("driver_id",d.id).maybeSingle();
- if(existing?.status==="declined")return fail("Ты уже отказался от этого заказа. Обнови список, чтобы изменить предложение, если заказ ещё доступен.");
+ if(existing?.status==="skipped")return fail("Ты скрыл этот заказ у себя. Он недоступен для повторного отклика.");
  const {data:offer,error:offerError}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price,status:"pending",responded_at:null,updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"}).select("*").single();
  if(offerError||!offer)return fail("Не удалось отправить предложение цены.",500);
  if(o.driver_id)await c.from("orders").update({driver_price:price,price_status:"driver_offered"}).eq("id",id).eq("status","new");
@@ -366,7 +366,7 @@ if(a==="driver_skip_order"){
  if(oe||!o)return fail("Заказ не найден.",404);
  if(o.status!=="new"||o.driver_id)return fail("Этот заказ уже недоступен.");
  if(vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Этот заказ для другого класса автомобиля.");
- const {error}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price:Math.max(100,Number(o.client_price)||100),status:"declined",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"});
+ const {error}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price:Math.max(100,Number(o.client_price)||100),status:"skipped",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"});
  if(error)return fail("Не удалось убрать заказ из списка.",500);
  return reply({ok:true});
 }if(a==="driver_toggle_online"){const {data:u,error}=await c.from("drivers").update({is_online:Boolean(p.is_online),updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось изменить статус.",500);return reply({ok:true,is_online:u.is_online})}if(a==="driver_update_profile"){const name=String(p.name||"").trim().slice(0,100),car=String(p.car_model||"").trim().slice(0,100),plate=String(p.car_plate||"").trim().slice(0,30),color=String(p.car_color||"").trim().slice(0,40),photo=String(p.photo_url||""),vclass=vehicleClass(p.vehicle_class||d.vehicle_class);if(!name)return fail("Имя не может быть пустым.");if(photo.length>250000)return fail("Фото слишком большое.");const {data:u,error}=await c.from("drivers").update({name,car_model:car||null,car_plate:plate||null,car_color:color||null,vehicle_class:vclass,photo_url:photo||null,updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось обновить профиль.",500);return reply({ok:true,driver:pub(u)})}if(a==="driver_list"){
@@ -377,8 +377,8 @@ if(a==="driver_skip_order"){
  if(assignedQ.error||broadcastQ.error)return fail("Не удалось загрузить заказы.",500);
  const ids=new Set((assignedQ.data||[]).map((o:any)=>o.id));
  const all=[...(assignedQ.data||[]),...(broadcastQ.data||[]).filter((o:any)=>!ids.has(o.id))].sort((a:any,b:any)=>Date.parse(b.created_at)-Date.parse(a.created_at));
- const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined"]).limit(1000);
- const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="declined").map((x:any)=>x.order_id));
+ const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
+ const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="skipped").map((x:any)=>x.order_id));
  return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),is_online:d.is_online});
 }if(a==="driver_history"){const {data:os,error}=await c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).eq("status","completed").order("completed_at",{ascending:false}).limit(100);if(error)return fail("Не удалось загрузить историю.",500);return reply({ok:true,orders:os||[]})}if(a==="driver_update"){const id=String(p.order_id||""),status=String(p.status||"");if(!["accepted","arrived","started","completed","cancelled"].includes(status))return fail("Недопустимый статус.");const {data:o}=await c.from("orders").select("*").eq("id",id).eq("driver_id",d.id).maybeSingle();if(!o)return fail("Заказ не найден.",404);if(status==="accepted"&&o.price_status==="driver_offered")return fail("Сначала дождись ответа клиента на твою цену.");const patch:any={status};if(status==="accepted"){patch.accepted_at=new Date().toISOString();if(o.price_status!=="accepted"){if(Number(o.client_price)>0){patch.agreed_price=o.client_price;patch.price_status="accepted"}else{patch.agreed_price=null;patch.price_status="pending"}}}if(status==="completed")patch.completed_at=new Date().toISOString();const {data:u,error}=await c.from("orders").update(patch).eq("id",id).select("*").single();if(error)return fail("Не удалось изменить заказ.",500);
 if(status==="completed"){
