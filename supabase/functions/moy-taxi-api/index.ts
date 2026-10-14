@@ -212,8 +212,9 @@ if(a==="login_driver"){const ph=phone(p.phone),pw=String(p.password||"");const {
 if(a==="availability"){const code=String(p.driver_code||"").trim().toUpperCase();const {data:d,error}=await c.from("drivers").select("*").eq("public_code",code).maybeSingle();if(error||!d)return fail("Водитель не найден.",404);return reply({ok:true,driver:pub(d)})}
 if(a==="address_suggest"){
  const query=String(p.query||"").trim();
- const nearLat=Number(p.near_lat),nearLng=Number(p.near_lng);
- const nearPoint=Number.isFinite(nearLat)&&Number.isFinite(nearLng)?{lat:nearLat,lng:nearLng}:null;
+ const nearLat=p.near_lat===null||p.near_lat===undefined||p.near_lat===""?NaN:Number(p.near_lat);
+ const nearLng=p.near_lng===null||p.near_lng===undefined||p.near_lng===""?NaN:Number(p.near_lng);
+ const nearPoint=Number.isFinite(nearLat)&&Number.isFinite(nearLng)&&nearLat>=-90&&nearLat<=90&&nearLng>=-180&&nearLng<=180?{lat:nearLat,lng:nearLng}:null;
  const suggestions=await suggestAddresses(query,nearPoint);
  return reply({ok:true,suggestions});
 }
