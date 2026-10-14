@@ -14,71 +14,6 @@ const CLASSES = [
 
 const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";
 
-async function searchPhotonAddresses(query, nearPoint) {
-  const clean = String(query || "").trim();
-  if (clean.length < 3) return [];
-  const hasCity = /(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
-  const nearAstana = nearPoint && nearPoint.lat > 50 && nearPoint.lat < 52 && nearPoint.lng > 69 && nearPoint.lng < 73;
-  const englishQuery = clean
-    .replace(/аэропорт/ig, "airport")
-    .replace(/терминал/ig, "terminal")
-    .replace(/улица/ig, "street")
-    .replace(/проспект/ig, "avenue")
-    .replace(/дом/ig, "house");
-  const queries = [clean];
-  if (englishQuery.toLowerCase() !== clean.toLowerCase()) queries.push(englishQuery);
-  if (!hasCity) {
-    if (nearAstana) {
-      queries.push(clean + ", Астана, Казахстан");
-      queries.push(englishQuery + ", Astana, Kazakhstan");
-    }
-    queries.push(clean + ", Казахстан");
-    if (englishQuery.toLowerCase() !== clean.toLowerCase()) queries.push(englishQuery + ", Kazakhstan");
-  }
-  const unique = [...new Set(queries)];
-  for (const q of unique) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6500);
-    try {
-      const params = new URLSearchParams({ q, limit: "8", lang: "ru" });
-      if (nearPoint && Number.isFinite(nearPoint.lat) && Number.isFinite(nearPoint.lng)) {
-        params.set("lat", String(nearPoint.lat));
-        params.set("lon", String(nearPoint.lng));
-      }
-      const response = await fetch("https://photon.komoot.io/api/?" + params.toString(), {
-        headers: { "Accept": "application/json" },
-        signal: controller.signal
-      });
-      if (!response.ok) continue;
-      const data = await response.json();
-      const rows = (data?.features || []).map(feature => {
-        const props = feature?.properties || {};
-        const coords = feature?.geometry?.coordinates;
-        const street = [props.street, props.housenumber].filter(Boolean).join(" ");
-        const name = props.name || props.street || props.suburb || "Адрес";
-        const city = props.city || props.town || props.village || props.county || props.state || "Казахстан";
-        const label = [...new Set([name !== street ? name : "", street, props.district || props.suburb, city, props.state].filter(Boolean))].join(", ");
-        return {
-          label, name, city,
-          lat: Number(coords?.[1]), lng: Number(coords?.[0])
-        };
-      }).filter(item => item.label && Number.isFinite(item.lat) && Number.isFinite(item.lng) &&
-        item.lat >= -90 && item.lat <= 90 && item.lng >= -180 && item.lng <= 180);
-      if (rows.length) {
-        const sorted = nearPoint
-          ? rows.sort((a, b) => Math.hypot(a.lat-nearPoint.lat, a.lng-nearPoint.lng) - Math.hypot(b.lat-nearPoint.lat, b.lng-nearPoint.lng))
-          : rows;
-        return sorted.slice(0, 8);
-      }
-    } catch (error) {
-      if (error?.name !== "AbortError") console.warn("Address search unavailable", error);
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-  return [];
-}
-
 function routeUrl(a, b) {
   return "https://2gis.kz/directions/points/" + a.lng + "," + a.lat + "|" + b.lng + "," + b.lat;
 }
@@ -147,7 +82,7 @@ export default function PassengerPage() {
 
   useEffect(() => {
     const clean = destination.trim();
-    if (clean.length < 3 || destinationPoint) {
+    if (clean.length < 2 || destinationPoint) {
       setDestinationSuggestions([]);
       setSuggestionError("");
       setSuggestionLoading(false);
@@ -158,31 +93,25 @@ export default function PassengerPage() {
       setSuggestionLoading(true);
       setSuggestionError("");
       try {
-        let results = await searchPhotonAddresses(clean, pickupPoint);
-        // If the browser cannot reach Photon directly, try the server-side Photon search once.
-        if (!results.length) {
-          try {
-            const fallback = await callApi("address_suggest", {
-              query: clean,
-              near_lat: pickupPoint?.lat ?? null,
-              near_lng: pickupPoint?.lng ?? null
-            });
-            results = fallback.suggestions || [];
-          } catch {}
-        }
+        const result = await callApi("address_suggest", {
+          query: clean,
+          near_lat: pickupPoint?.lat ?? null,
+          near_lng: pickupPoint?.lng ?? null
+        });
         if (active) {
-          setDestinationSuggestions(results);
-          setSuggestionError(results.length ? "" : "Не нашли совпадение. Добавь город или название объекта (например, «Астана, аэропорт»), затем выбери подсказку.");
+          const rows = result.suggestions || [];
+          setDestinationSuggestions(rows);
+          setSuggestionError(rows.length ? "" : "2ГИС не нашёл совпадений. Добавь город или уточни улицу/название объекта.");
         }
-      } catch {
+      } catch (e) {
         if (active) {
           setDestinationSuggestions([]);
-          setSuggestionError("Поиск адресов временно недоступен. Проверь интернет и попробуй ещё раз.");
+          setSuggestionError(e.message || "Поиск адресов через 2ГИС недоступен. Попробуй ещё раз.");
         }
       } finally {
         if (active) setSuggestionLoading(false);
       }
-    }, 650);
+    }, 450);
     return () => { active = false; clearTimeout(timer); };
   }, [destination, destinationPoint, pickupPoint?.lat, pickupPoint?.lng]);
 
