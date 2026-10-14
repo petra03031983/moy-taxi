@@ -20,6 +20,7 @@ function routeUrl(a, b) {
 export default function PassengerPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [showContactFields, setShowContactFields] = useState(false);
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
   const [comment, setComment] = useState("");
@@ -47,6 +48,7 @@ export default function PassengerPage() {
     try {
       const profile = JSON.parse(localStorage.getItem("moyTaxiClientProfile") || "{}");
       setName(profile.name || ""); setPhone(profile.phone || "");
+      setShowContactFields(!profile.name || !profile.phone);
       const saved = JSON.parse(localStorage.getItem("moyTaxiGeneralOrder") || "null");
       if (saved?.id && saved?.client_token) setOrder(saved);
     } catch {}
@@ -147,6 +149,7 @@ export default function PassengerPage() {
         geometry: result.route_geometry || [],
         estimated_prices: result.estimated_prices,
       });
+      setTripType(Number(result.distance_km) >= 35 ? "intercity" : "city");
       if (Array.isArray(result.online_classes)) setOnlineClasses(result.online_classes);
       setPickup(current => current || "Моё местоположение");
       setNotice("");
@@ -181,6 +184,7 @@ export default function PassengerPage() {
         destination_point: destinationPoint, route_distance_km: route.distanceKm, vehicle_class: selectedClass };
       setOrder(saved); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(saved));
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
+      setShowContactFields(false);
       setNotice(testMode ? "Заказ отправлен. Тестовый режим: никаких списаний." : "Заказ отправлен водителям.");
       setComment("");
     } catch (e) { setError(e.message || "Не удалось отправить заказ."); }
@@ -252,10 +256,10 @@ export default function PassengerPage() {
 
   return <main className="app client-app">
     <header className="header"><a href="/" className="logo" style={{ textDecoration: "none", color: "inherit" }}>Мой <span>Такси</span></a><a href="/" className="small">На главную</a></header>
-    <section className="panel hero"><div className="hero-icon">🚕</div><div className="eyebrow">ЗАКАЗ ТАКСИ</div><h1>Куда едем?</h1><p className="muted">Система рассчитывает автомобильный маршрут и показывает ориентировочную цену до отправки заказа.</p></section>
+    <section className="panel hero"><div className="hero-icon">🚕</div><div className="eyebrow">ЗАКАЗ ТАКСИ</div><h1>Куда едем?</h1><p className="muted">Место подачи определим по GPS. Введи конечный адрес — маршрут и цены появятся автоматически.</p></section>
     {error && <div className="error" role="alert">{error}</div>}
     {notice && <div className="success" role="status">{notice}</div>}
-    {(pickupPoint || destinationPoint || order?.pickup_lat != null) && <RouteMap pickupPoint={pickupPoint || (order?.pickup_lat != null ? {lat:order.pickup_lat,lng:order.pickup_lng} : null)} destinationPoint={destinationPoint || (order?.destination_lat != null ? {lat:order.destination_lat,lng:order.destination_lng} : null)} routeGeometry={route?.geometry} />}
+    {(destinationPoint || order?.destination_lat != null) && <RouteMap pickupPoint={pickupPoint || (order?.pickup_lat != null ? {lat:order.pickup_lat,lng:order.pickup_lng} : null)} destinationPoint={destinationPoint || (order?.destination_lat != null ? {lat:order.destination_lat,lng:order.destination_lng} : null)} routeGeometry={route?.geometry} />}
     {!showBooking ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div><h2>{order.status === "new" ? "Заказ отправлен" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : statusLabel(order.status)}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
@@ -276,9 +280,7 @@ export default function PassengerPage() {
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
     </section> : <section className="panel">
       <form onSubmit={event => event.preventDefault()}>
-        <div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div>
-        <div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
-        <div className="field"><label>Тип поездки</label><div className="switcher"><button type="button" className={tripType==="city"?"switch active":"switch"} onClick={()=>setTripType("city")}>🏙️ Город</button><button type="button" className={tripType==="intercity"?"switch active":"switch"} onClick={()=>setTripType("intercity")}>🛣️ Межгород</button></div></div>
+        {(showContactFields || !name.trim() || !phone.trim()) ? <div className="contact-fields"><div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : <button type="button" className="saved-contact" onClick={()=>setShowContactFields(true)}>👤 {name} · {phone} <span>Изменить</span></button>}
         <div className="pickup-auto-bar">
           <div className="pickup-auto-icon">📍</div>
           <div className="pickup-auto-copy"><b>{locating ? "Определяем ваше местоположение…" : pickupPoint ? "Место подачи определено" : "Нужно разрешить GPS"}</b><span>{pickupPoint ? (pickup && pickup !== "Моё местоположение" ? pickup : "Точка подачи определена автоматически по GPS") : "Разреши доступ к геопозиции — адрес подачи вводить не нужно."}</span></div>
