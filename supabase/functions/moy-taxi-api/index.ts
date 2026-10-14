@@ -7,7 +7,15 @@ async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABAS
 async function sess(c:any,p:any){const id=String(p.driver_id||""),t=String(p.session_token||"");if(!id||t.length<20)return {error:"Сессия истекла. Войди снова.",status:401};const {data,error}=await c.from("drivers").select("*").eq("id",id).maybeSingle();if(error||!data)return {error:"Не удалось проверить вход. Войди снова.",status:401};const exp=data.session_expires_at?Date.parse(data.session_expires_at):0;if(!data.session_token_hash||!equal(await sha256(t),data.session_token_hash)||exp<Date.now())return {error:"Сессия истекла. Войди снова.",status:401};return {driver:data}}
 async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");const h=await sha256(t),exp=new Date(Date.now()+30*86400000).toISOString();const {error}=await c.from("drivers").update({session_token_hash:h,session_expires_at:exp,updated_at:new Date().toISOString()}).eq("id",id);if(error)throw error;return t}
 function km(a:number,b:number,c:number,d:number){const R=6371,r=(x:number)=>x*Math.PI/180,da=r(c-a),db=r(d-b),x=Math.sin(da/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
-function enrich(o:any,d:any){let distance=null;if([o.pickup_lat,o.pickup_lng,d?.current_lat,d?.current_lng].every(v=>typeof v==="number"))distance=km(o.pickup_lat,o.pickup_lng,d.current_lat,d.current_lng);return {...o,distance_km:distance,driver_lat:d?.current_lat??null,driver_lng:d?.current_lng??null,driver_location_updated_at:d?.location_updated_at??null}}
+function enrich(o:any,d:any){
+ let distance=null;
+ const locationAge=d?.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
+ if(locationAge>=0&&locationAge<=5*60*1000&&[o.pickup_lat,o.pickup_lng,d?.current_lat,d?.current_lng].every(v=>typeof v==="number")){
+  const candidate=km(o.pickup_lat,o.pickup_lng,d.current_lat,d.current_lng);
+  if(Number.isFinite(candidate)&&candidate<=300)distance=candidate;
+ }
+ return {...o,distance_km:distance,driver_lat:d?.current_lat??null,driver_lng:d?.current_lng??null,driver_location_updated_at:d?.location_updated_at??null}
+}
 
 async function adminSession(c:any,p:any){
   const token=String(p.admin_token||"");
