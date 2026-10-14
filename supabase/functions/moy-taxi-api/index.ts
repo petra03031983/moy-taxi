@@ -71,9 +71,10 @@ if(a.startsWith("admin_")){
  }
  if(a==="admin_set_test_mode"){
   const testMode=Boolean(p.test_mode);
-  const {error}=await c.from("platform_settings").update({test_mode:testMode,updated_at:new Date().toISOString()}).eq("id",true);
-  if(error)return fail("Не удалось изменить режим тестирования.",500);
-  return reply({ok:true,test_mode:testMode});
+  if(!testMode)return fail("Рабочий режим пока закрыт: сначала подключим кошелёк водителя и автоматическое списание. Тестовый режим остаётся бесплатным.",409);
+  const {error}=await c.from("platform_settings").update({test_mode:true,updated_at:new Date().toISOString()}).eq("id",true);
+  if(error)return fail("Не удалось включить тестовый режим.",500);
+  return reply({ok:true,test_mode:true});
  }
  if(a==="admin_dashboard"){
   const [driversQ,onlineQ,ordersQ,doneQ,clientsQ,clientsRowsQ,commissionsQ]=await Promise.all([
@@ -129,7 +130,7 @@ if(a==="create_order"){
  const code=String(p.driver_code||"").trim().toUpperCase(),name=String(p.name||"").trim().slice(0,100),ph=phone(p.phone),pickup=String(p.pickup_address||"").trim().slice(0,300),dest=String(p.destination_address||"").trim().slice(0,300),comment=String(p.comment||"").trim().slice(0,500);
  const lat=Number(p.pickup_lat),lng=Number(p.pickup_lng),destLat=Number(p.destination_lat),destLng=Number(p.destination_lng),distance=Number(p.route_distance_km);
  const tripType=p.trip_type==="intercity"?"intercity":"city";
- let cls=vehicleClass(p.vehicle_class),d:any=null,price=Number(p.client_price),driverDistance=Infinity;
+ let cls=vehicleClass(p.vehicle_class),d:any=null,price=Number(p.client_price),driverDistance=Infinity,finalDistance=distance;
  if(!name||!ph||!pickup||!dest)return fail("Заполни имя, телефон, адрес подачи и адрес назначения.");
  if(code==="AUTO"){
   if(![lat,lng,destLat,destLng,distance].every(Number.isFinite)||lat < -90||lat>90||lng < -180||lng>180||destLat < -90||destLat>90||destLng < -180||destLng>180||distance<=0||distance>2000)return fail("Не удалось определить автомобильный маршрут. Проверь адреса и попробуй ещё раз.");
@@ -142,6 +143,7 @@ if(a==="create_order"){
   if(routeData?.code!=="Ok"||!Number.isFinite(roadMeters)||roadMeters<=0)return fail("Не удалось найти автомобильный маршрут между адресами.",422);
   const serverDistance=roadMeters/1000;
   if(serverDistance>2000)return fail("Маршрут получился слишком длинным. Проверь адреса.",422);
+  finalDistance=serverDistance;
   const rateRow=(settingsRow.vehicle_rates||{})[cls];const rate=Number(rateRow?.rate_per_km||0),minimum=Number(rateRow?.minimum_fare||0);
   if(rate<1)return fail("Для этого класса пока не настроен тариф.");
   price=Math.max(minimum,Math.ceil(serverDistance*rate/10)*10);
@@ -169,7 +171,7 @@ if(a==="create_order"){
  const {data:o,error:oe}=await c.from("orders").insert({
   client_id:clRow.id,driver_id:d.id,pickup_address:pickup,pickup_lat:Number.isFinite(lat)?lat:null,pickup_lng:Number.isFinite(lng)?lng:null,
   destination_address:dest,destination_lat:Number.isFinite(destLat)?destLat:null,destination_lng:Number.isFinite(destLng)?destLng:null,
-  route_distance_km:code==="AUTO"?Number((await Promise.resolve(distance)).toFixed(2)):(Number.isFinite(distance)&&distance>0?distance:null),trip_type:tripType,vehicle_class:cls,
+  route_distance_km:Number.isFinite(finalDistance)&&finalDistance>0?Number(finalDistance.toFixed(2)):null,trip_type:tripType,vehicle_class:cls,
   comment:comment||null,client_token:token,status:"new",client_price:autoPrice?price:(Number.isFinite(price)&&price>0?price:null),
   price_status:autoPrice?"accepted":"pending",agreed_price:autoPrice?price:null
  }).select("*").single();
