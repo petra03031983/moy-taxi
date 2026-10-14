@@ -141,3 +141,8 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .rating-star.active{background:#fff4d2;color:#d79a00}
 .rating-star:focus-visible{outline:3px solid #7ac7a2;outline-offset:2px}
 @media(max-width:430px){.wallet-strip{gap:8px;padding:12px}.wallet-strip>div strong{font-size:21px}.wallet-strip p{flex-basis:100%;min-width:0}.wallet-strip .button{width:100%}.rating-stars{gap:6px}.rating-star{flex:1;width:auto;height:42px}}
+
+.wallet-topup-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:10px 0}
+.wallet-topup-row input{min-width:0;width:100%;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:15px;background:#fbfcfb}
+.wallet-topup-row .button{width:auto;padding:11px 13px;font-size:13px}
+@media(max-width:380px){.wallet-topup-row{grid-template-columns:1fr}.wallet-topup-row .button{width:100%}}
