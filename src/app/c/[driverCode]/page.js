@@ -98,6 +98,10 @@ export default function ClientOrder() {
 
   async function submit(event) {
     event.preventDefault();
+    if (!pickupPoint || !destinationPoint) {
+      setError("Для прямого маршрута в 2GIS отметьте на карте и точку A (подача), и точку B (назначение).");
+      return;
+    }
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await callApi("create_order", {
