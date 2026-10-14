@@ -461,6 +461,7 @@ if(a==="driver_wallet"){
  return reply({ok:true,order:{...enrich(claimed,d),drivers:pub(d)},fare});
 }
 if(a==="driver_offer_price"){
+ if(!d.is_online)return fail("Сначала выйди на линию, чтобы отвечать на заказы.");
  const id=String(p.order_id||""),price=Math.round(Number(p.price));
  if(!id||!Number.isFinite(price)||price<100||price>1000000)return fail("Укажи корректную цену от 100 до 1 000 000 ₸.");
  const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,vehicle_class,client_price").eq("id",id).maybeSingle();
