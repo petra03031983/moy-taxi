@@ -84,6 +84,12 @@ export default function PassengerPage() {
   }, [destination, destinationPoint, pickupPoint?.lat, pickupPoint?.lng]);
 
   useEffect(() => {
+    if (pickupPoint && destinationPoint && pickup.trim() && destination.trim() && !route) {
+      void calculateRouteData();
+    }
+  }, [pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng]);
+
+  useEffect(() => {
     if (!order?.id || !order?.client_token) return;
     let active = true;
     const load = async () => {
