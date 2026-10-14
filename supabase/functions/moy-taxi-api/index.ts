@@ -93,31 +93,48 @@ async function suggestionDistances(rows:any[],nearPoint:{lat:number,lng:number}|
 }
 async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null){
  const clean=String(query||"").trim();
- if(clean.length<3)return [];
- const q=/казахстан|қазақстан|kazakhstan/i.test(clean)?clean:clean+", Kazakhstan";
- try{
-  const params=new URLSearchParams({q,limit:"6",lang:"ru"});
-  if(nearPoint){params.set("lat",String(nearPoint.lat));params.set("lon",String(nearPoint.lng))}
-  const response=await fetch("https://photon.komoot.io/api/?"+params.toString(),{headers:{"Accept":"application/json"}});
-  if(response.ok){
-   const data=await response.json();const rows=(data?.features||[]).map((feature:any)=>{
-    const coords=feature?.geometry?.coordinates,props=feature?.properties||{};
-    return {label:addressLabel(props),name:props.name||props.street||"Адрес",city:props.city||props.town||props.village||props.state||"Казахстан",lat:Number(coords?.[1]),lng:Number(coords?.[0])};
-   }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng));
-   if(rows.length)return await suggestionDistances(rows.slice(0,6),nearPoint);
-  }
- }catch(e){console.error("Photon suggestions failed",String(e))}
- try{
-  const params=new URLSearchParams({q,format:"jsonv2",limit:"6",countrycodes:"kz","accept-language":"ru","addressdetails":"1"});
-  const response=await fetch("https://nominatim.openstreetmap.org/search?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"MoyTaxi/1.0 (address suggestion search)"}});
-  if(response.ok){
-   const data=await response.json();return (data||[]).map((item:any)=>{
-    const addr=item.address||{}, street=[addr.road||addr.pedestrian||addr.residential,addr.house_number].filter(Boolean).join(" ");
-    return {label:street?[street,addr.suburb||addr.city_district,addr.city||addr.town||addr.village,addr.state].filter(Boolean).join(", "):String(item.display_name||"").split(", ").slice(0,4).join(", "),name:street||addr.amenity||addr.shop||addr.building||"Адрес",city:addr.city||addr.town||addr.village||addr.state||"Казахстан",lat:Number(item.lat),lng:Number(item.lon)};
-   }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng)).slice(0,6);
-   return await suggestionDistances(rows,nearPoint);
-  }
- }catch(e){console.error("Nominatim suggestions failed",String(e))}
+ if(clean.length<2)return [];
+ const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
+ const variants=[clean];
+ if(!hasCity){variants.push(clean+", Астана, Казахстан");variants.push(clean+", Талапкер, Акмолинская область, Казахстан");variants.push(clean+", Казахстан")}
+ else if(!/казахстан|қазақстан|kazakhstan/i.test(clean))variants.push(clean+", Казахстан");
+ const queries=[...new Set(variants)];
+ for(const q of queries){
+  try{
+   const params=new URLSearchParams({q,limit:"8",lang:"ru"});
+   if(nearPoint){params.set("lat",String(nearPoint.lat));params.set("lon",String(nearPoint.lng))}
+   const response=await fetch("https://photon.komoot.io/api/?"+params.toString(),{headers:{"Accept":"application/json"}});
+   if(response.ok){
+    const data=await response.json();const rows=(data?.features||[]).map((feature:any)=>{
+     const coords=feature?.geometry?.coordinates,props=feature?.properties||{};
+     return {label:addressLabel(props),name:props.name||props.street||"Адрес",city:props.city||props.town||props.village||props.state||"Казахстан",lat:Number(coords?.[1]),lng:Number(coords?.[0])};
+    }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng));
+    if(rows.length){
+     let best=rows;
+     if(nearPoint)best=rows.sort((x:any,y:any)=>km(nearPoint.lat,nearPoint.lng,x.lat,x.lng)-km(nearPoint.lat,nearPoint.lng,y.lat,y.lng));
+     return await suggestionDistances(best.slice(0,6),nearPoint);
+    }
+   }
+  }catch(e){console.error("Photon suggestions failed",q,String(e))}
+ }
+ for(const q of queries){
+  try{
+   const params=new URLSearchParams({q,format:"jsonv2",limit:"8",countrycodes:"kz","accept-language":"ru","addressdetails":"1"});
+   const response=await fetch("https://nominatim.openstreetmap.org/search?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"MoyTaxi/1.0 (address suggestion search)"}});
+   if(response.ok){
+    const data=await response.json();const rows=(data||[]).map((item:any)=>{
+     const addr=item.address||{},street=[addr.road||addr.pedestrian||addr.residential,addr.house_number].filter(Boolean).join(" ");
+     const label=street?[street,addr.suburb||addr.city_district,addr.city||addr.town||addr.village,addr.state].filter(Boolean).join(", "):String(item.display_name||"").split(", ").slice(0,4).join(", ");
+     return {label,name:street||addr.amenity||addr.shop||addr.building||"Адрес",city:addr.city||addr.town||addr.village||addr.state||"Казахстан",lat:Number(item.lat),lng:Number(item.lon)};
+    }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng));
+    if(rows.length){
+     let best=rows;
+     if(nearPoint)best=rows.sort((x:any,y:any)=>km(nearPoint.lat,nearPoint.lng,x.lat,x.lng)-km(nearPoint.lat,nearPoint.lng,y.lat,y.lng));
+     return await suggestionDistances(best.slice(0,6),nearPoint);
+    }
+   }
+  }catch(e){console.error("Nominatim suggestions failed",q,String(e))}
+ }
  return [];
 }
 function enrich(o:any,d:any){
