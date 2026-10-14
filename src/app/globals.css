@@ -98,3 +98,17 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 @keyframes taxiSearchPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
 .searching-pulse{animation:taxiSearchPulse 1.7s ease-in-out infinite}
 .address-suggestion:active,.payment-card:active{transform:scale(.99)}
+
+/* Route map panel styled for compact mobile booking */
+.route-map-panel{position:relative;overflow:hidden;background:#fff;border:1px solid #e4ebe5;border-radius:20px;margin:0 0 15px;box-shadow:0 5px 24px #152d1e0a}
+.route-map-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
+.route-map-heading>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.route-map-heading b{font-size:16px}
+.route-map-heading span{font-size:12px;color:var(--muted);line-height:1.35}
+.route-map-badge{flex:0 0 auto;background:var(--mint);color:var(--green)!important;padding:6px 9px;border-radius:999px;font-weight:800}
+.route-map{height:240px;width:100%;background:#e6ece7;z-index:1}
+.route-map-loading{position:absolute;inset:56px 0 0;display:flex;align-items:center;justify-content:center;background:#e6ece7;color:var(--muted);font-size:14px;pointer-events:none}
+.moy-route-marker{background:transparent;border:0}
+.moy-route-marker span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px #0003;color:white;font-weight:900;font-size:13px}
+.route-map-panel>.muted{padding:0 14px 10px}
+@media(max-width:600px){.route-map-panel{border-radius:17px}.route-map{height:220px}.route-map-heading{padding:12px 13px}}
