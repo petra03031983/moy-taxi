@@ -63,3 +63,11 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 @media(max-width:380px){.class-grid{grid-template-columns:1fr}.class-card{display:grid;grid-template-columns:36px 1fr;align-items:center}.class-card .small{grid-column:2}}
 
 .field select{width:100%;border:1px solid var(--line);border-radius:13px;padding:14px;font-size:16px;background:#fbfcfb;color:var(--ink)}
+
+/* Fare comparison: show the trip total for each selected vehicle class, never per-kilometre figures. */
+.class-price{font-size:18px;font-weight:850;color:var(--green);line-height:1.3;overflow-wrap:anywhere}
+.route-price-list{display:flex;flex-direction:column;gap:7px;margin:2px 0 8px}
+.route-price-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.route-price-row.active{border:2px solid var(--green);background:#edf7f0;padding:11px 12px}
+.route-price-row span{font-size:14px;font-weight:700}
+.route-price-row b{font-size:17px;white-space:nowrap}
