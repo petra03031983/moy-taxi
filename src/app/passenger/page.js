@@ -242,7 +242,7 @@ export default function PassengerPage() {
     <section className="panel hero"><div className="hero-icon">🚕</div><div className="eyebrow">ЗАКАЗ ТАКСИ</div><h1>Куда едем?</h1><p className="muted">Система рассчитывает автомобильный маршрут и показывает ориентировочную цену до отправки заказа.</p></section>
     {error && <div className="error" role="alert">{error}</div>}
     {notice && <div className="success" role="status">{notice}</div>}
-    <RouteMap pickupPoint={pickupPoint} destinationPoint={destinationPoint} routeGeometry={route?.geometry} />
+    {(pickupPoint || destinationPoint || order?.pickup_lat != null) && <RouteMap pickupPoint={pickupPoint || (order?.pickup_lat != null ? {lat:order.pickup_lat,lng:order.pickup_lng} : null)} destinationPoint={destinationPoint || (order?.destination_lat != null ? {lat:order.destination_lat,lng:order.destination_lng} : null)} routeGeometry={route?.geometry} />}
     {!showBooking ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div><h2>{order.status === "new" ? "Заказ отправлен" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : statusLabel(order.status)}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
