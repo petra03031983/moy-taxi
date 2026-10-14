@@ -7,6 +7,13 @@ function twoGisRoute(lat, lng, address) {
   }
   return `https://2gis.kz/search/${encodeURIComponent(address || "")}`;
 }
+function twoGisTripRoute(fromLat, fromLng, toLat, toLng, address) {
+  if ([fromLat, fromLng, toLat, toLng].every(v => typeof v === "number" && Number.isFinite(v))) {
+    // 2GIS current route format: points are longitude,latitude and separated with "|".
+    return `https://2gis.kz/directions/points/${fromLng},${fromLat}|${toLng},${toLat}`;
+  }
+  return twoGisRoute(toLat, toLng, address);
+}
 const emptyForm={name:"",phone:"",password:"",car_model:"",car_plate:"",car_color:"",photo_url:""};
 function cleanSession(v){return v&&typeof v.driver_id==="string"&&typeof v.session_token==="string"?v:null}
 export default function Home(){
@@ -38,7 +45,7 @@ export default function Home(){
 <div className="order-actions actions">
 {o.status==="new"&&<><button className="button primary" disabled={o.price_status==="driver_offered"} onClick={()=>acceptOrderAndNavigate(o)}>{Number(o.agreed_price)>0?`Принять за ${Number(o.agreed_price).toLocaleString("ru-RU")} ₸`:Number(o.client_price)>0?`Принять за ${Number(o.client_price).toLocaleString("ru-RU")} ₸`:"Принять заказ"}</button><button className="button danger" onClick={()=>updateOrder(o.id,"cancelled")}>Отклонить</button></>}
 {o.status==="accepted"&&<><a className="button secondary" href={twoGisRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут к клиенту в 2GIS</a><button className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
-{o.status==="arrived"&&<a className="button primary" href={twoGisRoute(o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer" onClick={()=>updateOrder(o.id,"started")}>▶️ Начать поездку · маршрут до B</a>}
-{o.status==="started"&&<button className="button primary" onClick={()=>updateOrder(o.id,"completed")}>Завершить поездку</button>}
+{o.status==="arrived"&&<a className="button primary" href={twoGisTripRoute(o.pickup_lat,o.pickup_lng,o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer" onClick={()=>updateOrder(o.id,"started")}>▶️ Начать поездку · маршрут A → B</a>}
+{o.status==="started"&&<><a className="button secondary" href={twoGisRoute(o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer">🧭 Навигация до пункта B</a><button className="button primary" onClick={()=>updateOrder(o.id,"completed")}>Завершить поездку</button></>}
 </div></article>)}</section>}{tab==="history"&&<section className="panel"><div className="eyebrow">ИСТОРИЯ</div><h2>Завершённые поездки</h2>{history.length===0?<p className="muted">История пока пустая.</p>:history.map(o=><article className="order" key={o.id}><h3>{o.clients?.name||"Клиент"}</h3><p>📍 {o.pickup_address}</p><p>🏁 {o.destination_address}</p><p>💰 {o.agreed_price||o.driver_price||o.client_price||"—"} ₸</p></article>)}</section>}{tab==="profile"&&<section className="panel"><div className="eyebrow">ПРОФИЛЬ</div><h2>Данные водителя</h2><form onSubmit={saveProfile}><div className="field"><label>Фото водителя</label>{form.photo_url&&<img src={form.photo_url} alt="Предпросмотр" style={{width:90,height:90,borderRadius:20,objectFit:"cover",marginBottom:6}}/>}<input type="file" accept="image/*" onChange={photo}/></div><div className="field"><label>Имя</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div className="field"><label>Телефон</label><input value={driver.phone} readOnly/></div><div className="field"><label>Автомобиль</label><input value={form.car_model} onChange={e=>setForm({...form,car_model:e.target.value})}/></div><div className="field"><label>Госномер</label><input value={form.car_plate} onChange={e=>setForm({...form,car_plate:e.target.value})}/></div><div className="field"><label>Цвет машины</label><input value={form.car_color} onChange={e=>setForm({...form,car_color:e.target.value})}/></div><div className="success">Полные номера документов клиенту не показываем. На следующем этапе добавим отметку проверки техпаспорта и водительского удостоверения.</div><button className="button primary" disabled={busy}>{busy?"Сохраняем…":"Сохранить профиль"}</button></form><button className="button danger" style={{marginTop:10}} onClick={logout}>Выйти</button></section>}</main>;
 }
