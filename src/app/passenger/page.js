@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { callApi, statusLabel } from "../api";
 
 const CLASSES = [
@@ -20,48 +20,9 @@ const DEFAULT_RATES = {
 };
 const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";
 
-async function geocodeAddress(address, nearPoint) {
-  const clean = String(address || "").trim();
-  if (!clean || clean.toLowerCase() === "моё местоположение") {
-    if (nearPoint) return nearPoint;
-    throw new Error("Разреши доступ к GPS или введи адрес подачи.");
-  }
-  const query = /казахстан|қазақстан|kazakhstan/i.test(clean) ? clean : clean + ", Kazakhstan";
-  const params = new URLSearchParams({ q: query, limit: "1", lang: "ru" });
-  if (nearPoint) { params.set("lat", String(nearPoint.lat)); params.set("lon", String(nearPoint.lng)); }
-  let response;
-  try { response = await fetch("https://photon.komoot.io/api/?" + params.toString()); }
-  catch { throw new Error("Не удалось найти адрес. Проверь интернет и укажи город, улицу и дом."); }
-  if (!response.ok) throw new Error("Поиск адреса временно недоступен. Попробуй ещё раз.");
-  const data = await response.json();
-  const coords = data?.features?.[0]?.geometry?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2 || !Number.isFinite(Number(coords[0])) || !Number.isFinite(Number(coords[1]))) {
-    throw new Error("Адрес не найден. Укажи город, улицу и номер дома.");
-  }
-  return { lat: Number(coords[1]), lng: Number(coords[0]) };
-}
-async function roadRoute(a, b) {
-  const url = "https://router.project-osrm.org/route/v1/driving/" +
-    [a, b].map(p => p.lng + "," + p.lat).join(";") + "?overview=false&steps=false";
-  let response;
-  try { response = await fetch(url); }
-  catch { throw new Error("Не удалось рассчитать автомобильный маршрут. Проверь интернет и повтори расчёт."); }
-  if (!response.ok) throw new Error("Сервис автомобильных маршрутов временно недоступен.");
-  const data = await response.json();
-  const route = data?.routes?.[0];
-  if (data?.code !== "Ok" || !route || !Number.isFinite(route.distance) || route.distance <= 0) {
-    throw new Error("Не нашли автомобильный маршрут между этими адресами. Проверь точку подачи и назначения.");
-  }
-  return { distanceKm: route.distance / 1000, durationMin: Math.max(1, Math.ceil(route.duration / 60)) };
-}
 function routeUrl(a, b) {
   return "https://2gis.kz/directions/points/" + a.lng + "," + a.lat + "|" + b.lng + "," + b.lat;
 }
-function fareFor(rate, distance) {
-  const perKm = Number(rate?.rate_per_km || 0), min = Number(rate?.minimum_fare || 0);
-  return Math.max(min, Math.ceil((distance * perKm) / 10) * 10);
-}
-
 export default function PassengerPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -81,6 +42,7 @@ export default function PassengerPage() {
   const [locating, setLocating] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const routeRequestRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -118,31 +80,57 @@ export default function PassengerPage() {
     return () => { active = false; clearInterval(timer); };
   }, [order?.id, order?.client_token]);
 
-  const selectedRate = rates[selectedClass] || DEFAULT_RATES[selectedClass];
-  const quote = route ? fareFor(selectedRate, route.distanceKm) : null;
+  const quote = route?.estimated_prices?.[selectedClass] ?? null;
   const driver = order?.drivers || order?.assigned_driver || null;
   const showBooking = !order || ["cancelled", "completed"].includes(order.status);
 
-  async function calculateRoute(event) {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+  async function calculateRouteData() {
+    if (routeRequestRef.current || busy) return;
+    if (!pickup.trim()) { setError("Разреши GPS или укажи адрес подачи."); return; }
+    if (!destination.trim()) { setError("Укажи город, улицу и дом назначения."); return; }
+    routeRequestRef.current = true;
+    setBusy(true); setError(""); setNotice("");
     try {
-      if (!pickup.trim()) throw new Error("Укажи адрес подачи или разреши GPS.");
-      if (!destination.trim()) throw new Error("Укажи, куда ехать.");
-      const a = pickupPoint || await geocodeAddress(pickup, null);
-      const b = await geocodeAddress(destination, a);
-      const result = await roadRoute(a, b);
-      setPickupPoint(a); setDestinationPoint(b); setRoute(result);
-      if (!pickupPoint && pickup !== "Моё местоположение") setPickup(pickup.trim());
-      setNotice("Маршрут рассчитан по автомобильным дорогам.");
-    } catch (e) { setRoute(null); setError(e.message || "Не удалось рассчитать поездку."); }
-    finally { setBusy(false); }
+      const result = await callApi("calculate_route", {
+        pickup_address: pickup,
+        destination_address: destination,
+        pickup_lat: pickupPoint?.lat ?? null,
+        pickup_lng: pickupPoint?.lng ?? null,
+      });
+      const a = result.pickup_point;
+      const b = result.destination_point;
+      if (!a || !b || !Number.isFinite(Number(result.distance_km)) || !result.estimated_prices) {
+        throw new Error("Маршрут рассчитать не удалось. Проверь адрес подачи и назначения.");
+      }
+      setPickupPoint({ lat: Number(a.lat), lng: Number(a.lng) });
+      setDestinationPoint({ lat: Number(b.lat), lng: Number(b.lng) });
+      setRoute({
+        distanceKm: Number(result.distance_km),
+        durationMin: Number(result.duration_minutes),
+        estimated_prices: result.estimated_prices,
+      });
+      if (Array.isArray(result.online_classes)) setOnlineClasses(result.online_classes);
+      if (pickup !== "Моё местоположение") setPickup(pickup.trim());
+      setNotice("Автомобильный маршрут построен. Цены по классам рассчитаны.");
+    } catch (e) {
+      setRoute(null);
+      setError(e.message || "Не удалось найти адрес. Укажи город, улицу и дом.");
+    } finally {
+      routeRequestRef.current = false;
+      setBusy(false);
+    }
+  }
+  async function calculateRoute(event) {
+    event.preventDefault();
+    await calculateRouteData();
   }
 
   async function submitOrder() {
     if (!route || !pickupPoint || !destinationPoint) { setError("Сначала рассчитай автомобильный маршрут."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
-      const fare = fareFor(rates[selectedClass] || DEFAULT_RATES[selectedClass], route.distanceKm);
+      const fare = Number(route.estimated_prices?.[selectedClass] || 0);
+      if (!fare) throw new Error("Не удалось рассчитать цену для этого класса. Пересчитай маршрут.");
       const result = await callApi("create_order", {
         driver_code: "AUTO", name, phone, pickup_address: pickup || "Моё местоположение",
         destination_address: destination, pickup_lat: pickupPoint.lat, pickup_lng: pickupPoint.lng,
@@ -216,12 +204,12 @@ export default function PassengerPage() {
         <div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
         <div className="field"><label>Тип поездки</label><div className="switcher"><button type="button" className={tripType==="city"?"switch active":"switch"} onClick={()=>setTripType("city")}>🏙️ Город</button><button type="button" className={tripType==="intercity"?"switch active":"switch"} onClick={()=>setTripType("intercity")}>🛣️ Межгород</button></div></div>
         <div className="field"><label>Откуда забрать (точка A)</label><p className="muted small">{locating ? "📍 Определяем местоположение…" : pickupPoint ? "✅ Место подачи определено GPS." : "GPS недоступен — введи адрес вручную."}</p><input required maxLength={300} value={pickup} onChange={e=>{setPickup(e.target.value); if(e.target.value!=="Моё местоположение")setPickupPoint(null);}} placeholder="Адрес подачи или нажми GPS" /><button type="button" className="button secondary" onClick={detectPickup}>📍 Определить моё местоположение</button></div>
-        <div className="field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} placeholder="Город, улица, дом или название места" /></div>
-        <div className="field"><label>Класс автомобиля</label><div className="class-grid">{CLASSES.map(item=>{const rate=rates[item.id]||DEFAULT_RATES[item.id];const available=onlineClasses.includes(item.id);return <button key={item.id} type="button" className={selectedClass===item.id?"class-card selected":"class-card"} onClick={()=>setSelectedClass(item.id)}><span className="class-icon">{item.icon}</span><b>{item.label}</b><span className="small">{rate?.rate_per_km||0} ₸/км</span><span className="small">{route?money(fareFor(rate,route.distanceKm)):"Рассчитаем"}</span><span className="small muted">{available?"Есть водитель":"Пока нет на линии"}</span></button>})}</div></div>
+        <div className="field"><label>Куда ехать (точка B)</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);}} onBlur={()=>{if(pickup.trim()&&destination.trim()&&!route)calculateRouteData();}} placeholder="Например: Астана, улица Достык, 9" /></div>
+        <div className="field"><label>Класс автомобиля</label><p className="muted small">После расчёта маршрута покажем примерную стоимость для каждого класса.</p><div className="class-grid">{CLASSES.map(item=>{const available=onlineClasses.includes(item.id);const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-card selected":"class-card"} onClick={()=>setSelectedClass(item.id)}><span className="class-icon">{item.icon}</span><b>{item.label}</b><span className="class-price">{estimated?money(estimated):"Цена после расчёта"}</span><span className="small muted">{available?"Есть водитель":"Пока нет на линии"}</span></button>})}</div></div>
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
         <button className="button primary submit-order" type="submit" disabled={busy || !name.trim() || !phone.trim() || !pickup.trim() || !destination.trim()}>{busy ? "Рассчитываем…" : "🗺️ Рассчитать маршрут и цену"}</button>
       </form>
-      {route && destinationPoint && <div className="quote-panel"><div className="eyebrow">ПРЕДВАРИТЕЛЬНЫЙ РАСЧЁТ</div><h2>{route.distanceKm.toFixed(1)} км</h2><p className="muted">В пути ориентировочно {route.durationMin} мин. · автомобильный маршрут</p><div className="success"><b>{CLASSES.find(x=>x.id===selectedClass)?.label}: {money(quote)}</b><div className="small" style={{marginTop:5}}>{rates[selectedClass]?.rate_per_km || 0} ₸/км · минимальная стоимость {money(selectedRate?.minimum_fare)}</div></div><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">Посмотреть маршрут A → B в 2ГИС</a><button className="button primary" disabled={busy || !onlineClasses.includes(selectedClass)} onClick={submitOrder}>{busy?"Отправляем…":onlineClasses.includes(selectedClass) ? "Подтвердить цену и вызвать такси" : "Нет водителей этого класса"}</button><p className="muted small">Тарифы пока тестовые — перед запуском сверим их с реальными ценами в вашем городе.</p></div>}
+      {route && destinationPoint && <div className="quote-panel"><div className="eyebrow">ПРЕДВАРИТЕЛЬНЫЙ РАСЧЁТ</div><h2>{route.distanceKm.toFixed(1)} км</h2><p className="muted">В пути ориентировочно {route.durationMin} мин. · автомобильный маршрут</p><div className="route-price-list">{CLASSES.map(item=><div className={selectedClass===item.id?"route-price-row active":"route-price-row"} key={item.id}><span>{item.icon} {item.label}</span><b>{route.estimated_prices?.[item.id]?money(route.estimated_prices[item.id]):"—"}</b></div>)}</div><div className="success"><b>Выбрано: {CLASSES.find(x=>x.id===selectedClass)?.label} — {money(quote)}</b></div><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">Посмотреть маршрут A → B в 2ГИС</a><button className="button primary" disabled={busy || !onlineClasses.includes(selectedClass)} onClick={submitOrder}>{busy?"Отправляем…":onlineClasses.includes(selectedClass) ? "Подтвердить цену и вызвать такси" : "Нет водителей этого класса"}</button><p className="muted small">Стоимость ориентировочная. Тарифы пока тестовые.</p></div>}
     </section>}
     <p className="muted small footer-note">Мой Такси · при расчёте используются дорожные маршруты OSRM и адресный поиск Photon/OpenStreetMap.</p>
   </main>;
