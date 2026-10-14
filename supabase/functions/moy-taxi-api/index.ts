@@ -9,6 +9,51 @@ async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABAS
 async function sess(c:any,p:any){const id=String(p.driver_id||""),t=String(p.session_token||"");if(!id||t.length<20)return {error:"Сессия истекла. Войди снова.",status:401};const {data,error}=await c.from("drivers").select("*").eq("id",id).maybeSingle();if(error||!data)return {error:"Не удалось проверить вход. Войди снова.",status:401};const exp=data.session_expires_at?Date.parse(data.session_expires_at):0;if(!data.session_token_hash||!equal(await sha256(t),data.session_token_hash)||exp<Date.now())return {error:"Сессия истекла. Войди снова.",status:401};return {driver:data}}
 async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");const h=await sha256(t),exp=new Date(Date.now()+30*86400000).toISOString();const {error}=await c.from("drivers").update({session_token_hash:h,session_expires_at:exp,updated_at:new Date().toISOString()}).eq("id",id);if(error)throw error;return t}
 function km(a:number,b:number,c:number,d:number){const R=6371,r=(x:number)=>x*Math.PI/180,da=r(c-a),db=r(d-b),x=Math.sin(da/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null){
+ const clean=String(address||"").trim();
+ if(!clean)throw new Error("Введи адрес, улицу и дом.");
+ if(/^(мо[её]\s+)?местоположение$/i.test(clean)){
+  if(nearPoint)return nearPoint;
+  throw new Error("GPS не определился. Введи адрес подачи вручную.");
+ }
+ const query=/казахстан|қазақстан|kazakhstan/i.test(clean)?clean:clean+", Kazakhstan";
+ // Try Photon first; if it is temporarily down, fall back to Nominatim.
+ try{
+  const params=new URLSearchParams({q:query,limit:"5",lang:"ru"});
+  if(nearPoint){params.set("lat",String(nearPoint.lat));params.set("lon",String(nearPoint.lng))}
+  const response=await fetch("https://photon.komoot.io/api/?"+params.toString(),{headers:{"Accept":"application/json"}});
+  if(response.ok){
+   const data=await response.json();const features=data?.features||[];
+   const feature=features.find((item:any)=>Array.isArray(item?.geometry?.coordinates)&&item.geometry.coordinates.length>=2&&Number.isFinite(Number(item.geometry.coordinates[0]))&&Number.isFinite(Number(item.geometry.coordinates[1])));
+   if(feature){const coords=feature.geometry.coordinates;return {lat:Number(coords[1]),lng:Number(coords[0])}}
+  }
+ }catch(e){console.error("Photon address lookup failed",String(e))}
+ try{
+  const params=new URLSearchParams({q:query,format:"jsonv2",limit:"5",countrycodes:"kz","accept-language":"ru"});
+  const response=await fetch("https://nominatim.openstreetmap.org/search?"+params.toString(),{headers:{"Accept":"application/json"}});
+  if(response.ok){
+   const data=await response.json();const feature=(data||[]).find((item:any)=>Number.isFinite(Number(item.lat))&&Number.isFinite(Number(item.lon)));
+   if(feature)return {lat:Number(feature.lat),lng:Number(feature.lon)};
+  }
+ }catch(e){console.error("Nominatim address lookup failed",String(e))}
+ throw new Error("Не удалось найти адрес. Напиши город, улицу и номер дома. Если GPS включён, точку подачи оставь как «Моё местоположение».");
+}
+async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number}){
+ const url="https://router.project-osrm.org/route/v1/driving/"+a.lng+","+a.lat+";"+b.lng+","+b.lat+"?overview=false&steps=false";
+ let response:Response;
+ try{response=await fetch(url)}catch{throw new Error("Сервис автомобильных маршрутов временно недоступен. Попробуй ещё раз.")}
+ if(!response.ok)throw new Error("Сервис автомобильных маршрутов временно недоступен. Попробуй ещё раз.");
+ const data=await response.json(),route=data?.routes?.[0];
+ if(data?.code!=="Ok"||!Number.isFinite(route?.distance)||route.distance<=0)throw new Error("Не удалось построить маршрут между этими адресами. Укажи город, улицу и дом.");
+ const distanceKm=route.distance/1000;
+ if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адреса.");
+ return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.duration||0)/60))};
+}
+function quoteFor(rates:any,distanceKm:number){
+ const quotes:any={};
+ for(const cls of VEHICLE_CLASSES){const row=(rates||{})[cls];const rate=Number(row?.rate_per_km||0),minimum=Number(row?.minimum_fare||0);if(rate>0)quotes[cls]=Math.max(minimum,Math.ceil(distanceKm*rate/10)*10)}
+ return quotes;
+}
 function enrich(o:any,d:any){
  let distance=null;
  const locationAge=d?.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
@@ -125,6 +170,23 @@ if(a==="public_tariffs"){
  const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
  const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
  return reply({ok:true,vehicle_rates:settingsRow.vehicle_rates||{},test_mode:settingsRow.test_mode!==false,online_classes:onlineClasses});
+}
+if(a==="calculate_route"){
+ const pickupAddress=String(p.pickup_address||"").trim(),destinationAddress=String(p.destination_address||"").trim();
+ const optionalNumber=(v:any)=>v===null||v===undefined||v===""?NaN:Number(v);
+ const lat=optionalNumber(p.pickup_lat),lng=optionalNumber(p.pickup_lng);
+ if(!pickupAddress||!destinationAddress)return fail("Укажи место подачи и адрес назначения.");
+ if((Number.isFinite(lat)&&(!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180))||(!Number.isFinite(lat)&&Number.isFinite(lng)))return fail("Некорректные координаты подачи.");
+ try{
+  const pickupPoint=Number.isFinite(lat)?{lat,lng}:await geocodePoint(pickupAddress,null);
+  const destinationPoint=await geocodePoint(destinationAddress,pickupPoint);
+  const route=await roadDistance(pickupPoint,destinationPoint);
+  const {data:settingsRow,error}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
+  if(error||!settingsRow)return fail("Не удалось загрузить тарифы.",500);
+  const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
+  const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
+  return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
+ }catch(e){return fail(e instanceof Error?e.message:"Не удалось рассчитать маршрут.",422)}
 }
 if(a==="create_order"){
  const code=String(p.driver_code||"").trim().toUpperCase(),name=String(p.name||"").trim().slice(0,100),ph=phone(p.phone),pickup=String(p.pickup_address||"").trim().slice(0,300),dest=String(p.destination_address||"").trim().slice(0,300),comment=String(p.comment||"").trim().slice(0,500);
