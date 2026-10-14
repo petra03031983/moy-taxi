@@ -8,7 +8,9 @@ function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371, rad = v => v * Math.PI / 180;
   const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+  const km = 2 * R * Math.asin(Math.sqrt(a));
+  // Ignore impossible GPS distances so customers never see huge false ETAs.
+  return Number.isFinite(km) && km <= 300 ? km : null;
 }
 
 export default function ClientOrder() {
@@ -31,6 +33,40 @@ export default function ClientOrder() {
   const [installPrompt, setInstallPrompt] = useState(null);
 
   const orderKey = "moyTaxiOrder:" + driverCode;
+
+  async function geocodeDestination(address, nearPoint) {
+    const clean = String(address || "").trim();
+    const query = /казахстан|қазақстан|kazakhstan/i.test(clean) ? clean : clean + ", Kazakhstan";
+    const cacheKey = "moyTaxiGeocode:" + query.toLocaleLowerCase() + ":" +
+      (nearPoint ? Math.round(nearPoint.lat * 100) / 100 + "," + Math.round(nearPoint.lng * 100) / 100 : "no-gps");
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
+      if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) return cached;
+    } catch {}
+    const params = new URLSearchParams({ q: query, limit: "1", lang: "ru" });
+    if (nearPoint && Number.isFinite(nearPoint.lat) && Number.isFinite(nearPoint.lng)) {
+      params.set("lat", String(nearPoint.lat));
+      params.set("lon", String(nearPoint.lng));
+    }
+    let response;
+    try {
+      response = await fetch("https://photon.komoot.io/api/?" + params.toString(), {
+        headers: { Accept: "application/json" }
+      });
+    } catch {
+      throw new Error("Не получилось найти адрес на карте. Проверь интернет и укажи город, улицу и дом.");
+    }
+    if (!response.ok) throw new Error("Поиск адреса временно недоступен. Попробуй ещё раз через минуту.");
+    const data = await response.json();
+    const coords = data?.features?.[0]?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2 ||
+        !Number.isFinite(Number(coords[0])) || !Number.isFinite(Number(coords[1]))) {
+      throw new Error("Не удалось найти точку назначения. Укажи город, улицу и дом.");
+    }
+    const point = { lat: Number(coords[1]), lng: Number(coords[0]) };
+    try { localStorage.setItem(cacheKey, JSON.stringify(point)); } catch {}
+    return point;
+  }
 
   function detectPickupLocation() {
     setLocationStatus("locating");
@@ -122,11 +158,13 @@ export default function ClientOrder() {
     event.preventDefault();
     setBusy(true); setError(""); setNotice("");
     try {
+      setNotice("Ищем точку назначения на карте…");
+      const destinationPoint = await geocodeDestination(destination, pickupPoint);
       const result = await callApi("create_order", {
         driver_code: driverCode, name, phone,
         pickup_address: pickup, destination_address: destination, comment,
         pickup_lat: pickupPoint?.lat ?? null, pickup_lng: pickupPoint?.lng ?? null,
-        destination_lat: null, destination_lng: null,
+        destination_lat: destinationPoint.lat, destination_lng: destinationPoint.lng,
         client_price: price ? Number(price) : null,
       });
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
@@ -134,12 +172,13 @@ export default function ClientOrder() {
         ...result.order,
         pickup_address: pickup, destination_address: destination,
         pickup_lat: pickupPoint?.lat ?? null, pickup_lng: pickupPoint?.lng ?? null,
-        destination_lat: null, destination_lng: null,
+        destination_lat: destinationPoint.lat, destination_lng: destinationPoint.lng,
         client_price: price ? Number(price) : null,
       };
       localStorage.setItem(orderKey, JSON.stringify(saved));
       setOrder(saved);
-    } catch (e) { setError(e.message || "Не удалось отправить заказ."); }
+      setNotice("");
+    } catch (e) { setError(e.message || "Не удалось отправить заказ."); setNotice(""); }
     finally { setBusy(false); }
   }
 
