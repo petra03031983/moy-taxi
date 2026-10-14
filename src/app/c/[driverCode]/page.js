@@ -148,11 +148,15 @@ export default function ClientOrder() {
   }, [order?.id, order?.client_token, driverCode]);
 
   const targetDistance = useMemo(() => {
-    const targetLat = order?.status === "started" ? order?.destination_lat : order?.pickup_lat;
-    const targetLng = order?.status === "started" ? order?.destination_lng : order?.pickup_lng;
-    return distanceKm(targetLat, targetLng, order?.driver_lat, order?.driver_lng);
+    if (!order) return null;
+    const lastFix = Date.parse(order.driver_location_updated_at || "");
+    if (!Number.isFinite(lastFix) || Date.now() - lastFix > 5 * 60 * 1000 || lastFix > Date.now() + 60 * 1000) return null;
+    const targetLat = order.status === "started" ? order.destination_lat : order.pickup_lat;
+    const targetLng = order.status === "started" ? order.destination_lng : order.pickup_lng;
+    return distanceKm(targetLat, targetLng, order.driver_lat, order.driver_lng);
   }, [order]);
-  const etaMinutes = targetDistance == null ? null : Math.max(1, Math.ceil(targetDistance / 0.45));
+  // Straight-line distance is adjusted to approximate city-road travel.
+  const etaMinutes = targetDistance == null ? null : Math.max(1, Math.ceil(targetDistance * 1.3 / 0.45));
 
   async function submit(event) {
     event.preventDefault();
@@ -274,6 +278,6 @@ export default function ClientOrder() {
         <button className="button primary submit-order" type="submit" disabled={busy || !driver.is_online}>{busy ? "Отправляем…" : driver.is_online ? "🚕 Заказать такси" : "Водитель не на линии"}</button>
       </form>
     </section>}
-    <p className="muted small footer-note">«Мой Такси» · ссылка закреплена за этим водителем.</p>
+    <p className="muted small footer-note">Поиск адреса: Photon · данные карты © OpenStreetMap contributors. «Мой Такси» · ссылка закреплена за этим водителем.</p>
   </main>;
 }
