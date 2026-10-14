@@ -121,9 +121,9 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
    const data=await response.json(),items=data?.result?.items||[];
    const rows=items.map((item:any)=>{
     const point=pointFrom2gis(item);
-    const address=item.full_address_name||item.address?.full_address_name||item.address?.name||item.address_name||"";
-    const name=item.name||item.address?.building_name||item.address_name||address||"Адрес";
-    const label=address&&address!==name?address:(item.full_name||item.full_address_name||[name,item.address?.address_name].filter(Boolean).join(", "));
+    const address=typeof item.full_address_name==="string"?item.full_address_name:typeof item.address_name==="string"?item.address_name:typeof item.address==="string"?item.address:String(item.address?.full_address_name||item.address?.name||item.address?.address_name||"");
+    const name=String(item.name||item.address?.building_name||item.address_name||address||"Адрес");
+    const label=address||String(item.full_name||[name,item.address?.address_name].filter(Boolean).join(", "));
     const divisions=(item.adm_div||[]).map((division:any)=>division.name||division.caption).filter(Boolean);
     const city=divisions.find((v:string)=>/астана|алматы|тал[аә]пкер|город/i.test(v))||divisions[0]||"Казахстан";
     return point&&label?{name,label,city,lat:point.lat,lng:point.lng}:null;
@@ -316,7 +316,7 @@ if(a==="address_reverse"){
   const response=await fetch("https://catalog.api.2gis.com/3.0/items/geocode?"+params.toString(),{headers:{"Accept":"application/json"}});
   if(!response.ok)return fail("2ГИС не смог определить адрес по GPS.",422);
   const data=await response.json(),item=data?.result?.items?.[0];
-  const label=String(item?.full_address_name||item?.address?.full_address_name||item?.address_name||item?.name||"Моё местоположение");
+  const label=String(item?.full_address_name||(typeof item?.address==="string"?item.address:"")||item?.address?.full_address_name||item?.address?.name||item?.address_name||item?.name||"Моё местоположение");
   return reply({ok:true,label,city:(item?.adm_div||[]).map((x:any)=>x.name).find((x:string)=>Boolean(x))||"Казахстан",provider:"2gis"});
  }catch(e){return fail(e instanceof Error?e.message:"Не удалось определить адрес через 2ГИС.",422)}
 }
