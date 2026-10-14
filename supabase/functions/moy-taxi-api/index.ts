@@ -58,6 +58,19 @@ function addressLabel(props:any){
  const street=[props?.street,props?.housenumber].filter(Boolean).join(" ");
  return [props?.name && props.name!==street ? props.name : "",street,props?.district,props?.city||props?.town||props?.village,props?.state,props?.country].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(", ");
 }
+async function suggestionDistances(rows:any[],nearPoint:{lat:number,lng:number}|null){
+ if(!nearPoint||!rows.length)return rows;
+ const valid=rows.slice(0,6);
+ try{
+  const points=[nearPoint,...valid.map((x:any)=>({lat:x.lat,lng:x.lng}))];
+  const coords=points.map((point:any)=>point.lng+","+point.lat).join(";");
+  const params=new URLSearchParams({sources:"0",destinations:valid.map((_:any,index:number)=>String(index+1)).join(";"),annotations:"distance,duration"});
+  const response=await fetch("https://router.project-osrm.org/table/v1/driving/"+coords+"?"+params.toString());
+  if(!response.ok)return rows;
+  const data=await response.json();const distances=data?.distances?.[0]||[];
+  return valid.map((item:any,index:number)=>({...item,distance_km:Number.isFinite(distances[index])?Number((distances[index]/1000).toFixed(1)):null}));
+ }catch(e){console.error("Suggestion route distances unavailable",String(e));return rows}
+}
 async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null){
  const clean=String(query||"").trim();
  if(clean.length<3)return [];
@@ -71,7 +84,7 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
     const coords=feature?.geometry?.coordinates,props=feature?.properties||{};
     return {label:addressLabel(props),name:props.name||props.street||"Адрес",city:props.city||props.town||props.village||props.state||"Казахстан",lat:Number(coords?.[1]),lng:Number(coords?.[0])};
    }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng));
-   if(rows.length)return rows.slice(0,6);
+   if(rows.length)return await suggestionDistances(rows.slice(0,6),nearPoint);
   }
  }catch(e){console.error("Photon suggestions failed",String(e))}
  try{
@@ -82,6 +95,7 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
     const addr=item.address||{}, street=[addr.road||addr.pedestrian||addr.residential,addr.house_number].filter(Boolean).join(" ");
     return {label:street?[street,addr.suburb||addr.city_district,addr.city||addr.town||addr.village,addr.state].filter(Boolean).join(", "):String(item.display_name||"").split(", ").slice(0,4).join(", "),name:street||addr.amenity||addr.shop||addr.building||"Адрес",city:addr.city||addr.town||addr.village||addr.state||"Казахстан",lat:Number(item.lat),lng:Number(item.lon)};
    }).filter((x:any)=>x.label&&Number.isFinite(x.lat)&&Number.isFinite(x.lng)).slice(0,6);
+   return await suggestionDistances(rows,nearPoint);
   }
  }catch(e){console.error("Nominatim suggestions failed",String(e))}
  return [];
@@ -202,6 +216,31 @@ if(a==="address_suggest"){
  const nearPoint=Number.isFinite(nearLat)&&Number.isFinite(nearLng)?{lat:nearLat,lng:nearLng}:null;
  const suggestions=await suggestAddresses(query,nearPoint);
  return reply({ok:true,suggestions});
+}
+if(a==="address_reverse"){
+ const lat=Number(p.lat),lng=Number(p.lng);
+ if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return fail("Некорректные координаты GPS.");
+ try{
+  const response=await fetch("https://photon.komoot.io/reverse?"+new URLSearchParams({lat:String(lat),lon:String(lng),lang:"ru"}).toString(),{headers:{"Accept":"application/json"}});
+  if(response.ok){
+   const data=await response.json(),props=data?.features?.[0]?.properties;
+   if(props){
+    const label=addressLabel(props);
+    if(label)return reply({ok:true,label,city:props.city||props.town||props.village||props.state||"Казахстан"});
+   }
+  }
+ }catch(e){console.error("Photon reverse geocode failed",String(e))}
+ try{
+  const params=new URLSearchParams({lat:String(lat),lon:String(lng),format:"jsonv2","accept-language":"ru","addressdetails":"1"});
+  const response=await fetch("https://nominatim.openstreetmap.org/reverse?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"MoyTaxi/1.0 (GPS address display)"}});
+  if(response.ok){
+   const data=await response.json(),addr=data?.address||{};
+   const street=[addr.road||addr.pedestrian||addr.residential,addr.house_number].filter(Boolean).join(" ");
+   const label=[street,addr.suburb||addr.city_district,addr.city||addr.town||addr.village,addr.state].filter(Boolean).join(", ")||String(data?.display_name||"").split(", ").slice(0,4).join(", ");
+   if(label)return reply({ok:true,label,city:addr.city||addr.town||addr.village||addr.state||"Казахстан"});
+  }
+ }catch(e){console.error("Nominatim reverse geocode failed",String(e))}
+ return fail("GPS определён, но адрес не найден. Можно оставить «Моё местоположение».",422);
 }
 if(a==="public_tariffs"){
  const {data:settingsRow,error}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
