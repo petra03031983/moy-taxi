@@ -39,7 +39,7 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
  throw new Error("Не удалось найти адрес. Напиши город, улицу и номер дома. Если GPS включён, точку подачи оставь как «Моё местоположение».");
 }
 async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number}){
- const url="https://router.project-osrm.org/route/v1/driving/"+a.lng+","+a.lat+";"+b.lng+","+b.lat+"?overview=false&steps=false";
+ const url="https://router.project-osrm.org/route/v1/driving/"+a.lng+","+a.lat+";"+b.lng+","+b.lat+"?overview=full&geometries=geojson&steps=false";
  let response:Response;
  try{response=await fetch(url)}catch{throw new Error("Сервис автомобильных маршрутов временно недоступен. Попробуй ещё раз.")}
  if(!response.ok)throw new Error("Сервис автомобильных маршрутов временно недоступен. Попробуй ещё раз.");
@@ -47,7 +47,7 @@ async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number})
  if(data?.code!=="Ok"||!Number.isFinite(route?.distance)||route.distance<=0)throw new Error("Не удалось построить маршрут между этими адресами. Укажи город, улицу и дом.");
  const distanceKm=route.distance/1000;
  if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адреса.");
- return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.duration||0)/60))};
+ return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.duration||0)/60)),geometry:route.geometry?.coordinates||[]};
 }
 function quoteFor(rates:any,distanceKm:number){
  const quotes:any={};
@@ -265,7 +265,7 @@ if(a==="calculate_route"){
   if(error||!settingsRow)return fail("Не удалось загрузить тарифы.",500);
   const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
   const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
-  return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
+  return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,route_geometry:route.geometry,estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
  }catch(e){return fail(e instanceof Error?e.message:"Не удалось рассчитать маршрут.",422)}
 }
 if(a==="create_order"){
