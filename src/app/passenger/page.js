@@ -171,8 +171,8 @@ export default function PassengerPage() {
         destination_point: destinationPoint, route_distance_km: route.distanceKm, vehicle_class: selectedClass };
       setOrder(saved); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(saved));
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
-      setNotice(testMode ? "Заказ отправлен. Тестовый режим: никаких списаний." : "Заказ отправлен водителю.");
-      setRoute(null); setComment("");
+      setNotice(testMode ? "Заказ отправлен. Тестовый режим: никаких списаний." : "Заказ отправлен водителям.");
+      setComment("");
     } catch (e) { setError(e.message || "Не удалось отправить заказ."); }
     finally { setBusy(false); }
   }
