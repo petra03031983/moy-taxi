@@ -27,6 +27,9 @@ export default function ClientOrder() {
   const [locationStatus, setLocationStatus] = useState("locating");
   const [order, setOrder] = useState(null);
   const [price, setPrice] = useState("");
+  const [ratingStars, setRatingStars] = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
+  const [savingRating, setSavingRating] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -137,7 +140,7 @@ export default function ClientOrder() {
         if (!live) return;
         let previous = {};
         try { previous = JSON.parse(localStorage.getItem(orderKey) || "{}"); } catch {}
-        const updated = { ...previous, ...order, ...result.order };
+        const updated = { ...previous, ...order, ...result.order, rating: result.rating || null, offers: result.offers || [] };
         setOrder(updated);
         localStorage.setItem(orderKey, JSON.stringify(updated));
       } catch {}
@@ -184,6 +187,32 @@ export default function ClientOrder() {
       setNotice("");
     } catch (e) { setError(e.message || "Не удалось отправить заказ."); setNotice(""); }
     finally { setBusy(false); }
+  }
+
+  async function markClientReady() {
+    if (!order) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("client_mark_ready", { order_id: order.id, client_token: order.client_token });
+      const updated = { ...order, ...result.order };
+      setOrder(updated); localStorage.setItem(orderKey, JSON.stringify(updated));
+      setNotice("Водитель получил сообщение: ты выходишь.");
+    } catch (e) { setError(e.message || "Не удалось сообщить водителю."); }
+    finally { setBusy(false); }
+  }
+
+  async function submitRating() {
+    if (!order || order.rating?.id) return;
+    setSavingRating(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("client_rate_driver", {
+        order_id: order.id, client_token: order.client_token, stars: ratingStars, comment: ratingComment
+      });
+      const updated = { ...order, rating: result.rating };
+      setOrder(updated); localStorage.setItem(orderKey, JSON.stringify(updated));
+      setNotice("Спасибо за оценку!");
+    } catch (e) { setError(e.message || "Не удалось сохранить оценку."); }
+    finally { setSavingRating(false); }
   }
 
   async function cancelOrder() {
@@ -244,7 +273,8 @@ export default function ClientOrder() {
       <div className="status large-status">{statusLabel(order.status)}</div>
       {order.status === "new" && <div className="success"><b>⏳ Заказ отправлен водителю. Ждём подтверждение.</b></div>}
       {order.status === "accepted" && <div className="success"><b>🚕 Водитель направляется к вам.</b>{etaMinutes != null && <div style={{ marginTop: 6 }}>Прибытие ориентировочно через <b>{etaMinutes} мин.</b></div>}{driverDistance != null && <div className="small" style={{ marginTop: 5 }}>Расстояние до подачи: {driverDistance.toFixed(1)} км</div>}<div className="small" style={{ marginTop: 5 }}>Геопозиция обновляется автоматически, пока водитель на линии и разрешил доступ к местоположению.</div></div>}
-      {order.status === "arrived" && <div className="success"><b>✅ Водитель прибыл к точке подачи.</b></div>}
+      {order.status === "arrived" && <div className="success"><b>✅ Водитель прибыл к точке подачи.</b><p className="small" style={{margin:"5px 0 10px"}}>Когда выходишь к машине, нажми кнопку.</p><button type="button" className="button primary" disabled={busy} onClick={markClientReady}>👋 Я выхожу</button></div>}
+      {order.status === "client_ready" && <div className="success"><b>Ты сообщил водителю, что выходишь.</b><p className="small" style={{margin:"5px 0 0"}}>Водитель начнёт поездку, когда ты сядешь в автомобиль.</p></div>}
       {order.status === "started" && <div className="success"><b>🛣️ Вы едете к пункту назначения.</b>{etaMinutes != null && <div style={{ marginTop: 6 }}>До пункта B ориентировочно <b>{etaMinutes} мин.</b></div>}{driverDistance != null && <div className="small" style={{ marginTop: 5 }}>Осталось примерно {driverDistance.toFixed(1)} км</div>}</div>}
       <p><b>Водитель:</b> {driver.name}</p>
       <p><b>Телефон:</b> <a href={`tel:${driver.phone}`}>{driver.phone}</a></p>
@@ -256,6 +286,8 @@ export default function ClientOrder() {
       {order.price_status === "declined" && order.status === "new" && <p className="muted">Вы отклонили последнее предложение водителя. Можно дождаться новой цены.</p>}
       {order.price_status === "accepted" && order.agreed_price > 0 && <p className="success"><b>✅ Согласованная стоимость: {Number(order.agreed_price).toLocaleString("ru-RU")} ₸</b></p>}
       {order.status === "new" && <button type="button" className="button danger" disabled={busy} onClick={cancelOrder}>Отменить заказ</button>}
+      {order.status === "completed" && !order.rating?.id && <section className="panel rating-panel"><h2>Оцени водителя</h2><div className="rating-stars" role="group" aria-label="Оценка от 1 до 5 звёзд">{[1,2,3,4,5].map(star=><button type="button" key={star} className={star<=ratingStars?"rating-star active":"rating-star"} aria-label={star+" из 5"} aria-pressed={ratingStars===star} onClick={()=>setRatingStars(star)}>★</button>)}</div><div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={ratingComment} onChange={e=>setRatingComment(e.target.value)} placeholder="Ваш отзыв" /></div><button type="button" className="button primary" disabled={savingRating} onClick={submitRating}>{savingRating?"Сохраняем…":"Отправить оценку"}</button></section>}
+      {order.status === "completed" && order.rating?.id && <div className="success"><b>Спасибо за оценку!</b><p style={{margin:"5px 0 0"}}>{"★".repeat(order.rating.stars)}{"☆".repeat(5-order.rating.stars)}</p></div>}
       {["completed", "cancelled"].includes(order.status) && <><p className="muted">Чтобы заказать снова, нажмите кнопку ниже. Ваши имя и телефон уже сохранены на этом телефоне.</p><button type="button" className="button primary" onClick={resetForNewOrder}>Заказать ещё раз</button></>}
     </section> : <section className="panel">
       <div className="eyebrow">ЗАКАЗ ПО QR-КОДУ</div><h2>Куда едем?</h2><p className="muted">Эта ссылка всегда ведёт к выбранному водителю. Регистрироваться повторно не нужно — имя и телефон сохраняются на телефоне.</p>
