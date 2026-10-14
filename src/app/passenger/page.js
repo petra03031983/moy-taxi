@@ -233,15 +233,21 @@ export default function PassengerPage() {
     setOrder(null); setRoute(null); setDestinationPoint(null); setPickupSuggestions([]); setDestinationSuggestions([]); setError(""); setNotice("");
   }
   function detectPickup() {
-    setLocating(true);
-    navigator.geolocation?.getCurrentPosition(position => {
+    if (!navigator.geolocation) {
+      setLocating(false);
+      setPickupPoint(null);
+      setError("Этот браузер не передаёт геопозицию. Открой приложение в Chrome и разреши местоположение.");
+      return;
+    }
+    setLocating(true); setError("");
+    navigator.geolocation.getCurrentPosition(position => {
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
-      setPickupPoint(point); setPickup("Моё местоположение"); setLocating(false); setError("");
-      callApi("address_reverse", point).then(result => setPickup(current =>
-        current === "Моё местоположение" ? result.label : current
-      )).catch(() => {});
-    }, () => { setPickupPoint(null); setLocating(false); setError("Не удалось определить GPS. Введи адрес подачи вручную."); },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+      setPickupPoint(point); setPickup("Моё местоположение"); setLocating(false); setRoute(null);
+      callApi("address_reverse", point).then(result => setPickup(result.label || "Моё местоположение")).catch(() => {});
+    }, () => {
+      setPickupPoint(null); setLocating(false);
+      setError("Не удалось определить GPS. В Chrome нажми на значок настроек сайта → Разрешения → Местоположение → Разрешить, затем повтори.");
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 });
   }
 
   return <main className="app client-app">
@@ -269,7 +275,7 @@ export default function PassengerPage() {
       {order.status === "completed" && order.rating?.id && <div className="success"><b>Спасибо за оценку!</b><p style={{margin:"5px 0 0"}}>{"★".repeat(order.rating.stars)}{"☆".repeat(5-order.rating.stars)}{order.rating.comment?" · "+order.rating.comment:""}</p></div>}
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
     </section> : <section className="panel">
-      <form onSubmit={calculateRoute}>
+      <form onSubmit={event => event.preventDefault()}>
         <div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div>
         <div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div>
         <div className="field"><label>Тип поездки</label><div className="switcher"><button type="button" className={tripType==="city"?"switch active":"switch"} onClick={()=>setTripType("city")}>🏙️ Город</button><button type="button" className={tripType==="intercity"?"switch active":"switch"} onClick={()=>setTripType("intercity")}>🛣️ Межгород</button></div></div>
