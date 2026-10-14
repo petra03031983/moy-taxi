@@ -122,3 +122,22 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .class-option .class-name{font-size:15px;font-weight:750;line-height:1.25;min-width:0;overflow-wrap:normal}
 .class-option .class-price{font-size:16px;font-weight:850;color:var(--green);white-space:nowrap;word-break:normal;overflow-wrap:normal;width:auto;max-width:none;justify-self:end;text-align:right}
 @media(max-width:380px){.class-grid.class-list{grid-template-columns:none}.class-option{display:grid!important;grid-template-columns:28px minmax(0,1fr) auto!important;gap:8px;padding:11px 8px!important}.class-option.selected{padding-left:5px!important}.class-option .class-price{font-size:15px}}
+
+/* Wallet balance, earnings breakdown and post-trip rating */
+.wallet-strip{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:15px 16px;border:1px solid #dcece0;border-radius:17px;background:linear-gradient(120deg,#fff,#f0f8f2)}
+.wallet-strip>div{display:flex;flex-direction:column;gap:3px;min-width:125px}
+.wallet-strip>div span{font-size:12px;color:var(--muted)}
+.wallet-strip>div strong{font-size:23px;color:var(--green);letter-spacing:-.3px}
+.wallet-strip p{flex:1;min-width:140px;font-size:12px;color:var(--muted);line-height:1.4;margin:0}
+.wallet-strip .button{width:auto;min-height:38px;padding:8px 10px;font-size:12px}
+.wallet-balance{background:#f4f8f5;border:1px solid #dcece0;padding:16px;border-radius:16px;margin:10px 0 20px;display:flex;flex-direction:column;gap:8px}
+.wallet-balance>span{font-size:13px;color:var(--muted)}
+.wallet-balance>strong{font-size:30px;color:var(--green);letter-spacing:-.5px}
+.wallet-balance p{font-size:13px;line-height:1.45;color:var(--muted);margin:0}
+.wallet-balance .button{margin-top:4px}
+.rating-panel{margin-top:14px}
+.rating-stars{display:flex;gap:8px;margin:14px 0 18px}
+.rating-star{border:0;background:#eff2ef;color:#b8c1bb;width:44px;height:44px;border-radius:12px;font-size:30px;line-height:1;cursor:pointer}
+.rating-star.active{background:#fff4d2;color:#d79a00}
+.rating-star:focus-visible{outline:3px solid #7ac7a2;outline-offset:2px}
+@media(max-width:430px){.wallet-strip{gap:8px;padding:12px}.wallet-strip>div strong{font-size:21px}.wallet-strip p{flex-basis:100%;min-width:0}.wallet-strip .button{width:100%}.rating-stars{gap:6px}.rating-star{flex:1;width:auto;height:42px}}
