@@ -200,6 +200,29 @@ if(a.startsWith("admin_")){
   const {error}=await c.from("platform_settings").update({owner_password_salt:salt,owner_password_hash:hash,updated_at:new Date().toISOString()}).eq("id",true);
   if(error)return fail("Не удалось сменить пароль.",500);return reply({ok:true});
  }
+ if(a==="admin_set_2gis_api_key"){
+  const key=String(p.api_key||"").trim();
+  if(key.length<8||key.length>500)return fail("Вставь корректный API-ключ 2ГИС.");
+  const {error}=await c.from("platform_settings").update({dgis_api_key:key,updated_at:new Date().toISOString()}).eq("id",true);
+  if(error)return fail("Не удалось сохранить ключ 2ГИС. Проверь миграцию базы данных.",500);
+  return reply({ok:true,configured:true});
+ }
+ if(a==="admin_test_2gis"){
+  const key=String(settings.dgis_api_key||Deno.env.get("DGIS_API_KEY")||"").trim();
+  if(!key)return fail("Сначала сохрани API-ключ 2ГИС.");
+  try{
+   const params=new URLSearchParams({q:"Астана",suggest_type:"object",fields:"items.point,items.full_address_name",locale:"ru_KZ",page_size:"3",key});
+   const response=await fetch("https://catalog.api.2gis.com/3.0/suggests?"+params.toString(),{headers:{"Accept":"application/json"}});
+   if(!response.ok){
+    const body=await response.text().catch(()=> "");
+    console.error("2GIS test failed",response.status,body.slice(0,300));
+    return fail(response.status===401||response.status===403?"2ГИС отклонил ключ. Проверь правильность ключа и доступ к Suggest/Geocoder API.":"2ГИС временно не ответил.",422);
+   }
+   const data=await response.json(),items=data?.result?.items||[];
+   if(!items.length)return fail("Ключ отвечает, но 2ГИС не вернул тестовые результаты поиска.",422);
+   return reply({ok:true,configured:true,search_works:true,results_count:items.length,message:"Поиск 2ГИС работает. Проверь маршрут на странице пассажира; для маршрута у ключа должен быть доступ к Routing API."});
+  }catch(e){return fail(e instanceof Error?e.message:"Проверить 2ГИС не удалось.",422)}
+ }
  if(a==="admin_update_commission_percent"){
   const percent=Number(p.commission_percent);if(!Number.isFinite(percent)||percent<0||percent>30)return fail("Комиссия должна быть от 0 до 30 процентов.");
   const {error}=await c.from("platform_settings").update({commission_percent:percent,updated_at:new Date().toISOString()}).eq("id",true);
@@ -246,7 +269,7 @@ if(a.startsWith("admin_")){
   const dueCommission=commissionRows.filter((row:any)=>row.status==="due").reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
   const paidCommission=commissionRows.filter((row:any)=>row.status==="paid").reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
   const uniqueClients=new Set((clientsRowsQ.data||[]).map((x:any)=>String(x.phone||"").trim()).filter(Boolean)).size;
-  return reply({ok:true,stats:{drivers:driversQ.count||0,online_drivers:onlineQ.count||0,orders:ordersQ.count||0,completed_orders:doneQ.count||0,client_order_records:clientsQ.count||0,unique_clients:uniqueClients,commission_total:totalCommission,commission_due:dueCommission,commission_paid:paidCommission,commission_percent:Number(settings.commission_percent),vehicle_rates:settings.vehicle_rates||{},test_mode:settings.test_mode!==false}});
+  return reply({ok:true,stats:{drivers:driversQ.count||0,online_drivers:onlineQ.count||0,orders:ordersQ.count||0,completed_orders:doneQ.count||0,client_order_records:clientsQ.count||0,unique_clients:uniqueClients,commission_total:totalCommission,commission_due:dueCommission,commission_paid:paidCommission,commission_percent:Number(settings.commission_percent),vehicle_rates:settings.vehicle_rates||{},test_mode:settings.test_mode!==false,dgis_api_configured:Boolean(settings.dgis_api_key||Deno.env.get("DGIS_API_KEY"))}});
  }
  if(a==="admin_drivers"){
   const {data,error}=await c.from("drivers").select("id,public_code,name,phone,is_online,car_model,car_plate,car_color,vehicle_class,wallet_balance,created_at").order("created_at",{ascending:false}).limit(500);
@@ -278,33 +301,24 @@ if(a==="address_suggest"){
  const nearLat=p.near_lat===null||p.near_lat===undefined||p.near_lat===""?NaN:Number(p.near_lat);
  const nearLng=p.near_lng===null||p.near_lng===undefined||p.near_lng===""?NaN:Number(p.near_lng);
  const nearPoint=Number.isFinite(nearLat)&&Number.isFinite(nearLng)&&nearLat>=-90&&nearLat<=90&&nearLng>=-180&&nearLng<=180?{lat:nearLat,lng:nearLng}:null;
- const suggestions=await suggestAddresses(query,nearPoint);
- return reply({ok:true,suggestions});
+ try{
+  const key=await getDgisApiKey(c);
+  const suggestions=await suggestAddresses(query,nearPoint,key);
+  return reply({ok:true,suggestions,provider:"2gis"});
+ }catch(e){return fail(e instanceof Error?e.message:"Поиск адресов через 2ГИС не удался.",422)}
 }
 if(a==="address_reverse"){
  const lat=Number(p.lat),lng=Number(p.lng);
  if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return fail("Некорректные координаты GPS.");
  try{
-  const response=await fetch("https://photon.komoot.io/reverse?"+new URLSearchParams({lat:String(lat),lon:String(lng),lang:"ru"}).toString(),{headers:{"Accept":"application/json"}});
-  if(response.ok){
-   const data=await response.json(),props=data?.features?.[0]?.properties;
-   if(props){
-    const label=addressLabel(props);
-    if(label)return reply({ok:true,label,city:props.city||props.town||props.village||props.state||"Казахстан"});
-   }
-  }
- }catch(e){console.error("Photon reverse geocode failed",String(e))}
- try{
-  const params=new URLSearchParams({lat:String(lat),lon:String(lng),format:"jsonv2","accept-language":"ru","addressdetails":"1"});
-  const response=await fetch("https://nominatim.openstreetmap.org/reverse?"+params.toString(),{headers:{"Accept":"application/json","User-Agent":"MoyTaxi/1.0 (GPS address display)"}});
-  if(response.ok){
-   const data=await response.json(),addr=data?.address||{};
-   const street=[addr.road||addr.pedestrian||addr.residential,addr.house_number].filter(Boolean).join(" ");
-   const label=[street,addr.suburb||addr.city_district,addr.city||addr.town||addr.village,addr.state].filter(Boolean).join(", ")||String(data?.display_name||"").split(", ").slice(0,4).join(", ");
-   if(label)return reply({ok:true,label,city:addr.city||addr.town||addr.village||addr.state||"Казахстан"});
-  }
- }catch(e){console.error("Nominatim reverse geocode failed",String(e))}
- return fail("GPS определён, но адрес не найден. Можно оставить «Моё местоположение».",422);
+  const key=await getDgisApiKey(c);
+  const params=new URLSearchParams({lon:String(lng),lat:String(lat),fields:"items.full_address_name,items.address,items.adm_div",locale:"ru_KZ",key});
+  const response=await fetch("https://catalog.api.2gis.com/3.0/items/geocode?"+params.toString(),{headers:{"Accept":"application/json"}});
+  if(!response.ok)return fail("2ГИС не смог определить адрес по GPS.",422);
+  const data=await response.json(),item=data?.result?.items?.[0];
+  const label=String(item?.full_address_name||item?.address?.full_address_name||item?.address_name||item?.name||"Моё местоположение");
+  return reply({ok:true,label,city:(item?.adm_div||[]).map((x:any)=>x.name).find((x:string)=>Boolean(x))||"Казахстан",provider:"2gis"});
+ }catch(e){return fail(e instanceof Error?e.message:"Не удалось определить адрес через 2ГИС.",422)}
 }
 if(a==="public_tariffs"){
  const {data:settingsRow,error}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
@@ -321,14 +335,15 @@ if(a==="calculate_route"){
  if((Number.isFinite(destLat)&&(!Number.isFinite(destLng)||destLat < -90||destLat>90||destLng < -180||destLng>180))||(!Number.isFinite(destLat)&&Number.isFinite(destLng)))return fail("Некорректные координаты адреса назначения.");
  if((Number.isFinite(lat)&&(!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180))||(!Number.isFinite(lat)&&Number.isFinite(lng)))return fail("Некорректные координаты подачи.");
  try{
-  const pickupPoint=Number.isFinite(lat)?{lat,lng}:await geocodePoint(pickupAddress,null);
-  const destinationPoint=Number.isFinite(destLat)?{lat:destLat,lng:destLng}:await geocodePoint(destinationAddress,pickupPoint);
-  const route=await roadDistance(pickupPoint,destinationPoint);
+  const key=await getDgisApiKey(c);
+  const pickupPoint=Number.isFinite(lat)?{lat,lng}:await geocodePoint(pickupAddress,null,key);
+  const destinationPoint=Number.isFinite(destLat)?{lat:destLat,lng:destLng}:await geocodePoint(destinationAddress,pickupPoint,key);
+  const route=await roadDistance(pickupPoint,destinationPoint,key);
   const {data:settingsRow,error}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
   if(error||!settingsRow)return fail("Не удалось загрузить тарифы.",500);
   const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
   const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
-  return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,route_geometry:route.geometry,estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
+  return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,route_geometry:route.geometry,route_provider:"2gis",estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
  }catch(e){return fail(e instanceof Error?e.message:"Не удалось рассчитать маршрут.",422)}
 }
 if(a==="create_order"){
