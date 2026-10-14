@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { callApi, statusLabel } from "../api";
 
 const CLASSES = [
@@ -150,7 +150,7 @@ export default function PassengerPage() {
         route_distance_km: route.distanceKm, vehicle_class: selectedClass, trip_type: tripType,
         client_price: fare, comment,
       });
-      const saved = { ...result.order, ...({ assigned_driver: result.assigned_driver }), pickup_point: pickupPoint,
+      const saved = { ...result.order, assigned_driver: result.assigned_driver, pickup_point: pickupPoint,
         destination_point: destinationPoint, route_distance_km: route.distanceKm, vehicle_class: selectedClass };
       setOrder(saved); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(saved));
       localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
@@ -201,7 +201,7 @@ export default function PassengerPage() {
     {!showBooking ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div><h2>{order.status === "new" ? "Заказ отправлен" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : statusLabel(order.status)}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
-      <p><b>Класс:</b> {CLASSES.find(x=>x.id===order.vehicle_class)?.label || CLASSES.find(x=>x.id===driver?.vehicle_class)?.label || "Эконом"}</p>
+      <p><b>Класс:</b> {CLASSES.find(x=>x.id===order.vehicle_class)?.label || CLASSES.find(x=>x.id===driver?.vehicle_class)?.label || "Эконом"} · {order.trip_type==="intercity"?"Межгород":"Город"}</p>
       <p><b>📍 Откуда:</b> {order.pickup_address}</p><p><b>🏁 Куда:</b> {order.destination_address}</p>
       {Number(order.route_distance_km)>0 && <p><b>📏 Маршрут:</b> {Number(order.route_distance_km).toFixed(1)} км · ориентировочно {Math.ceil(Number(order.route_distance_km)/35*60)} мин.</p>}
       <p><b>💰 Цена:</b> {money(order.agreed_price || order.client_price || order.driver_price)}</p>
