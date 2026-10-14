@@ -159,3 +159,7 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .route-summary b{font-size:24px;color:var(--green)}
 .route-summary span{font-size:13px;color:var(--muted)}
 @media(max-width:430px){.pickup-auto-bar{gap:8px;padding:10px}.pickup-auto-icon{width:32px;height:32px;flex-basis:32px}.pickup-auto-bar .button{padding:9px 8px;font-size:11px}.pickup-auto-copy b{font-size:12px}}
+
+.saved-contact{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin:4px 0 14px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--muted);font-size:13px;text-align:left}
+.saved-contact span{flex:0 0 auto;color:var(--green);font-weight:800}
+.route-result-note{margin-top:8px}
