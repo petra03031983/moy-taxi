@@ -94,3 +94,7 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .driver-offer-card .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .driver-offer-card .button{padding:12px 8px;white-space:normal}
 @media(max-width:360px){.payment-options{grid-template-columns:1fr}}
+
+@keyframes taxiSearchPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
+.searching-pulse{animation:taxiSearchPulse 1.7s ease-in-out infinite}
+.address-suggestion:active,.payment-card:active{transform:scale(.99)}
