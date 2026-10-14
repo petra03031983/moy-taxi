@@ -10,14 +10,7 @@ const CLASSES = [
   { id: "minivan", label: "Минивэн", icon: "🚐" },
   { id: "premium", label: "Премиум", icon: "⭐" },
 ];
-const DEFAULT_RATES = {
-  economy: { rate_per_km: 40, minimum_fare: 500 },
-  comfort: { rate_per_km: 50, minimum_fare: 700 },
-  comfort_plus: { rate_per_km: 60, minimum_fare: 900 },
-  business: { rate_per_km: 80, minimum_fare: 1500 },
-  minivan: { rate_per_km: 70, minimum_fare: 1200 },
-  premium: { rate_per_km: 100, minimum_fare: 2000 },
-};
+
 const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";
 
 function routeUrl(a, b) {
@@ -31,7 +24,6 @@ export default function PassengerPage() {
   const [comment, setComment] = useState("");
   const [pickupPoint, setPickupPoint] = useState(null);
   const [destinationPoint, setDestinationPoint] = useState(null);
-  const [rates, setRates] = useState(DEFAULT_RATES);
   const [onlineClasses, setOnlineClasses] = useState(CLASSES.map(x => x.id));
   const [testMode, setTestMode] = useState(true);
   const [tripType, setTripType] = useState("city");
@@ -52,7 +44,6 @@ export default function PassengerPage() {
       if (saved?.id && saved?.client_token) setOrder(saved);
     } catch {}
     callApi("public_tariffs").then(data => {
-      if (data.vehicle_rates) setRates(data.vehicle_rates);
       setTestMode(data.test_mode !== false);
       if (Array.isArray(data.online_classes)) setOnlineClasses(data.online_classes);
     }).catch(() => setNotice("Используются временные тарифы. Проверь соединение перед заказом."));
