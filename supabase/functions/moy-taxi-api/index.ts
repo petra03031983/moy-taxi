@@ -504,4 +504,5 @@ if(a==="driver_skip_order"){
  if(error)return fail("Не удалось изменить заказ.",500);
  return reply({ok:true,order:u})
 }
+}
 return fail("Неизвестное действие.",400)}catch(e){console.error("moy-taxi-api",e);return fail("Внутренняя ошибка сервера.",500)}});
