@@ -19,10 +19,12 @@ export default function Home() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [origin, setOrigin] = useState("");
   const previousIds = useRef(new Set());
   const firstOrderLoad = useRef(true);
 
   useEffect(() => {
+    setOrigin(window.location.origin);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     const beforeInstall = (event) => { event.preventDefault(); setInstallPrompt(event); };
     window.addEventListener("beforeinstallprompt", beforeInstall);
@@ -97,6 +99,7 @@ export default function Home() {
   }
   async function chooseTab(nextTab) {
     setTab(nextTab); setNotice("");
+    if (nextTab === "profile" && driver) setForm((old) => ({ ...old, name: driver.name, car_model: driver.car_model || "", car_plate: driver.car_plate || "" }));
     if (nextTab === "history") await refreshHistory();
   }
   async function changeOnline() {
@@ -192,7 +195,7 @@ export default function Home() {
     </main>;
   }
 
-  const clientLink = typeof window !== "undefined" ? window.location.origin + "/c/" + driver.public_code : "";
+  const clientLink = origin ? origin + "/c/" + driver.public_code : "";
   const qrImage = clientLink ? "https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=" + encodeURIComponent(clientLink) : "";
   const newCount = orders.filter((o) => o.status === "new").length;
   const tripCount = orders.filter((o) => ["accepted", "arrived", "started"].includes(o.status)).length;
