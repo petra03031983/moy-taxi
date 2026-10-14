@@ -128,7 +128,8 @@ if(a==="public_tariffs"){
 }
 if(a==="create_order"){
  const code=String(p.driver_code||"").trim().toUpperCase(),name=String(p.name||"").trim().slice(0,100),ph=phone(p.phone),pickup=String(p.pickup_address||"").trim().slice(0,300),dest=String(p.destination_address||"").trim().slice(0,300),comment=String(p.comment||"").trim().slice(0,500);
- const lat=Number(p.pickup_lat),lng=Number(p.pickup_lng),destLat=Number(p.destination_lat),destLng=Number(p.destination_lng),distance=Number(p.route_distance_km);
+ const optionalNumber=(v:any)=>v===null||v===undefined||v===""?NaN:Number(v);
+ const lat=optionalNumber(p.pickup_lat),lng=optionalNumber(p.pickup_lng),destLat=optionalNumber(p.destination_lat),destLng=optionalNumber(p.destination_lng),distance=optionalNumber(p.route_distance_km);
  const tripType=p.trip_type==="intercity"?"intercity":"city";
  let cls=vehicleClass(p.vehicle_class),d:any=null,price=Number(p.client_price),driverDistance=Infinity,finalDistance=distance;
  if(!name||!ph||!pickup||!dest)return fail("Заполни имя, телефон, адрес подачи и адрес назначения.");
