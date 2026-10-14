@@ -8,4 +8,4 @@ export async function callApi(action, payload = {}) {
   if (!response.ok || !data.ok) throw new Error(data.error || "Ошибка сервера.");
   return data;
 }
-export const statusLabel = (status) => ({new:"Новый заказ",accepted:"Принят",arrived:"Водитель на месте",started:"Поездка началась",completed:"Поездка завершена",cancelled:"Отменён"}[status] || status);
+export const statusLabel = (status) => ({new:"Новый заказ",accepted:"Водитель едет к вам",arrived:"Водитель на месте",client_ready:"Пассажир выходит",started:"Поездка началась",completed:"Поездка завершена",cancelled:"Отменён"}[status] || status);
