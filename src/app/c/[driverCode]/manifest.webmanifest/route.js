@@ -16,7 +16,11 @@ export async function GET(_request, context) {
     display: "standalone",
     background_color: "#f5f7f5",
     theme_color: "#146b4b",
-    icons: [\n      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },\n      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },\n      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }\n    ]
+    icons: [
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }
+    ]
   };
   return new Response(JSON.stringify(manifest), {
     headers: {
