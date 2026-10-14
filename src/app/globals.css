@@ -61,3 +61,5 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .class-card .muted{margin:0}
 @media(min-width:520px){.class-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:380px){.class-grid{grid-template-columns:1fr}.class-card{display:grid;grid-template-columns:36px 1fr;align-items:center}.class-card .small{grid-column:2}}
+
+.field select{width:100%;border:1px solid var(--line);border-radius:13px;padding:14px;font-size:16px;background:#fbfcfb;color:var(--ink)}
