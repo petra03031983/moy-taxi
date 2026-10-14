@@ -176,7 +176,7 @@ if(a.startsWith("admin_")){
   if(error)return fail("Не удалось загрузить список водителей.",500);return reply({ok:true,drivers:data||[]});
  }
  if(a==="admin_orders"){
-  const {data,error}=await c.from("orders").select("id,status,created_at,completed_at,client_price,driver_price,agreed_price,pickup_address,destination_address,vehicle_class,route_distance_km,trip_type,clients(name,phone),drivers(name,phone)").order("created_at",{ascending:false}).limit(200);
+  const {data,error}=await c.from("orders").select("id,status,created_at,completed_at,client_price,driver_price,agreed_price,pickup_address,destination_address,vehicle_class,route_distance_km,trip_type,payment_method,clients(name,phone),drivers(name,phone)").order("created_at",{ascending:false}).limit(200);
   if(error)return fail("Не удалось загрузить заказы.",500);return reply({ok:true,orders:data||[]});
  }
  if(a==="admin_commissions"){
@@ -271,7 +271,7 @@ if(a==="create_order"){
   destination_address:dest,destination_lat:Number.isFinite(destLat)?destLat:null,destination_lng:Number.isFinite(destLng)?destLng:null,
   route_distance_km:Number.isFinite(finalDistance)&&finalDistance>0?Number(finalDistance.toFixed(2)):null,trip_type:tripType,vehicle_class:cls,
   comment:comment||null,client_token:token,status:"new",client_price:autoPrice?price:(Number.isFinite(price)&&price>0?price:null),
-  price_status:autoPrice?"accepted":"pending",agreed_price:autoPrice?price:null
+  price_status:"pending",agreed_price:null
  }).select("*").single();
  if(oe||!o)return fail("Не удалось отправить заказ.",500);
  return reply({ok:true,order:o,assigned_driver:d?pub(d):null,searching:autoPrice,test_mode:true});
@@ -318,7 +318,7 @@ if(["driver_me","driver_list","driver_history","driver_update","driver_toggle_on
  if(existing?.status==="declined")return fail("Ты уже отказался от этого заказа. Обнови список, чтобы изменить предложение, если заказ ещё доступен.");
  const {data:offer,error:offerError}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price,status:"pending",responded_at:null,updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"}).select("*").single();
  if(offerError||!offer)return fail("Не удалось отправить предложение цены.",500);
- await c.from("orders").update({driver_price:price,price_status:"driver_offered"}).eq("id",id).eq("status","new");
+ if(o.driver_id)await c.from("orders").update({driver_price:price,price_status:"driver_offered"}).eq("id",id).eq("status","new");
  return reply({ok:true,offer,order:o});
 }
 if(a==="driver_skip_order"){
