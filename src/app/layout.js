@@ -1,7 +1,7 @@
 import "./globals.css";
 export const metadata = {
-  title: "Мой Такси — панель водителя",
-  description: "Личный кабинет водителя: QR-код, заказы и история поездок.",
+  title: "Мой Такси — такси пассажиру и водителю",
+  description: "Единое приложение заказа такси: маршрут, цены, выбор водителя и управление поездками.",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg", apple: "/icon.svg" },
   applicationName: "Мой Такси",
