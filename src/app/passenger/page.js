@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { callApi, statusLabel } from "../api";
+import RouteMap from "./RouteMap";
 
 const CLASSES = [
   { id: "economy", label: "Эконом", icon: "🚕" },
@@ -134,6 +135,7 @@ export default function PassengerPage() {
       setRoute({
         distanceKm: Number(result.distance_km),
         durationMin: Number(result.duration_minutes),
+        geometry: result.route_geometry || [],
         estimated_prices: result.estimated_prices,
       });
       if (Array.isArray(result.online_classes)) setOnlineClasses(result.online_classes);
@@ -216,6 +218,7 @@ export default function PassengerPage() {
     <section className="panel hero"><div className="hero-icon">🚕</div><div className="eyebrow">ЗАКАЗ ТАКСИ</div><h1>Куда едем?</h1><p className="muted">Система рассчитывает автомобильный маршрут и показывает ориентировочную цену до отправки заказа.</p></section>
     {error && <div className="error" role="alert">{error}</div>}
     {notice && <div className="success" role="status">{notice}</div>}
+    <RouteMap pickupPoint={pickupPoint} destinationPoint={destinationPoint} routeGeometry={route?.geometry} />
     {!showBooking ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div><h2>{order.status === "new" ? "Заказ отправлен" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : statusLabel(order.status)}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
