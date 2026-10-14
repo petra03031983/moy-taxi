@@ -105,14 +105,14 @@ export default function OwnerAdmin() {
     finally { setBusy(false); }
   }
 
-  async function setTestingMode(nextValue) {
+  async function setTestingMode() {
     setBusy(true); setError(""); setNotice("");
     try {
-      const result = await callApi("admin_set_test_mode", { admin_token: token, test_mode: nextValue });
+      const result = await callApi("admin_set_test_mode", { admin_token: token, test_mode: true });
       setTestMode(result.test_mode);
       await loadAll(token);
-      setNotice(result.test_mode ? "Тестовый режим включён: комиссия с поездок не начисляется." : "Тестовый режим выключен. Внимание: кошелёк и онлайн-платежи ещё не подключены.");
-    } catch (e) { setError(e.message || "Не удалось изменить режим."); }
+      setNotice("Тестовый режим включён: комиссия с поездок не начисляется.");
+    } catch (e) { setError(e.message || "Не удалось включить режим."); }
     finally { setBusy(false); }
   }
 
@@ -176,7 +176,7 @@ export default function OwnerAdmin() {
     {tab === "overview" && <section className="panel">
       <h2>Режим сервиса</h2>
       <div className={testMode ? "success" : "error"}><b>{testMode ? "ТЕСТОВЫЙ РЕЖИМ ВКЛЮЧЁН" : "РАБОЧИЙ РЕЖИМ"}</b><p style={{margin:"6px 0 0"}}>{testMode ? "Комиссия не начисляется. Тарифы используются только для проверки заказов." : "Комиссия начнёт учитываться, но электронный кошелёк и автоматическое списание ещё не подключены."}</p></div>
-      <button type="button" className={testMode ? "button secondary" : "button primary"} disabled={busy} onClick={()=>setTestingMode(!testMode)}>{testMode ? "Выключить тестовый режим" : "Включить тестовый режим"}</button>
+      <button type="button" className={testMode ? "button secondary" : "button primary"} disabled={busy || testMode} onClick={setTestingMode}>{testMode ? "Тестовый режим включён — списания выключены" : "Вернуть бесплатный тестовый режим"}</button>
       <div className="divider-owner" />
       <h2>Тарифы по классам автомобилей</h2>
       <p className="muted">Цена рассчитывается по автомобильному маршруту: расстояние × ставка за километр, но не ниже минимального тарифа. Значения ниже пока тестовые — перед запуском скорректируй их под реальную цену в своём городе.</p>
