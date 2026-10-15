@@ -59,6 +59,7 @@ export default function OwnerAdmin() {
       setInstallPrompt(event);
     };
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     const saved = localStorage.getItem("moyTaxiAdminSession");
     if (saved) {
       setToken(saved);
