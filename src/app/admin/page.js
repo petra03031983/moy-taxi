@@ -219,7 +219,7 @@ export default function OwnerAdmin() {
       <header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Кабинет владельца</span></header>
       <section className="hero panel"><div className="hero-icon">📊</div><p className="eyebrow">УПРАВЛЕНИЕ СЕРВИСОМ</p><h1>Кабинет владельца</h1><p className="muted">Статистика водителей и клиентов, заказы и учёт комиссии.</p></section>
       {ownerInstallPanel}
-      {error && <div className="error" role="alert">{error}</div>
+      {error && <div className="error" role="alert">{error}</div>}
       <section className="panel auth-panel"><form onSubmit={login}>
         <div className="field"><label htmlFor="ownerPassword">Пароль владельца</label><input id="ownerPassword" type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Введите пароль кабинета" /></div>
         <button className="button primary" disabled={busy}>{busy ? "Входим…" : "Открыть кабинет"}</button>
