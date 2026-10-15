@@ -1,20 +1,20 @@
 export async function GET() {
   const body = {
-    id: "/admin",
-    name: "Мой Такси — кабинет владельца",
-    short_name: "Кабинет владельца",
-    description: "Статистика, водители, заказы и настройки сервиса Мой Такси.",
+    id: "/admin-owner",
+    name: "Кабинет владельца — Мой Такси",
+    short_name: "Владелец",
+    description: "Отдельная панель управления сервисом Мой Такси.",
     start_url: "/admin",
-    scope: "/",
+    scope: "/admin",
     display: "standalone",
-    background_color: "#f5f7f5",
-    theme_color: "#146b4b",
+    background_color: "#eef3f8",
+    theme_color: "#183b63",
     orientation: "portrait-primary",
     prefer_related_applications: false,
     icons: [
+      { src: "/owner-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" },
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" }
     ]
   };
   return new Response(JSON.stringify(body), {
