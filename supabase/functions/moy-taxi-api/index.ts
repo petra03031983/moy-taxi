@@ -287,18 +287,45 @@ if(a.startsWith("admin_")){
  if(a==="admin_test_2gis"){
   const key=String(settings.dgis_api_key||Deno.env.get("DGIS_API_KEY")||"").trim();
   if(!key)return fail("Сначала сохрани API-ключ 2ГИС.");
+  const checks:any={suggest:{ok:false,detail:"не проверен"},geocoder:{ok:false,detail:"не проверен"},routing:{ok:false,detail:"не проверен"}};
   try{
    const params=new URLSearchParams({q:"Астана",suggest_type:"object",fields:"items.point,items.full_address_name",locale:"ru_KZ",page_size:"3",key});
    const response=await fetch("https://catalog.api.2gis.com/3.0/suggests?"+params.toString(),{headers:{"Accept":"application/json"}});
-   if(!response.ok){
-    const body=await response.text().catch(()=> "");
-    console.error("2GIS test failed",response.status,body.slice(0,300));
-    return fail(response.status===401||response.status===403?"2ГИС отклонил ключ. Проверь правильность ключа и доступ к Suggest/Geocoder API.":"2ГИС временно не ответил.",422);
+   const data=await response.json().catch(()=>({}));
+   const items=data?.result?.items||[];
+   if(response.ok&&(!data?.meta?.code||Number(data.meta.code)===200)&&items.length){
+    checks.suggest={ok:true,detail:"работает ("+items.length+" подсказки)"};
+   }else{
+    checks.suggest={ok:false,detail:(response.status===401||response.status===403)?"ключ отклонён (Suggest API)":("ошибка "+String(data?.meta?.error?.message||data?.message||response.status))};
    }
-   const data=await response.json(),items=data?.result?.items||[];
-   if(!items.length)return fail("Ключ отвечает, но 2ГИС не вернул тестовые результаты поиска.",422);
-   return reply({ok:true,configured:true,search_works:true,results_count:items.length,message:"Поиск 2ГИС работает. Проверь маршрут на странице пассажира; для маршрута у ключа должен быть доступ к Routing API."});
-  }catch(e){return fail(e instanceof Error?e.message:"Проверить 2ГИС не удалось.",422)}
+  }catch(e){checks.suggest={ok:false,detail:"нет ответа ("+(e instanceof Error?e.message:"ошибка сети")+")"}}
+  let fromPoint:any=null,toPoint:any=null;
+  try{
+   fromPoint=await geocodePoint("Астана",null,key);
+   checks.geocoder={ok:true,detail:"работает"};
+  }catch(e){
+   checks.geocoder={ok:false,detail:e instanceof Error?e.message:"ошибка геокодера"};
+  }
+  if(fromPoint){
+   try{
+    toPoint=await geocodePoint("Байтерек, Астана",fromPoint,key);
+    if(km(fromPoint.lat,fromPoint.lng,toPoint.lat,toPoint.lng)<0.15){
+     toPoint=await geocodePoint("Хан Шатыр, Астана",fromPoint,key);
+    }
+    const route=await roadDistance(fromPoint,toPoint,key);
+    checks.routing={ok:true,detail:"работает ("+route.distanceKm.toFixed(1)+" км, около "+route.durationMin+" мин.)"};
+   }catch(e){
+    checks.routing={ok:false,detail:e instanceof Error?e.message:"ошибка маршрутизации"};
+   }
+  }else{
+   checks.routing={ok:false,detail:"не проверен: сначала должен ответить Geocoder API"};
+  }
+  const message="2ГИС — результаты проверки:\n"+
+   "Поиск адресов (Suggest): "+(checks.suggest.ok?"✅ ":"❌ ")+checks.suggest.detail+"\n"+
+   "Координаты адресов (Geocoder): "+(checks.geocoder.ok?"✅ ":"❌ ")+checks.geocoder.detail+"\n"+
+   "Автомобильный маршрут (Routing): "+(checks.routing.ok?"✅ ":"❌ ")+checks.routing.detail;
+  const allOk=checks.suggest.ok&&checks.geocoder.ok&&checks.routing.ok;
+  return reply({ok:true,configured:true,search_works:checks.suggest.ok,geocoder_works:checks.geocoder.ok,routing_works:checks.routing.ok,checks,message:allOk?message+"\nВсе три сервиса отвечают. Теперь можно проверять цены на странице пассажира.":message+"\nИсправь доступ к сервису, отмеченному крестиком, в кабинете 2ГИС."});
  }
  if(a==="admin_update_commission_percent"){
   const percent=Number(p.commission_percent);if(!Number.isFinite(percent)||percent<0||percent>30)return fail("Комиссия должна быть от 0 до 30 процентов.");
