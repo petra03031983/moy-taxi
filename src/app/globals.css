@@ -601,3 +601,29 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
     font-size:16px;
   }
 }
+
+/* Driver demand and statistics tabs — scoped to the driver dashboard only. */
+.driver-demand-status{display:grid;grid-template-columns:10px minmax(0,1fr) auto;align-items:start;gap:10px;margin:14px 0;padding:13px;border:1px solid #e5ebe6;border-radius:15px;background:#f8faf8}
+.driver-demand-indicator{width:10px;height:10px;margin-top:4px;border-radius:50%}
+.driver-demand-indicator.online{background:#22a06b;box-shadow:0 0 0 4px #22a06b20}
+.driver-demand-indicator.offline{background:#ee727e;box-shadow:0 0 0 4px #ee727e20}
+.driver-demand-status-copy{min-width:0}
+.driver-demand-status-copy b{display:block;font-size:13px}
+.driver-demand-status-copy .muted{margin:5px 0 0;line-height:1.4}
+.driver-demand-toggle{width:auto;min-height:38px;padding:9px 11px;font-size:11px;white-space:nowrap}
+.driver-demand-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+.driver-demand-stat{display:flex;flex-direction:column;gap:7px;min-width:0;padding:12px 10px;border:1px solid #e6ece7;border-radius:14px;background:#fff}
+.driver-demand-stat span,.driver-stat-card span,.driver-stat-total span{font-size:11px;line-height:1.3;color:var(--muted)}
+.driver-demand-stat strong{font-size:22px;line-height:1.15;overflow-wrap:anywhere}
+.driver-demand-order{margin:9px 0;padding:12px;border:1px solid #e3eae5;border-radius:14px;background:#fff}
+.driver-demand-order-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.driver-demand-order-top strong{font-size:20px}
+.driver-demand-order-top span{font-size:12px;color:var(--muted)}
+.driver-demand-order p{margin:6px 0;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.driver-demand-order .button{min-height:40px;margin-top:9px;padding:9px 12px;font-size:12px}
+.driver-stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0}
+.driver-stat-card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:14px;border:1px solid #e5ebe6;border-radius:15px;background:#fff}
+.driver-stat-card strong{font-size:clamp(19px,5vw,25px);line-height:1.1;letter-spacing:-.4px;overflow-wrap:anywhere}
+.driver-stat-total{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px;padding:14px;border-radius:14px;background:#f0f6f1}
+.driver-stat-total strong{font-size:20px;line-height:1.2;text-align:right;overflow-wrap:anywhere}
+@media(max-width:380px){.driver-demand-status{grid-template-columns:10px minmax(0,1fr);}.driver-demand-toggle{grid-column:2;justify-self:start}.driver-demand-metrics{gap:5px}.driver-demand-stat{padding:10px 7px}.driver-demand-stat span{font-size:10px}.driver-demand-stat strong{font-size:19px}.driver-stat-total{align-items:flex-start;flex-direction:column}.driver-stat-total strong{text-align:left}}
