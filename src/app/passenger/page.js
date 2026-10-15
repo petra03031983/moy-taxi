@@ -73,6 +73,12 @@ export default function PassengerPage() {
   }, []);
 
   useEffect(() => {
+    if(name.trim() && phone.trim() && clientPhoto) {
+      try { localStorage.setItem("moyTaxiClientProfile", JSON.stringify({name, phone, photo_url: clientPhoto})); } catch {}
+    }
+  }, [name, phone, clientPhoto]);
+
+  useEffect(() => {
     if (pickup.trim().length < 3 || pickupPoint || pickup === "Моё местоположение") { setPickupSuggestions([]); return; }
     let active = true;
     const timer = setTimeout(() => {
