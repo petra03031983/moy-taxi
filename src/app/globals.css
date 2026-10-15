@@ -684,3 +684,9 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 @media(min-width:520px){.welcome-shell{padding-top:22px;gap:15px}.welcome-visual{height:320px}.welcome-role-card{min-height:91px;padding:14px}.welcome-role-icon{width:44px;height:44px;flex-basis:44px}.welcome-role-copy b{font-size:15px}.welcome-role-copy small{font-size:11px}}
 @media(max-width:380px){.welcome-shell{padding:13px 12px max(16px,env(safe-area-inset-bottom));gap:10px}.welcome-header{gap:9px}.welcome-brand-icon{width:49px;height:49px;flex-basis:49px}.welcome-brand-title{font-size:27px}.welcome-brand-subtitle{font-size:8px;letter-spacing:.35px}.welcome-visual{height:230px;min-height:230px}.welcome-taxi-brand{bottom:9px;left:23%;font-size:9px}.welcome-cta{min-height:52px;font-size:18px}.welcome-role-card{gap:6px;padding:9px 7px;min-height:75px}.welcome-role-icon{width:32px;height:32px;flex-basis:32px;font-size:18px}.welcome-role-copy b{font-size:11px}.welcome-role-copy small{font-size:9px}.welcome-role-arrow{font-size:20px}.welcome-language-picker button{padding:7px 9px;font-size:11px}}
 @media(prefers-reduced-motion:reduce){.welcome-cta,.welcome-role-card{transition:none}}
+
+
+/* Use the generated photorealistic Astana taxi scene instead of the placeholder vector illustration. */
+.welcome-photo-art{position:absolute;inset:0;z-index:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center center}
+.welcome-visual:after{content:"";position:absolute;z-index:1;inset:48% 0 0;background:linear-gradient(180deg,transparent 0%,rgba(2,23,39,.34) 100%);pointer-events:none}
+.welcome-taxi-brand{z-index:3;left:8%;bottom:10px}
