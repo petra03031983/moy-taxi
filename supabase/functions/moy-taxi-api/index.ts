@@ -455,9 +455,9 @@ if(a==="register_driver"){
  if(error||!d)return fail("Не удалось создать аккаунт.",500);
  const {error:filesError}=await c.from("driver_verification_files").insert({driver_id:d.id,document_photos:docs,car_photos:{...carPhotos,cleanliness_confirmed:true},agreement_version:"driver-terms-2026-10-v1",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()});
  if(filesError){await c.from("drivers").delete().eq("id",d.id);return fail("Не удалось сохранить документы. Попробуй ещё раз.",500)}
- return reply({ok:true,driver:{...pub(d),verification_note:""},session_token:await newSession(c,d.id)});
+ return reply({ok:true,driver:{...pub(d),verification_note:"",verification_files_submitted:true},session_token:await newSession(c,d.id)});
 }
-if(a==="login_driver"){const ph=phone(p.phone),pw=String(p.password||"");const {data:d,error}=await c.from("drivers").select("*").eq("phone",ph).maybeSingle();if(error)return fail("Не удалось выполнить вход.",500);if(!d||!equal(await passwordHash(pw,d.password_salt),d.password_hash))return fail("Неверный номер телефона или пароль.",401);return reply({ok:true,driver:pub(d),session_token:await newSession(c,d.id)})}
+if(a==="login_driver"){const ph=phone(p.phone),pw=String(p.password||"");const {data:d,error}=await c.from("drivers").select("*").eq("phone",ph).maybeSingle();if(error)return fail("Не удалось выполнить вход.",500);if(!d||!equal(await passwordHash(pw,d.password_salt),d.password_hash))return fail("Неверный номер телефона или пароль.",401);const {data:fileRow}=await c.from("driver_verification_files").select("driver_id").eq("driver_id",d.id).maybeSingle();return reply({ok:true,driver:{...pub(d),verification_note:d.verification_note||"",verification_files_submitted:Boolean(fileRow)},session_token:await newSession(c,d.id)})}
 if(a==="availability"){const code=String(p.driver_code||"").trim().toUpperCase();const {data:d,error}=await c.from("drivers").select("*").eq("public_code",code).maybeSingle();if(error||!d)return fail("Водитель не найден.",404);return reply({ok:true,driver:pub(d)})}
 if(a==="address_suggest"){
  const query=String(p.query||"").trim();
@@ -639,7 +639,7 @@ if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","
  if(filesError)return fail("Не удалось сохранить документы. Попробуй ещё раз.",500);
  const {data:u,error}=await c.from("drivers").update({name:updatedName,car_model:updatedCar,car_plate:updatedPlate,car_color:updatedColor,vehicle_class:updatedClass,verification_status:"pending",verification_note:null,documents_verified:false,photo_control_status:"pending",photo_control_submitted_at:now,legal_consent_at:now,legal_consent_version:"driver-terms-2026-10-v1",is_online:false,updated_at:now}).eq("id",d.id).select("*").single();
  if(error||!u)return fail("Не удалось отправить данные на проверку.",500);
- return reply({ok:true,driver:{...pub(u),verification_note:u.verification_note||""},message:"Документы и фотографии отправлены владельцу на проверку."});
+ return reply({ok:true,driver:{...pub(u),verification_note:u.verification_note||"",verification_files_submitted:true},message:"Документы и фотографии отправлены владельцу на проверку."});
 }
 if(a==="driver_submit_photo_control"){
  if(d.verification_status!=="approved"||!d.documents_verified)return fail("Сначала дождись подтверждения документов владельцем.");
@@ -660,7 +660,9 @@ if(a==="driver_submit_photo_control"){
 if(a==="driver_me"){
  const {data:ratingRows}=await c.from("driver_ratings").select("stars").eq("driver_id",d.id).limit(10000);
  const scores=(ratingRows||[]).map((x:any)=>Number(x.stars)).filter((x:number)=>x>=1&&x<=5);
- return reply({ok:true,driver:{...pub(d),verification_note:d.verification_note||"",rating_average:scores.length?Number((scores.reduce((a:number,b:number)=>a+b,0)/scores.length).toFixed(2)):null,rating_count:scores.length}});
+ const {data:verificationFiles,error:verificationFilesError}=await c.from("driver_verification_files").select("driver_id").eq("driver_id",d.id).maybeSingle();
+ if(verificationFilesError)return fail("Не удалось проверить файлы водительской регистрации.",500);
+ return reply({ok:true,driver:{...pub(d),verification_note:d.verification_note||"",verification_files_submitted:Boolean(verificationFiles),rating_average:scores.length?Number((scores.reduce((a:number,b:number)=>a+b,0)/scores.length).toFixed(2)):null,rating_count:scores.length}});
 }
 if(a==="driver_wallet"){
  const {data:settingsRow}=await c.from("platform_settings").select("test_mode,minimum_wallet_balance").eq("id",true).maybeSingle();
