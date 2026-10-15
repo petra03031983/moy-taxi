@@ -472,9 +472,7 @@ if(a==="create_order"){
   const rateRow=(settingsRow.vehicle_rates||{})[cls];const rate=Number(rateRow?.rate_per_km||0),minimum=Number(rateRow?.minimum_fare||0);
   if(rate<1)return fail("Для этого класса пока не настроен тариф.");
   price=Math.max(minimum,Math.ceil(serverDistance*rate/10)*10);
-  const {data:available,error:de}=await c.from("drivers").select("id").eq("is_online",true).eq("vehicle_class",cls).limit(500);
-  if(de)return fail("Не удалось найти свободных водителей.",500);
-  if(!available?.length)return fail("Сейчас пока нет водителей класса «"+cls+"» на линии. Попробуй другой класс или немного позже.",409);
+  // Accept the request even when no driver is online; it stays in the open-order queue for this class.
   // No driver is assigned yet. Every online driver in the selected class can review the request and send an offer.
   d=null;
  }else{
