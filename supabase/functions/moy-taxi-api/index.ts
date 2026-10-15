@@ -12,7 +12,7 @@ function km(a:number,b:number,c:number,d:number){const R=6371,r=(x:number)=>x*Ma
 async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null,key:string){
  const clean=String(address||"").trim();
  if(!clean)throw new Error("Введи конечный адрес.");
- if(/^(мо[её]\\s+)?местоположение$/i.test(clean)){
+ if(/^(мо[её]\s+)?местоположение$/i.test(clean)){
   if(nearPoint)return nearPoint;
   throw new Error("Не удалось получить GPS клиента.");
  }
