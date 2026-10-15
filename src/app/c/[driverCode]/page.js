@@ -20,6 +20,7 @@ export default function ClientOrder() {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [clientPhoto, setClientPhoto] = useState("");
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
   const [comment, setComment] = useState("");
@@ -98,6 +99,7 @@ export default function ClientOrder() {
       const profile = JSON.parse(localStorage.getItem("moyTaxiClientProfile") || "{}");
       setName(profile.name || "");
       setPhone(profile.phone || "");
+      setClientPhoto(profile.photo_url || "");
       const saved = JSON.parse(localStorage.getItem(orderKey) || "null");
       if (saved?.id && saved?.client_token) setOrder(saved);
       else detectPickupLocation();
@@ -161,20 +163,35 @@ export default function ClientOrder() {
   // Straight-line distance is adjusted to approximate city-road travel.
   const etaMinutes = targetDistance == null ? null : Math.max(1, Math.ceil(targetDistance * 1.3 / 0.45));
 
+  async function captureClientPhoto(event) {
+    const file=event.target.files?.[0];if(!file)return;
+    try{
+      const data=await new Promise((resolve,reject)=>{
+        if(file.size>12*1024*1024){reject(new Error("Фото слишком большое. Выбери другое."));return}
+        const reader=new FileReader();reader.onerror=()=>reject(new Error("Не удалось прочитать фото."));
+        reader.onload=()=>{const img=new Image();img.onerror=()=>reject(new Error("Не удалось открыть фото."));img.onload=()=>{try{const scale=Math.min(1,420/Math.max(img.width,img.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);const value=canvas.toDataURL("image/jpeg",.75);value.length>320000?reject(new Error("Фото слишком большое. Выбери другое.")):resolve(value)}catch{reject(new Error("Не удалось обработать фото."))}};img.src=String(reader.result||"")};
+        reader.readAsDataURL(file);
+      });
+      setClientPhoto(data);setError("");
+    }catch(e){setError(e.message||"Не удалось обработать фото клиента.");}
+    finally{event.target.value=""}
+  }
+
   async function submit(event) {
     event.preventDefault();
+    if(!clientPhoto){setError("Добавь фотографию клиента перед заказом.");return;}
     setBusy(true); setError(""); setNotice("");
     try {
       setNotice("Ищем точку назначения на карте…");
       const destinationPoint = await geocodeDestination(destination, pickupPoint);
       const result = await callApi("create_order", {
-        driver_code: driverCode, name, phone,
+        driver_code: driverCode, name, phone, client_photo_url: clientPhoto,
         pickup_address: pickup, destination_address: destination, comment,
         pickup_lat: pickupPoint?.lat ?? null, pickup_lng: pickupPoint?.lng ?? null,
         destination_lat: destinationPoint.lat, destination_lng: destinationPoint.lng,
         client_price: price ? Number(price) : null,
       });
-      localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
+      localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone, photo_url: clientPhoto }));
       const saved = {
         ...result.order,
         pickup_address: pickup, destination_address: destination,
@@ -295,6 +312,7 @@ export default function ClientOrder() {
       <form onSubmit={submit}>
         <div className="field"><label htmlFor="client-name">Ваше имя</label><input id="client-name" required maxLength={100} value={name} onChange={e => setName(e.target.value)} placeholder="Как вас зовут?" autoComplete="name" /></div>
         <div className="field"><label htmlFor="client-phone">Номер телефона</label><input id="client-phone" required type="tel" maxLength={40} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+7 777 000 00 00" autoComplete="tel" /></div>
+         <div className="field"><label htmlFor="client-photo">Фотография клиента</label>{clientPhoto&&<img src={clientPhoto} alt="Фото клиента" style={{width:100,height:100,objectFit:"cover",borderRadius:16,marginBottom:7}}/>}<input id="client-photo" type="file" accept="image/*" capture="user" required={!clientPhoto} onChange={captureClientPhoto}/><p className="muted small">Фото сохранится в профиле и не придётся загружать его заново на этом телефоне.</p></div>
         <div className="field"><label htmlFor="pickup-address">Откуда забрать</label>
           <p className="muted small">{locationStatus === "locating" ? "📍 Определяем ваше местоположение…" : locationStatus === "ready" ? "✅ Точка подачи определена автоматически по GPS." : "GPS не определился. Введите адрес подачи вручную или нажмите кнопку ниже."}</p>
           <input id="pickup-address" required maxLength={300} value={pickup} onChange={e => setPickup(e.target.value)} placeholder={locationStatus === "ready" ? "Моё местоположение" : "Улица, дом, ориентир"} />
