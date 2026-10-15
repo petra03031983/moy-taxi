@@ -1,9 +1,9 @@
 {
-  "id": "/",
+  "id": "/?app=passenger-driver",
   "name": "Мой Такси — пассажир и водитель",
   "short_name": "Мой Такси",
   "description": "Заказ такси для пассажиров и приложение для водителей.",
-  "start_url": "/",
+  "start_url": "/?app=passenger-driver",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f5f7f5",
