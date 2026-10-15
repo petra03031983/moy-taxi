@@ -208,7 +208,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const totalNetEarnings=history.reduce((sum,o)=>{const fare=Number(o.agreed_price||o.driver_price||o.client_price||0),commission=Number(o.platform_commission_amount||0),net=Number(o.driver_net_amount??(fare-commission));return sum+(Number.isFinite(net)?net:0)},0);
  const demandOrders=orders.filter(o=>o.status==="new");
  const gpsFresh=Boolean(driver.location_updated_at&&Date.now()-Date.parse(driver.location_updated_at)<=5*60*1000&&driver.current_lat!=null&&driver.current_lng!=null);
- const visibleOrders=tab===""active"?orders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):orders;
+ const visibleOrders=tab==="active"?orders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):orders;
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
  const openDriverSettings=()=>{setTab("settings");setDriverMenuOpen(false)};
  const openDriverSupport=()=>{setTab("support");setDriverMenuOpen(false)};
