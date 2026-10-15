@@ -35,6 +35,10 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 
 /* Owner dashboard */
 .owner-dashboard{max-width:1000px}
+.owner-install-guide{border:1px solid #cbd8e8;background:linear-gradient(135deg,#f0f5fb 0%,#fff 85%);box-shadow:0 5px 24px #183b630c}
+.owner-install-title{color:#183b63;font-size:16px;font-weight:850;margin-bottom:8px}
+.owner-install-guide .button{border-color:#cbd8e8;color:#183b63;background:#f8fbff}
+.owner-install-help{margin:10px 0 0}
 .owner-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
 .owner-balance{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;background:#fff;border:1px solid #e6ece7;border-radius:18px;padding:16px;margin-bottom:14px}
 .owner-balance>div{display:flex;flex-direction:column;gap:6px;min-width:0}
