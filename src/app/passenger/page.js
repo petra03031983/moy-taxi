@@ -38,6 +38,7 @@ export default function PassengerPage() {
   const [testMode, setTestMode] = useState(true);
   const [tripType, setTripType] = useState("city");
   const [selectedClass, setSelectedClass] = useState("economy");
+  const [priceAdjustment, setPriceAdjustment] = useState(0);
   const [route, setRoute] = useState(null);
   const [order, setOrder] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -137,7 +138,12 @@ export default function PassengerPage() {
     return () => { active = false; clearInterval(timer); };
   }, [order?.id, order?.client_token]);
 
-  const quote = route?.estimated_prices?.[selectedClass] ?? null;
+  const baseQuote = route?.estimated_prices?.[selectedClass] ?? null;
+  const quote = baseQuote == null ? null : Math.max(50, Number(baseQuote) + priceAdjustment);
+  function changeOfferPrice(delta) {
+    if (baseQuote == null) return;
+    setPriceAdjustment(current => Math.max(50, Number(baseQuote) + current + delta) - Number(baseQuote));
+  }
   const driver = order?.drivers || order?.assigned_driver || null;
   const showBooking = !order || order.status === "cancelled";
 
@@ -163,6 +169,7 @@ export default function PassengerPage() {
       }
       setPickupPoint({ lat: Number(a.lat), lng: Number(a.lng) });
       setDestinationPoint({ lat: Number(b.lat), lng: Number(b.lng) });
+      setPriceAdjustment(0);
       setRoute({
         distanceKm: Number(result.distance_km),
         durationMin: Number(result.duration_minutes),
@@ -287,7 +294,7 @@ export default function PassengerPage() {
       <p><b>📍 Откуда:</b> {order.pickup_address}</p><p><b>🏁 Куда:</b> {order.destination_address}</p>
       {Number(order.route_distance_km)>0 && <p><b>📏 Маршрут:</b> {Number(order.route_distance_km).toFixed(1)} км · ориентировочно {Math.ceil(Number(order.route_distance_km)/35*60)} мин.</p>}
       <p><b>💰 Цена:</b> {money(order.agreed_price || order.client_price || order.driver_price)}</p>
-      <p><b>Оплата:</b> {order.payment_method==="kaspi_gold"?"Kaspi Gold — перевод водителю":"Наличные водителю"}</p>
+      <p><b>Оплата:</b> {order.payment_method==="kaspi_gold"?"Kaspi перевод":"Наличные"}</p>
       {driver?.name && <><p><b>Водитель:</b> {driver.name}</p><p><b>Автомобиль:</b> {driver.car_model || "—"} · {driver.car_color || "цвет не указан"} · {driver.car_plate || "номер не указан"}</p><p><b>Телефон:</b> <a href={"tel:"+driver.phone}>{driver.phone}</a></p></>}
       {order.status === "arrived" && <div className="searching-panel"><h3>Водитель на месте</h3><p className="muted">Водитель приехал за тобой. Нажми кнопку, когда выходишь к машине.</p><button className="button primary" disabled={busy} onClick={markClientReady}>👋 Я выхожу</button></div>}
       {order.status === "client_ready" && <div className="success"><b>Ты сообщил водителю, что выходишь.</b><p className="small" style={{margin:"5px 0 0"}}>Садись в автомобиль; водитель начнёт поездку после посадки.</p></div>}
@@ -306,13 +313,22 @@ export default function PassengerPage() {
           <div className="pickup-auto-copy"><b>{locating ? "Определяем ваше местоположение…" : pickupPoint ? "Место подачи определено" : "Нужно разрешить GPS"}</b><span>{pickupPoint ? (pickup && pickup !== "Моё местоположение" ? pickup : "Точка подачи определена автоматически по GPS") : "Разреши доступ к геопозиции — адрес подачи вводить не нужно."}</span></div>
           {!pickupPoint && <button type="button" className="button secondary" onClick={detectPickup} disabled={locating}>Разрешить GPS</button>}
         </div>
-        <div className="field address-field"><label>Куда едем?</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setRoute(null);setDestinationPoint(null);setError("");setSuggestionError("");}} onKeyDown={e=>{if(e.key==="Enter"&&destinationSuggestions.length){e.preventDefault();const item=destinationSuggestions[0];setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setRoute(null);}}} placeholder="Например: аэропорт, улица, дом или ТРЦ" autoComplete="off" />{suggestionLoading && <p className="muted small">🔎 Ищем адреса…</p>}{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setRoute(null);setError("");}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}{suggestionError && !suggestionLoading && <p className="muted small address-search-help">{suggestionError}</p>}
+        <div className="field address-field"><label>Куда едем?</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setPriceAdjustment(0);setRoute(null);setDestinationPoint(null);setError("");setSuggestionError("");}} onKeyDown={e=>{if(e.key==="Enter"&&destinationSuggestions.length){e.preventDefault();const item=destinationSuggestions[0];setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setPriceAdjustment(0);setRoute(null);}}} placeholder="Например: аэропорт, улица, дом или ТРЦ" autoComplete="off" />{suggestionLoading && <p className="muted small">🔎 Ищем адреса…</p>}{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setPriceAdjustment(0);setRoute(null);setError("");}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}{suggestionError && !suggestionLoading && <p className="muted small address-search-help">{suggestionError}</p>}
           {busy && !route && <p className="muted small">📏 Рассчитываем маршрут и цены…</p>}
           {route && <p className="route-result-note">Маршрут {route.distanceKm.toFixed(1)} км · около {route.durationMin} мин. Цены рассчитаны автоматически.</p>}
         </div>
-        {route && <div className="field"><label>Выбери класс и цену</label><div className="class-grid class-list">{CLASSES.map(item=>{const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-option selected":"class-option"} onClick={()=>setSelectedClass(item.id)} aria-pressed={selectedClass===item.id} disabled={!estimated}><span className="class-icon">{item.icon}</span><b className="class-name">{item.label}</b><span className="class-price">{estimated?money(estimated):"—"}</span></button>})}</div></div>}
+        {route && <div className="field"><label>Выбери класс и цену</label><div className="class-grid class-list">{CLASSES.map(item=>{const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-option selected":"class-option"} onClick={()=>{setSelectedClass(item.id);setPriceAdjustment(0);}} aria-pressed={selectedClass===item.id} disabled={!estimated}><span className="class-icon">{item.icon}</span><b className="class-name">{item.label}</b><span className="class-price">{estimated?money(estimated):"—"}</span></button>})}</div></div>}
+        {route && quote != null && <section className="client-price-control" aria-label="Настройка предложенной цены">
+          <div className="client-price-heading"><b>Твоя цена</b><span>Изменение по 50 ₸</span></div>
+          <div className="client-price-stepper">
+            <button type="button" aria-label="Уменьшить цену на 50 тенге" onClick={()=>changeOfferPrice(-50)} disabled={busy || quote <= 50}>−</button>
+            <strong>{money(quote)}</strong>
+            <button type="button" aria-label="Увеличить цену на 50 тенге" onClick={()=>changeOfferPrice(50)} disabled={busy}>+</button>
+          </div>
+          <p>Предложи свою цену. Водитель сможет принять её или предложить встречную.</p>
+        </section>}
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
-        {route && <div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi Gold</b></button></div></div>}
+        {route && <div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi перевод</b></button></div></div>}
         <button className="button primary submit-order" type="button" onClick={submitOrder} disabled={busy || !name.trim() || !phone.trim() || !pickupPoint || !destinationPoint || !route || !onlineClasses.includes(selectedClass)}>{busy ? "Подождите…" : route ? "🚕 Заказать такси · "+money(quote) : "Введите адрес назначения"}</button>
       </form>
       {route && destinationPoint && <div className="quote-panel"><div className="route-summary"><b>{route.distanceKm.toFixed(1)} км</b><span>· около {route.durationMin} мин.</span></div><p className="muted small">Цена примерная и может измениться, если водитель предложит другую.</p><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">🗺️ Посмотреть маршрут</a></div>}
