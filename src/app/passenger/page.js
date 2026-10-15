@@ -17,6 +17,18 @@ const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFract
 function routeUrl(a, b) {
   return "https://2gis.kz/directions/points/" + a.lng + "," + a.lat + "|" + b.lng + "," + b.lat;
 }
+
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const values = [lat1, lng1, lat2, lng2];
+  if (values.some(value => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)))) return null;
+  const [aLat, aLng, bLat, bLng] = values.map(Number);
+  const rad = value => value * Math.PI / 180;
+  const dLat = rad(bLat - aLat), dLng = rad(bLng - aLng);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
+  const distance = 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, a))));
+  return Number.isFinite(distance) && distance <= 300 ? distance : null;
+}
 export default function PassengerPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -145,6 +157,24 @@ export default function PassengerPage() {
     setPriceAdjustment(current => Math.max(50, Number(baseQuote) + current + delta) - Number(baseQuote));
   }
   const driver = order?.drivers || order?.assigned_driver || null;
+  const driverLocationUpdatedAt = Date.parse(order?.driver_location_updated_at || driver?.location_updated_at || "");
+  const driverLocationAge = Date.now() - driverLocationUpdatedAt;
+  const hasFreshDriverLocation = Number.isFinite(driverLocationUpdatedAt) &&
+    driverLocationAge >= -30000 && driverLocationAge <= 5 * 60 * 1000;
+  const pickupEtaDistanceKm = distanceKm(
+    order?.pickup_lat,
+    order?.pickup_lng,
+    order?.driver_lat ?? driver?.current_lat,
+    order?.driver_lng ?? driver?.current_lng
+  );
+  // Keep the same ETA model as the driver's individual-order page, but show a concrete
+  // countdown and clock time on the general passenger screen.
+  const arrivalMinutes = order?.status === "accepted" && hasFreshDriverLocation && pickupEtaDistanceKm !== null
+    ? Math.max(1, Math.ceil(pickupEtaDistanceKm * 1.3 / 0.45))
+    : null;
+  const arrivalClock = arrivalMinutes === null
+    ? null
+    : new Date(Date.now() + arrivalMinutes * 60 * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   const showBooking = !order || order.status === "cancelled";
 
   async function calculateRouteData() {
@@ -290,6 +320,14 @@ export default function PassengerPage() {
     {!showBooking ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div><h2>{order.status === "new" ? "Заказ отправлен" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : statusLabel(order.status)}</h2>
       <div className="status large-status">{statusLabel(order.status)}</div>
+      {order.status === "accepted" && <div className="searching-panel" style={{ margin: "14px 0", padding: "16px", textAlign: "center" }}>
+        <div className="eyebrow">ВРЕМЯ ПРИБЫТИЯ</div>
+        {arrivalMinutes !== null ? <>
+          <div style={{ fontSize: "30px", fontWeight: 800, lineHeight: 1.2, margin: "6px 0" }}>Через {arrivalMinutes} мин</div>
+          <p style={{ margin: "4px 0" }}>Ожидаемое прибытие: <b>{arrivalClock}</b></p>
+          <p className="small muted" style={{ margin: "6px 0 0" }}>До вас {pickupEtaDistanceKm.toFixed(1)} км · время обновляется по GPS водителя</p>
+        </> : <p className="muted" style={{ margin: "8px 0 0" }}>Заказ принят. Получаем актуальную геолокацию водителя, чтобы показать время прибытия.</p>}
+      </div>}
       <p><b>Класс:</b> {CLASSES.find(x=>x.id===order.vehicle_class)?.label || CLASSES.find(x=>x.id===driver?.vehicle_class)?.label || "Эконом"} · {order.trip_type==="intercity"?"Межгород":"Город"}</p>
       <p><b>📍 Откуда:</b> {order.pickup_address}</p><p><b>🏁 Куда:</b> {order.destination_address}</p>
       {Number(order.route_distance_km)>0 && <p><b>📏 Маршрут:</b> {Number(order.route_distance_km).toFixed(1)} км · ориентировочно {Math.ceil(Number(order.route_distance_km)/35*60)} мин.</p>}
