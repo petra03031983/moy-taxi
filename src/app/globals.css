@@ -283,3 +283,82 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
  .driver-line-thumb{height:34px}
  .driver-financial-card{flex-basis:82vw}
 }
+
+/* Driver-only compact dashboard layout; passenger styles are intentionally untouched. */
+.app.driver-dashboard{max-width:900px;padding:12px 16px calc(108px + env(safe-area-inset-bottom))}
+.driver-topbar{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:7px;min-height:69px;margin:0 0 12px;padding:7px 0;background:#f3f6f3f4;backdrop-filter:blur(14px)}
+.driver-menu-wrap{position:relative;align-self:center}
+.driver-top-action{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border:1px solid #dce4df;border-radius:14px;background:#fff;color:#18221d;cursor:pointer;box-shadow:0 2px 8px #14281c0a}
+.driver-menu-trigger{font-size:30px;line-height:1;padding:0 0 5px}
+.driver-settings-trigger{font-size:22px;line-height:1;justify-self:end}
+.driver-line-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:0}
+.driver-line-caption{font-size:9px;line-height:1;font-weight:850;letter-spacing:1.1px;color:#6b776f}
+.driver-line-center .driver-line-switch{width:min(190px,100%);flex:0 1 190px;min-width:0;min-height:43px}
+.driver-line-center .driver-line-option{height:35px;font-size:11px}
+.driver-line-center .driver-line-thumb{height:35px}
+.driver-menu-panel{position:absolute;left:0;top:calc(100% + 9px);z-index:250;width:min(285px,calc(100vw - 28px));padding:10px;border:1px solid #e0e7e2;border-radius:18px;background:#fff;box-shadow:0 18px 48px #10251b29}
+.driver-menu-identity{display:flex;align-items:center;gap:10px;padding:9px 8px 12px;margin-bottom:5px;border-bottom:1px solid #e9eeea;min-width:0}
+.driver-menu-avatar{width:42px;height:42px;flex:0 0 42px;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:14px;background:#e5f3e9;color:var(--green);font-size:20px;font-weight:850}
+.driver-menu-avatar img{width:100%;height:100%;object-fit:cover}
+.driver-menu-identity-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.driver-menu-identity-copy b{font-size:14px;overflow-wrap:anywhere}
+.driver-menu-identity-copy span{font-size:12px;color:#334238}
+.driver-menu-identity-copy small{font-size:11px;color:var(--muted);line-height:1.25;overflow-wrap:anywhere}
+.driver-menu-item{display:grid;grid-template-columns:25px minmax(0,1fr) 14px;align-items:center;gap:7px;width:100%;min-height:43px;padding:8px 9px;border:0;border-radius:11px;background:transparent;color:var(--ink);text-align:left;font-size:13px;font-weight:700;cursor:pointer}
+.driver-menu-item:active,.driver-menu-item:focus-visible{background:#eef6f0}
+.driver-menu-item>span:first-child{font-size:17px;text-align:center}
+.driver-menu-item>b{font-size:21px;color:#839087;font-weight:500}
+.driver-financial-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;overflow:visible;overscroll-behavior:initial;scroll-snap-type:none;padding:0;margin:0 0 12px}
+.driver-financial-card{display:flex;flex:initial;flex-direction:column;justify-content:space-between;gap:12px;min-width:0;min-height:117px;padding:13px 12px 11px;border:1px solid #e7ece8;border-radius:18px;background:#fff;color:#171b18;box-shadow:0 3px 14px #10181008;scroll-snap-align:none}
+.driver-financial-label{font-size:12px;line-height:1.25;font-weight:750;color:#5d6961}
+.driver-financial-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.driver-financial-bottom>strong{min-width:0;font-size:clamp(18px,5.3vw,27px);line-height:1.08;letter-spacing:-.55px;overflow-wrap:anywhere}
+.driver-financial-icon{width:33px;height:33px;flex:0 0 33px;border-radius:11px;font-size:20px}
+.driver-topup-button{width:34px;height:34px;flex:0 0 34px;border-radius:11px;font-size:25px}
+.driver-topup-link{align-self:flex-start;margin-top:-5px;font-size:11px;line-height:1.2}
+.driver-dashboard .section-heading{align-items:center}
+.driver-dashboard .section-heading h2{font-size:19px}
+.driver-bottom-nav{position:fixed;left:50%;bottom:0;z-index:80;transform:translateX(-50%);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:min(100%,900px);padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid #e1e8e3;background:#ffffffF7;backdrop-filter:blur(18px);box-shadow:0 -8px 28px #16261b0d}
+.driver-nav-item{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:0;min-height:53px;padding:5px 3px;border:0;border-radius:13px;background:transparent;color:#69766e;font-size:11px;font-weight:750;cursor:pointer}
+.driver-nav-item.active{background:#e8f5ec;color:#155b3d}
+.driver-nav-icon{font-size:20px;line-height:1.1;font-weight:850}
+.driver-nav-count{position:absolute;top:2px;left:calc(50% + 9px);min-width:16px;padding:2px 4px;border-radius:999px;background:#176b4d;color:#fff;font-size:9px;line-height:1.25}
+.driver-utility-panel h2{margin-bottom:15px}
+.driver-setting-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;margin:0 0 16px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.driver-setting-row b{font-size:14px}
+.driver-setting-row .muted{margin:5px 0 0}
+.driver-setting-row .button{width:auto;min-height:38px;padding:9px 12px;font-size:12px}
+@media(max-width:600px){
+ .app.driver-dashboard{padding:8px 10px calc(101px + env(safe-area-inset-bottom))}
+ .driver-topbar{grid-template-columns:40px minmax(0,1fr) 40px;gap:5px;min-height:65px;margin-bottom:9px}
+ .driver-top-action{width:38px;height:38px;border-radius:12px}
+ .driver-menu-trigger{font-size:28px}
+ .driver-settings-trigger{font-size:20px}
+ .driver-line-caption{font-size:8px;letter-spacing:.9px}
+ .driver-line-center .driver-line-switch{width:min(180px,100%);min-height:40px}
+ .driver-line-center .driver-line-option{height:32px;font-size:10px}
+ .driver-line-center .driver-line-thumb{height:32px}
+ .driver-financial-row{gap:7px;margin-bottom:10px}
+ .driver-financial-card{min-height:108px;padding:11px 9px 10px;border-radius:15px;gap:9px}
+ .driver-financial-label{font-size:11px}
+ .driver-financial-bottom>strong{font-size:clamp(17px,5.2vw,23px);letter-spacing:-.5px}
+ .driver-financial-icon{width:29px;height:29px;flex-basis:29px;border-radius:9px;font-size:17px}
+ .driver-topup-button{width:30px;height:30px;flex-basis:30px;border-radius:9px;font-size:23px}
+ .driver-topup-link{font-size:10px}
+ .driver-bottom-nav{gap:3px;padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+ .driver-nav-item{min-height:49px;font-size:10px;border-radius:11px}
+ .driver-nav-icon{font-size:18px}
+ .driver-nav-count{left:calc(50% + 7px)}
+}
+@media(max-width:360px){
+ .app.driver-dashboard{padding-left:8px;padding-right:8px}
+ .driver-topbar{grid-template-columns:36px minmax(0,1fr) 36px;gap:4px}
+ .driver-top-action{width:34px;height:34px}
+ .driver-line-center .driver-line-switch{width:min(165px,100%)}
+ .driver-financial-card{padding:10px 7px 9px;gap:8px}
+ .driver-financial-bottom>strong{font-size:16px}
+ .driver-financial-label{font-size:10px}
+ .driver-financial-icon{width:25px;height:25px;flex-basis:25px}
+ .driver-topup-button{width:27px;height:27px;flex-basis:27px}
+ .driver-nav-item{font-size:9px}
+}
