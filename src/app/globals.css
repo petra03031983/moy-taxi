@@ -193,3 +193,15 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .client-price-stepper button:disabled{opacity:.4}
 .client-price-stepper strong{text-align:center;font-size:24px;white-space:nowrap;color:#176b4d}
 .client-price-control p{margin:10px 0 0;color:#678077;font-size:13px;line-height:1.45}
+
+/* Driver verification and photo review */
+.owner-review-detail{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#f8faf8;min-width:0}
+.owner-verification-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.owner-verification-gallery figure{margin:0;min-width:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px;overflow:hidden}
+.owner-verification-gallery img{display:block;width:100%;height:150px;object-fit:contain;background:#f2f5f2;border-radius:8px}
+.owner-verification-gallery figcaption{font-size:12px;line-height:1.35;margin-top:7px;color:var(--muted);overflow-wrap:anywhere}
+.owner-review-detail .actions{align-items:stretch}
+.owner-review-detail .actions .button{flex:1;min-width:0;white-space:normal}
+.field input[type="checkbox"]{width:20px;height:20px;min-height:20px;vertical-align:middle;margin:0 8px 2px 0;accent-color:var(--green)}
+.field label:has(input[type="checkbox"]){font-weight:600;line-height:1.5}
+@media(max-width:420px){.owner-verification-gallery{grid-template-columns:1fr}.owner-verification-gallery img{height:180px}}
