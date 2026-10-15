@@ -70,7 +70,17 @@ export default function Home(){
  async function logout(){try{await callApi("driver_logout",session)}catch{}localStorage.removeItem("moyTaxiSession");setSession(null);setDriver(null);setEntryMode("choose")}
  async function notify(){if(!("Notification"in window)){setNotice("Уведомления браузера недоступны.");return}const p=await Notification.requestPermission();setNotice(p==="granted"?"Уведомления включены.":"Разрешение не дано.")}
  async function share(){const link=origin+"/c/"+driver.public_code;if(navigator.share){try{await navigator.share({title:"Мой Такси",text:"Закажи такси у меня",url:link})}catch{}}else{await navigator.clipboard?.writeText(link);setNotice("Ссылка скопирована.")}}
- async function install(){if(!installPrompt){setNotice("В Chrome: ⋮ → Добавить на главный экран.");return}await installPrompt.prompt();setInstallPrompt(null)}
+ async function install(){
+   if(installPrompt){
+    await installPrompt.prompt();
+    const choice=await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setNotice(choice?.outcome==="accepted"?"«Мой Такси» добавляется на главный экран.":"Установка не подтверждена. Можно повторить позже.");
+    return;
+   }
+   const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
+   setNotice(standalone?"Сейчас ты уже в установленном приложении. Чтобы добавить отдельную иконку «Мой Такси», открой основной сайт в Chrome, не через иконку кабинета владельца, затем нажми ⋮ → «Установить приложение» или «Добавить на главный экран».":"Chrome пока не предложил окно установки. Открой основной сайт напрямую в Chrome, затем нажми ⋮ → «Установить приложение» или «Добавить на главный экран».");
+  }
  if(entryMode==="choose") return <main className="app auth-app">
   <header className="header"><div className="logo">Мой <span>Такси</span></div><div className="small">Единое приложение</div></header>
   <section className="hero panel role-menu">
