@@ -447,12 +447,13 @@ if(a==="register_driver"){
  if(p.legal_consent!==true)return fail("Прими пользовательское соглашение и согласие на обработку персональных данных.");
  if(!validPhotoSet(docs,DRIVER_DOC_KEYS))return fail("Загрузи водительское удостоверение с обеих сторон, техпаспорт с обеих сторон и фото с удостоверением личности рядом с лицом.");
  if(!validPhotoSet(carPhotos,CAR_PHOTO_KEYS))return fail("Нужны все 7 фотографий машины: левая сторона, перед, правая сторона, зад, переднее сиденье, заднее сиденье и багажник.");
+  if(p.car_cleanliness_confirmed!==true)return fail("Подтверди, что машина чистая и ремни безопасности видны.");
  if(photoBundleSize(docs,carPhotos)>3800000)return fail("Фотографии получились слишком большими. Сними их заново или уменьши размер изображений.");
  const {data:old}=await c.from("drivers").select("id").eq("phone",ph).maybeSingle();if(old)return fail("Этот номер уже зарегистрирован. Войди в приложение.");
  const salt=hex(crypto.getRandomValues(new Uint8Array(16))),hash=await passwordHash(pw,salt);
  const {data:d,error}=await c.from("drivers").insert({name,phone:ph,password_salt:salt,password_hash:hash,car_model:car,car_plate:plate,car_color:color,vehicle_class:vclass,is_online:false,documents_verified:false,verification_status:"pending",photo_control_status:"pending",legal_consent_at:new Date().toISOString(),legal_consent_version:"driver-terms-2026-10-v1",verification_note:null}).select("*").single();
  if(error||!d)return fail("Не удалось создать аккаунт.",500);
- const {error:filesError}=await c.from("driver_verification_files").insert({driver_id:d.id,document_photos:docs,car_photos:carPhotos,agreement_version:"driver-terms-2026-10-v1",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+ const {error:filesError}=await c.from("driver_verification_files").insert({driver_id:d.id,document_photos:docs,car_photos:{...carPhotos,cleanliness_confirmed:true},agreement_version:"driver-terms-2026-10-v1",submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()});
  if(filesError){await c.from("drivers").delete().eq("id",d.id);return fail("Не удалось сохранить документы. Попробуй ещё раз.",500)}
  return reply({ok:true,driver:{...pub(d),verification_note:""},session_token:await newSession(c,d.id)});
 }
@@ -628,12 +629,15 @@ if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","
  if(p.legal_consent!==true)return fail("Прими пользовательское соглашение и согласие на обработку персональных данных.");
  if(!validPhotoSet(docs,DRIVER_DOC_KEYS))return fail("Загрузи водительское удостоверение с обеих сторон, техпаспорт с обеих сторон и селфи с удостоверением личности.");
  if(!validPhotoSet(carPhotos,CAR_PHOTO_KEYS))return fail("Нужны все 7 фотографий машины.");
+  if(p.car_cleanliness_confirmed!==true)return fail("Подтверди, что машина чистая и ремни безопасности видны.");
  if(photoBundleSize(docs,carPhotos)>3800000)return fail("Фотографии получились слишком большими. Уменьши размер изображений.");
+  const updatedName=String(p.name||d.name||"").trim().slice(0,100),updatedCar=String(p.car_model||d.car_model||"").trim().slice(0,100),updatedPlate=String(p.car_plate||d.car_plate||"").trim().slice(0,30),updatedColor=String(p.car_color||d.car_color||"").trim().slice(0,40),updatedClass=vehicleClass(p.vehicle_class||d.vehicle_class);
+  if(!updatedName||!updatedCar||!updatedPlate||!updatedColor)return fail("Укажи имя, марку автомобиля, госномер и цвет.");
  if(d.verification_status==="approved")return fail("Профиль уже подтверждён. Для повторной проверки используй фотоконтроль машины и водителя.");
  const now=new Date().toISOString();
- const {error:filesError}=await c.from("driver_verification_files").upsert({driver_id:d.id,document_photos:docs,car_photos:carPhotos,weekly_selfie_photo:null,agreement_version:"driver-terms-2026-10-v1",submitted_at:now,updated_at:now,reviewed_at:null},{onConflict:"driver_id"});
+ const {error:filesError}=await c.from("driver_verification_files").upsert({driver_id:d.id,document_photos:docs,car_photos:{...carPhotos,cleanliness_confirmed:true},weekly_selfie_photo:null,agreement_version:"driver-terms-2026-10-v1",submitted_at:now,updated_at:now,reviewed_at:null},{onConflict:"driver_id"});
  if(filesError)return fail("Не удалось сохранить документы. Попробуй ещё раз.",500);
- const {data:u,error}=await c.from("drivers").update({verification_status:"pending",verification_note:null,documents_verified:false,photo_control_status:"pending",photo_control_submitted_at:now,legal_consent_at:now,legal_consent_version:"driver-terms-2026-10-v1",is_online:false,updated_at:now}).eq("id",d.id).select("*").single();
+ const {data:u,error}=await c.from("drivers").update({name:updatedName,car_model:updatedCar,car_plate:updatedPlate,car_color:updatedColor,vehicle_class:updatedClass,verification_status:"pending",verification_note:null,documents_verified:false,photo_control_status:"pending",photo_control_submitted_at:now,legal_consent_at:now,legal_consent_version:"driver-terms-2026-10-v1",is_online:false,updated_at:now}).eq("id",d.id).select("*").single();
  if(error||!u)return fail("Не удалось отправить данные на проверку.",500);
  return reply({ok:true,driver:{...pub(u),verification_note:u.verification_note||""},message:"Документы и фотографии отправлены владельцу на проверку."});
 }
@@ -643,10 +647,11 @@ if(a==="driver_submit_photo_control"){
  if(due>Date.now()&&d.photo_control_status==="approved")return fail("Еженедельный фотоконтроль ещё не требуется.");
  const carPhotos=p.car_photos||{},selfie=String(p.weekly_selfie_photo||"");
  if(!validPhotoSet(carPhotos,CAR_PHOTO_KEYS)||!validPhoto(selfie))return fail("Загрузи все 7 фото машины и новое фото водителя.");
+  if(p.car_cleanliness_confirmed!==true)return fail("Подтверди, что машина чистая и ремни безопасности видны.");
  if(photoBundleSize(carPhotos,selfie)>2800000)return fail("Фотографии слишком большие. Уменьши размер и попробуй ещё раз.");
  const {data:existingFiles}=await c.from("driver_verification_files").select("document_photos,agreement_version").eq("driver_id",d.id).maybeSingle();
  const now=new Date().toISOString();
- const {error:filesError}=await c.from("driver_verification_files").upsert({driver_id:d.id,document_photos:existingFiles?.document_photos||{},car_photos:carPhotos,weekly_selfie_photo:selfie,agreement_version:existingFiles?.agreement_version||"driver-terms-2026-10-v1",submitted_at:now,updated_at:now,reviewed_at:null},{onConflict:"driver_id"});
+ const {error:filesError}=await c.from("driver_verification_files").upsert({driver_id:d.id,document_photos:existingFiles?.document_photos||{},car_photos:{...carPhotos,cleanliness_confirmed:true},weekly_selfie_photo:selfie,agreement_version:existingFiles?.agreement_version||"driver-terms-2026-10-v1",submitted_at:now,updated_at:now,reviewed_at:null},{onConflict:"driver_id"});
  if(filesError)return fail("Не удалось сохранить фотографии фотоконтроля.",500);
  const {data:u,error}=await c.from("drivers").update({photo_control_status:"pending",photo_control_submitted_at:now,verification_note:null,is_online:false,updated_at:now}).eq("id",d.id).select("*").single();
  if(error||!u)return fail("Не удалось отправить фотоконтроль.",500);
