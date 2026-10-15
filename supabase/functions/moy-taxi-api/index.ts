@@ -104,41 +104,84 @@ async function suggestionDistances(rows:any[],nearPoint:{lat:number,lng:number}|
 async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null,key:string){
  const clean=String(query||"").trim();
  if(clean.length<2)return [];
+ const nearAstana=Boolean(nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73);
+ const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
+ const addressLike=/(улица|ул\\.?|проспект|пр-т|переулок|мкр|микрорайон|дом|д\\.?|степ|street|st\\.?|avenue|ave\\.?|\\d)/i.test(clean);
+ const modes=addressLike?["address","route_endpoint","object"]:["route_endpoint","object","address"];
  const queries=[clean];
- if(nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73&&!/(астан|казахстан|қазақстан)/i.test(clean))queries.push(clean+", Астана, Казахстан");
- for(const q of [...new Set(queries)]){
-  const params=new URLSearchParams({q,suggest_type:"object",fields:"items.point,items.full_address_name,items.address,items.adm_div,items.name",locale:"ru_KZ",page_size:"8",key});
-  if(nearPoint)params.set("location",nearPoint.lng+","+nearPoint.lat);
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7500);
-  try{
-   const response=await fetch("https://catalog.api.2gis.com/3.0/suggests?"+params.toString(),{headers:{"Accept":"application/json"},signal:controller.signal});
-   if(response.status===401||response.status===403){
-    const body=await response.text().catch(()=> "");
-    console.error("2GIS Suggest API access denied",response.status,body.slice(0,400));
-    throw new Error("2ГИС отклонил ключ поиска. Проверь, что для ключа включён доступ к Suggest/Geocoder API.");
-   }
-   if(!response.ok)continue;
-   const data=await response.json(),items=data?.result?.items||[];
-   const rows=items.map((item:any)=>{
-    const point=pointFrom2gis(item);
-    const address=typeof item.full_address_name==="string"?item.full_address_name:typeof item.address_name==="string"?item.address_name:typeof item.address==="string"?item.address:String(item.address?.full_address_name||item.address?.name||item.address?.address_name||"");
-    const name=String(item.name||item.address?.building_name||item.address_name||address||"Адрес");
-    const label=address||String(item.full_name||[name,item.address?.address_name].filter(Boolean).join(", "));
-    const divisions=(item.adm_div||[]).map((division:any)=>division.name||division.caption).filter(Boolean);
-    const city=divisions.find((v:string)=>/астана|алматы|тал[аә]пкер|город/i.test(v))||divisions[0]||"Казахстан";
-    return point&&label?{name,label,city,lat:point.lat,lng:point.lng}:null;
-   }).filter((item:any)=>item!==null);
-   if(rows.length){
-    const unique=rows.filter((item:any,index:number,all:any[])=>all.findIndex((other:any)=>other.label===item.label&&other.lat===item.lat&&other.lng===item.lng)===index);
-    return unique.slice(0,8);
-   }
-  }catch(e){
-   if(e instanceof Error&&e.message.includes("2ГИС отклонил"))throw e;
-   if((e as any)?.name!=="AbortError")console.error("2GIS suggestions failed",q,String(e));
-  }finally{clearTimeout(timer)}
+ if(nearAstana&&!hasCity)queries.push(clean+", Астана, Казахстан");
+ if(!/казахстан|қазақстан|kazakhstan/i.test(clean)&&!hasCity)queries.push(clean+", Казахстан");
+ const uniqueQueries=[...new Set(queries)];
+ const errors:string[]=[];
+ for(const q of uniqueQueries){
+  for(const mode of modes){
+   const params=new URLSearchParams({
+    q,
+    suggest_type:mode,
+    fields:"items.point,items.full_address_name,items.full_name,items.address,items.adm_div,items.name,items.type,items.id",
+    locale:"ru_KZ",
+    page_size:"8",
+    key
+   });
+   if(nearPoint)params.set("location",nearPoint.lng+","+nearPoint.lat);
+   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7000);
+   try{
+    const response=await fetch("https://catalog.api.2gis.com/3.0/suggests?"+params.toString(),{
+     headers:{"Accept":"application/json"},
+     signal:controller.signal
+    });
+    if(response.status===401||response.status===403){
+     const body=await response.text().catch(()=>"");
+     console.error("2GIS Suggest API access denied",response.status,body.slice(0,300));
+     throw new Error("2ГИС отклонил ключ. Проверь доступ к Suggest API.");
+    }
+    if(!response.ok){errors.push(mode+":"+response.status);continue}
+    const data=await response.json();
+    if(data?.meta?.code&&Number(data.meta.code)!==200){
+     errors.push(mode+":"+String(data.meta.code));
+     continue;
+    }
+    const items=data?.result?.items||[];
+    if(!items.length)continue;
+    const rows:any[]=[];
+    // Address suggests can contain textual completions without coordinates. Resolve those through the official 2GIS geocoder.
+    for(const item of items){
+     const point=pointFrom2gis(item);
+     const address=typeof item.full_address_name==="string"?item.full_address_name:
+       typeof item.full_name==="string"?item.full_name:
+       typeof item.address_name==="string"?item.address_name:
+       typeof item.address==="string"?item.address:
+       String(item.address?.full_address_name||item.address?.name||item.address?.address_name||item.suggested_text||item.name||"");
+     const suggested=String(item.search_attributes?.suggested_text||item.suggested_text||"");
+     const name=String(item.name||item.address?.building_name||item.address_name||item.title||suggested||address||"Адрес");
+     const label=address||suggested||name;
+     if(!label)continue;
+     const divisions=(item.adm_div||[]).map((division:any)=>division.name||division.caption).filter(Boolean);
+     const city=divisions.find((value:string)=>/астана|алматы|тал[аә]пкер|город/i.test(value))||divisions[0]||"Казахстан";
+     let resolvedPoint=point;
+     if(!resolvedPoint&&rows.length<3&&mode!=="object"){
+      try{resolvedPoint=await geocodePoint(label,nearPoint,key)}catch{}
+     }
+     if(!resolvedPoint)continue;
+     rows.push({name,label,city,lat:resolvedPoint.lat,lng:resolvedPoint.lng,provider:"2gis",suggest_type:mode});
+    }
+    if(rows.length){
+     const deduped=rows.filter((item:any,index:number,all:any[])=>
+      all.findIndex((other:any)=>other.label===item.label&&other.lat===item.lat&&other.lng===item.lng)===index
+     );
+     const withDistance=await suggestionDistances(deduped.slice(0,8),nearPoint);
+     return withDistance;
+    }
+   }catch(e){
+    if(e instanceof Error&&e.message.includes("2ГИС отклонил"))throw e;
+    if((e as any)?.name!=="AbortError")console.error("2GIS suggestion mode failed",q,mode,String(e));
+   }finally{clearTimeout(timer)}
+  }
  }
+ if(errors.length)console.error("2GIS suggestion providers returned errors",errors.slice(0,10));
  return [];
 }
+
 function enrich(o:any,d:any){
  let distance=null;
  const locationAge=d?.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
