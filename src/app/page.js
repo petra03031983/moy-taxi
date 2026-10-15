@@ -208,9 +208,9 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
  const openDriverSettings=()=>{setTab("settings");setDriverMenuOpen(false)};
  const openDriverSupport=()=>{setTab("support");setDriverMenuOpen(false)};
- return <main className="app dashboard driver-dashboard"><div className="order-alert-stack" aria-live="polite" aria-atomic="false">{incomingAlerts.map(alert=><button type="button" className="order-alert" key={alert.id} onClick={()=>document.getElementById("order-"+alert.id)?.scrollIntoView({behavior:"smooth",block:"center"})}><span className="order-alert-icon">🔔</span><span className="order-alert-copy"><b>Новый заказ!</b><small>{alert.body}</small></span><span className="order-alert-arrow">›</span></button>)}</div><div className="driver-topbar">
+ return <main className="app dashboard driver-dashboard"><div className="order-alert-stack" aria-live="polite" aria-atomic="false">{incomingAlerts.map(alert=><button type="button" className="order-alert" key={alert.id} onClick={()=>document.getElementById("order-"+alert.id)?.scrollIntoView({behavior:"smooth",block:"center"})}><span className="order-alert-icon">🔔</span><span className="order-alert-copy"><b>Новый заказ!</b><small>{alert.body}</small></span><span className="order-alert-arrow">›</span></button>)}</div><div className="driver-top-area"><div className="driver-topbar">
  <div className="driver-menu-wrap">
-  <button type="button" className="driver-top-action driver-menu-trigger" aria-label="Меню водителя" aria-expanded={driverMenuOpen} onClick={()=>setDriverMenuOpen(open=>!open)}>⋮</button>
+  <button type="button" className="driver-top-action driver-menu-trigger" aria-label="Меню водителя" aria-expanded={driverMenuOpen} onClick={()=>setDriverMenuOpen(open=>!open)}>☰</button>
   {driverMenuOpen&&<div className="driver-menu-panel">
    <div className="driver-menu-identity">
     <div className="driver-menu-avatar">{driver.photo_url?<img src={driver.photo_url} alt="" />:(driver.name||"В").slice(0,1).toLocaleUpperCase("ru-RU")}</div>
@@ -222,10 +222,9 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   </div>}
  </div>
  <div className="driver-line-center">
-  <span className="driver-line-caption">СТАТУС ВОДИТЕЛЯ</span>
   <button type="button" className={"driver-line-switch "+(driver.is_online?"is-online":"is-offline")} onClick={toggle} disabled={lineSwitchBusy} aria-pressed={Boolean(driver.is_online)} aria-label={driver.is_online?"Уйти с линии":"Выйти на линию"}><span className="driver-line-option offline-option">Не в сети</span><span className="driver-line-option online-option">На линии</span><span className="driver-line-thumb" aria-hidden="true"></span></button>
  </div>
- <button type="button" className="driver-top-action driver-settings-trigger" aria-label="Настройки водителя" title="Настройки" onClick={openDriverSettings}>⚙</button>
+ <button type="button" className="driver-top-action driver-settings-trigger" aria-label="Настройки водителя" title="Настройки" onClick={openDriverSettings}>⚙{notificationPermission!=="granted"&&notificationPermission!=="unsupported"&&<span className="driver-settings-dot" aria-hidden="true"></span>}</button>
 </div>{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}
 <section className="driver-financial-row" aria-label="Доход и баланс">
  <article className="driver-financial-card">
@@ -233,11 +232,11 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <div className="driver-financial-bottom"><strong>{earningsToday.toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸</strong><span className="driver-financial-icon" aria-hidden="true">▣</span></div>
  </article>
  <article className="driver-financial-card">
-  <span className="driver-financial-label">Баланс лицевого счёта</span>
+  <span className="driver-financial-label">Баланс</span>
   <div className="driver-financial-bottom"><strong>{Number(walletInfo?.wallet_balance??driver.wallet_balance??0).toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸</strong><button type="button" className="driver-topup-button" aria-label="Открыть кошелёк и пополнение" onClick={()=>{setTab("wallet");refreshWallet()}}>+</button></div>
   <button type="button" className="driver-topup-link" onClick={()=>{setTab("wallet");refreshWallet()}}>Пополнить счёт</button>
  </article>
-</section>{(tab==="orders"||tab==="active")&&<section className="panel">
+</section></div>{(tab==="orders"||tab==="active")&&<section className="panel">
  <div className="section-heading">
   <div><div className="eyebrow">{tab==="active"?"ТЕКУЩИЕ ПОЕЗДКИ":"ВХОДЯЩИЕ ЗАКАЗЫ"}</div><h2>{tab==="active"?"В работе":"Лента заказов"}</h2></div>
   <span className="status">{tab==="active"?active.length+" в работе":newCount+" новых"}</span>
