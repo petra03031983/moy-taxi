@@ -128,7 +128,11 @@ export default function OwnerAdmin() {
     setBusy(true); setError(""); setNotice("");
     try {
       const result = await callApi("admin_test_2gis", { admin_token: token });
-      setNotice(result.message || "Поиск 2ГИС отвечает.");
+      if (result.search_works && result.geocoder_works && result.routing_works) {
+        setNotice(result.message || "Все сервисы 2ГИС работают.");
+      } else {
+        setError(result.message || "Один или несколько сервисов 2ГИС недоступны.");
+      }
     } catch (e) { setError(e.message || "Проверка 2ГИС не удалась."); }
     finally { setBusy(false); }
   }
