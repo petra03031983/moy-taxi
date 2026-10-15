@@ -33,6 +33,7 @@ export default function OwnerAdmin() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [installPrompt, setInstallPrompt] = useState(null);
 
   const loadAll = useCallback(async sessionToken => {
     const payload = { admin_token: sessionToken };
@@ -53,6 +54,11 @@ export default function OwnerAdmin() {
   }, []);
 
   useEffect(() => {
+    const handleInstallPrompt = event => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
     const saved = localStorage.getItem("moyTaxiAdminSession");
     if (saved) {
       setToken(saved);
@@ -61,6 +67,7 @@ export default function OwnerAdmin() {
         setToken("");
       });
     }
+    return () => window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
   }, [loadAll]);
 
   async function login(event) {
@@ -191,11 +198,28 @@ export default function OwnerAdmin() {
     setToken(""); setStats(null); setDrivers([]); setOrders([]); setCommissions([]);
   }
 
+  async function installOwnerApp() {
+    if (installPrompt) {
+      await installPrompt.prompt();
+      setInstallPrompt(null);
+      return;
+    }
+    setNotice("Чтобы добавить отдельную иконку: открой эту страницу в Chrome, нажми ⋮ и выбери «Установить приложение» или «Добавить на главный экран».");
+  }
+
+  const ownerInstallPanel = <section className="panel owner-install-guide">
+    <div className="owner-install-title">📲 Отдельная иконка владельца</div>
+    <p className="muted">Панель владельца устанавливается отдельно от основного «Мой Такси» и открывается со своей синей иконкой.</p>
+    <button type="button" className="button secondary" onClick={installOwnerApp}>Установить кабинет владельца</button>
+    <p className="muted small owner-install-help">Если кнопка не открыла окно установки: в Chrome нажми ⋮ → «Установить приложение» или «Добавить на главный экран».</p>
+  </section>;
+
   if (!token || !stats) {
     return <main className="app auth-app">
-      <header className="header"><a href="/" className="logo" style={{ textDecoration: "none", color: "inherit" }}>Мой <span>Такси</span></a><span className="small">Кабинет владельца</span></header>
+      <header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Кабинет владельца</span></header>
       <section className="hero panel"><div className="hero-icon">📊</div><p className="eyebrow">УПРАВЛЕНИЕ СЕРВИСОМ</p><h1>Кабинет владельца</h1><p className="muted">Статистика водителей и клиентов, заказы и учёт комиссии.</p></section>
-      {error && <div className="error" role="alert">{error}</div>}
+      {ownerInstallPanel}
+      {error && <div className="error" role="alert">{error}</div>
       <section className="panel auth-panel"><form onSubmit={login}>
         <div className="field"><label htmlFor="ownerPassword">Пароль владельца</label><input id="ownerPassword" type="password" required autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Введите пароль кабинета" /></div>
         <button className="button primary" disabled={busy}>{busy ? "Входим…" : "Открыть кабинет"}</button>
@@ -206,7 +230,8 @@ export default function OwnerAdmin() {
   const due = commissions.filter(item => item.status === "due");
   const paid = commissions.filter(item => item.status === "paid");
   return <main className="app dashboard owner-dashboard">
-    <header className="header dashboard-header"><div><a href="/" className="logo" style={{ textDecoration: "none", color: "inherit" }}>Мой <span>Такси</span></a><div className="muted small">Кабинет владельца сервиса</div></div><button className="button secondary owner-logout" onClick={logout}>Выйти</button></header>
+    <header className="header dashboard-header"><div><div className="logo">Мой <span>Такси</span></div><div className="muted small">Кабинет владельца сервиса</div></div><button className="button secondary owner-logout" onClick={logout}>Выйти</button></header>
+    {ownerInstallPanel}
     {error && <div className="error" role="alert">{error}</div>}
     {notice && <div className="success" role="status">{notice}</div>}
     <div className="section-heading" style={{ margin: "14px 0" }}><div><p className="eyebrow">БИЗНЕС-СВОДКА</p><h1>Управление «Мой Такси»</h1><p className="muted">Водители, поездки и комиссия платформы.</p></div><button className="icon-button" onClick={refresh} disabled={busy} aria-label="Обновить данные">↻</button></div>
