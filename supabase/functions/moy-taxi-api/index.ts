@@ -37,13 +37,14 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
  throw new Error("2ГИС не нашёл этот адрес. Добавь название города или выбери точный вариант из подсказок.");
 }
 function wktLinePoints(wkt:string){
- const match=/LINESTRING(?:\\s+Z)?\\s*\\(([^)]+)\\)/i.exec(String(wkt||""));
+ const match=/LINESTRING(?:\s+Z)?\s*\(([^)]+)\)/i.exec(String(wkt||""));
  if(!match)return [];
  return match[1].split(",").map(part=>{
-  const nums=part.trim().split(/\\s+/).map(Number);
+  const nums=part.trim().split(/\s+/).map(Number);
   return nums.length>=2&&Number.isFinite(nums[0])&&Number.isFinite(nums[1])?[nums[0],nums[1]]:null;
  }).filter((v:any)=>v!==null);
 }
+
 function get2gisRouteGeometry(route:any){
  const points:number[][]=[];
  const add=(wkt:string)=>{for(const point of wktLinePoints(wkt)){const last=points[points.length-1];if(!last||last[0]!==point[0]||last[1]!==point[1])points.push(point)}};
@@ -212,12 +213,13 @@ function pointFrom2gis(item:any){
  const point=item?.point||{};
  let lat=Number(point.lat),lng=Number(point.lon??point.lng);
  if((!Number.isFinite(lat)||!Number.isFinite(lng))&&typeof item?.geometry?.centroid==="string"){
-  const match=/POINT\\s*\\(\\s*(-?[0-9.]+)\\s+(-?[0-9.]+)/i.exec(item.geometry.centroid);
+  const match=/POINT\s*\(\s*(-?[0-9.]+)\s+(-?[0-9.]+)/i.exec(item.geometry.centroid);
   if(match){lng=Number(match[1]);lat=Number(match[2])}
  }
  if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return null;
  return {lat,lng};
 }
+
 function amount(v:any){const n=Number(v);return Number.isFinite(n)&&n>0?n:0}
 
 Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});if(req.method!=="POST")return fail("Method not allowed",405);try{const c=await db(),p=await req.json(),a=String(p.action||"");
