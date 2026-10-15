@@ -1,0 +1,35 @@
+name: Fix driver order filter
+
+on:
+  push:
+    paths:
+      - ".driver-order-filter-fix"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove vehicle class filter from driver order feed
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("supabase/functions/moy-taxi-api/index.ts")
+          s = p.read_text()
+          old = '.eq("vehicle_class",vehicleClass(d.vehicle_class))'
+          if old not in s:
+              raise SystemExit("Expected vehicle class filter was not found")
+          s = s.replace(old, "", 1)
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "moy-taxi-fix"
+          git config user.email "actions@moy-taxi.local"
+          git add supabase/functions/moy-taxi-api/index.ts
+          git commit -m "Show all vehicle classes in driver order feed [skip ci]"
+          git push
