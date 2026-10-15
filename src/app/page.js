@@ -45,7 +45,7 @@ function formatDistance(value){
  return km<1?Math.round(km*1000)+" м":km.toLocaleString("ru-RU",{maximumFractionDigits:1})+" км";
 }
 export default function Home(){
- const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false);
+ const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[welcomeLang,setWelcomeLang]=useState("ru");
  const previousIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
  useEffect(()=>{setOrigin(window.location.origin);setNotificationPermission("Notification"in window?Notification.permission:"unsupported");if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});const bip=e=>{e.preventDefault();setInstallPrompt(e)};window.addEventListener("beforeinstallprompt",bip);const saved=localStorage.getItem("moyTaxiSession");if(saved){try{const s=cleanSession(JSON.parse(saved));if(s){setSession(s);callApi("driver_me",s).then(d=>setDriver(d.driver)).catch(()=>{localStorage.removeItem("moyTaxiSession");setSession(null)})}}catch{localStorage.removeItem("moyTaxiSession")}}const unlock=()=>{try{const C=window.AudioContext||window.webkitAudioContext;if(C&&!audioRef.current)audioRef.current=new C();audioRef.current?.resume()}catch{}};window.addEventListener("pointerdown",unlock,{once:true});return()=>{window.removeEventListener("beforeinstallprompt",bip);window.removeEventListener("pointerdown",unlock)}},[]);
  useEffect(()=>{if(!session){setWalletInfo(null);return}let alive=true;const loadWallet=()=>Promise.all([callApi("driver_wallet",session),callApi("driver_me",session)]).then(([data,me])=>{if(alive){setWalletInfo(data);setDriver(old=>old?{...old,...me.driver}:me.driver)}}).catch(()=>{});loadWallet();const timer=setInterval(loadWallet,15000);return()=>{alive=false;clearInterval(timer)}},[session?.driver_id,session?.session_token]);
@@ -172,24 +172,131 @@ export default function Home(){
    const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
    setNotice(standalone?"Сейчас ты уже в установленном приложении. Чтобы добавить отдельную иконку «Мой Такси», открой основной сайт в Chrome, не через иконку кабинета владельца, затем нажми ⋮ → «Установить приложение» или «Добавить на главный экран».":"Chrome пока не предложил окно установки. Открой основной сайт напрямую в Chrome, затем нажми ⋮ → «Установить приложение» или «Добавить на главный экран».");
   }
- if(entryMode==="choose") return <main className="app auth-app">
-  <header className="header"><div className="logo">Мой <span>Такси</span></div><div className="small">Единое приложение</div></header>
-  <section className="hero panel role-menu">
-    <div className="hero-icon">🚕</div>
-    <p className="eyebrow">ДОБРО ПОЖАЛОВАТЬ</p>
-    <h1>Как вы хотите пользоваться «Мой Такси»?</h1>
-    <p className="muted">Выберите свою роль. Пассажир заказывает поездку, водитель принимает заказы и управляет поездками.</p>
-    <div className="role-actions">
-      <a className="button primary" href="/passenger"><span>🧍</span><span><b>Я пассажир</b><small>Указать адрес и заказать такси</small></span><span>›</span></a>
-      <button type="button" className="button secondary" onClick={()=>setEntryMode("driver")}><span>🚘</span><span><b>Я водитель</b><small>Войти или зарегистрироваться</small></span><span>›</span></button>
+ if(entryMode==="choose") return <main className="app welcome-app">
+  <div className="welcome-shell">
+    <header className="welcome-header">
+      <div className="welcome-brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 80 80" role="img">
+          <defs><linearGradient id="welcomeGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff0a1"/><stop offset=".52" stopColor="#ffca37"/><stop offset="1" stopColor="#d98908"/></linearGradient></defs>
+          <path d="M40 4C20 4 6 19 6 38c0 22 34 38 34 38s34-22 34-42C74 16 59 4 40 4Z" fill="url(#welcomeGold)"/>
+          <path d="M40 12c-15 0-26 11-26 25 0 15 18 28 26 34 12-9 26-21 26-35 0-13-11-24-26-24Z" fill="#062b4a"/>
+          <path d="M22 38l5-11h26l6 11 4 4v12H18V42l4-4Z" fill="url(#welcomeGold)"/>
+          <path d="M28 29h24l4 9H24l4-9Z" fill="#06365a"/>
+          <rect x="29" y="43" width="8" height="5" rx="1" fill="#06365a"/><rect x="44" y="43" width="8" height="5" rx="1" fill="#06365a"/>
+          <path d="M29 54h22" stroke="#fff0a1" strokeWidth="3" strokeLinecap="round"/>
+        </svg>
+      </div>
+      <div className="welcome-brand-copy">
+        <div className="welcome-brand-title">{welcomeLang==="kz"?"БІЗДІҢ":"НАШЕ"} <span>ТАКСИ</span></div>
+        <div className="welcome-brand-subtitle">{welcomeLang==="kz"?"ҚАЗАҚСТАННЫҢ ӨЗ ТАКСИ ҚЫЗМЕТІ":"ҚАЗАҚСТАННЫҢ ӨЗ ТАКСИ СЕРВИСІ"}</div>
+        <div className="welcome-brand-rule"><span></span><b>◇</b><span></span></div>
+      </div>
+    </header>
+
+    <section className="welcome-visual" aria-label={welcomeLang==="kz"?"Астана қаласындағы такси":"Такси в Астане"}>
+      <div className="welcome-visual-glow"></div>
+      <svg className="welcome-city-art" viewBox="0 0 760 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <linearGradient id="welcomeSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1688ce"/><stop offset=".52" stopColor="#65c4ea"/><stop offset="1" stopColor="#f8bd64"/></linearGradient>
+          <linearGradient id="welcomeGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0b355a"/><stop offset=".5" stopColor="#257ea6"/><stop offset="1" stopColor="#061e3a"/></linearGradient>
+          <linearGradient id="welcomeTower" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#d8eff5"/><stop offset=".45" stopColor="#fff"/><stop offset="1" stopColor="#62a9c7"/></linearGradient>
+          <linearGradient id="welcomeSun" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff4bb"/><stop offset="1" stopColor="#f4a02e"/></linearGradient>
+        </defs>
+        <rect width="760" height="300" rx="24" fill="url(#welcomeSky)"/>
+        <circle cx="610" cy="74" r="43" fill="url(#welcomeSun)" opacity=".95"/>
+        <circle cx="610" cy="74" r="60" fill="#ffdc83" opacity=".16"/>
+        <path d="M0 133Q90 108 160 132T310 128T470 130T760 112V230H0Z" fill="#e4f5d7" opacity=".35"/>
+        <path d="M0 208Q120 188 205 210T390 202T560 207T760 196V300H0Z" fill="#0b4264" opacity=".24"/>
+        <g opacity=".97">
+          <path d="M0 160h40v93H0z" fill="#0b2b4a"/><path d="M8 142h28v111H8z" fill="url(#welcomeGlass)"/>
+          <path d="M45 112h48v141H45z" fill="url(#welcomeGlass)"/><path d="M54 91h29v162H54z" fill="#174e70"/>
+          <path d="M105 154h35v99h-35z" fill="#123c60"/><path d="M112 138h22v115h-22z" fill="#3584a4"/>
+          <path d="M151 128h54v125h-54z" fill="#0c3153"/><path d="M161 112h34v141h-34z" fill="url(#welcomeGlass)"/>
+          <path d="M218 167h38v86h-38z" fill="#1a5473"/><path d="M226 143h22v110h-22z" fill="#0c2f4f"/>
+          <path d="M277 150h47v103h-47z" fill="#123b5f"/><path d="M285 126h29v127h-29z" fill="url(#welcomeGlass)"/>
+          <path d="M338 177h39v76h-39z" fill="#194868"/><path d="M345 159h25v94h-25z" fill="#0b3151"/>
+          <path d="M394 144h45v109h-45z" fill="url(#welcomeGlass)"/><path d="M402 126h28v127h-28z" fill="#174766"/>
+          <path d="M452 169h32v84h-32z" fill="#103654"/><path d="M459 151h19v102h-19z" fill="#226986"/>
+          <path d="M510 135h37v118h-37z" fill="#0d3150"/><path d="M518 115h21v138h-21z" fill="url(#welcomeGlass)"/>
+          <path d="M560 176h37v77h-37z" fill="#154563"/>
+          <path d="M654 154h40v99h-40z" fill="#164764"/><path d="M665 134h22v119h-22z" fill="#317b97"/>
+          <path d="M705 177h55v76h-55z" fill="#103350"/>
+        </g>
+        <g stroke="#81c5d9" strokeWidth="2" opacity=".65">
+          <path d="M57 110v140M68 105v145M79 105v145M48 142h46M48 168h46M48 194h46M48 220h46"/>
+          <path d="M161 113v137M177 113v137M151 145h54M151 172h54M151 199h54M151 226h54"/>
+          <path d="M287 127v124M300 127v124M277 156h47M277 184h47M277 212h47"/>
+          <path d="M404 127v124M418 127v124M394 156h45M394 184h45M394 212h45"/>
+          <path d="M521 116v135M532 116v135M510 148h37M510 176h37M510 204h37"/>
+        </g>
+        <g transform="translate(592 30)">
+          <path d="M-7 61L-21 209H20L7 61Z" fill="url(#welcomeTower)" stroke="#d5edf4" strokeWidth="2"/>
+          <path d="M-15 92L12 174M-17 119L15 191M-18 154L17 204M12 92L-15 174M15 119L-17 191M18 154L-17 204" stroke="#6baac5" strokeWidth="2" fill="none"/>
+          <ellipse cx="0" cy="35" rx="35" ry="31" fill="#c3ad6b" stroke="#ffdf8a" strokeWidth="4"/>
+          <ellipse cx="0" cy="34" rx="27" ry="24" fill="#0c4369" stroke="#e8bd5a" strokeWidth="2"/>
+          <path d="M-24 36Q0 13 24 36M-18 48Q0 30 18 48M0 10V60" stroke="#c7e8f5" strokeWidth="2" fill="none" opacity=".8"/>
+          <path d="M0 4V-10" stroke="#f7d27b" strokeWidth="3"/><circle cx="0" cy="-12" r="3" fill="#ffdf8a"/>
+          <path d="M-30 67L-9 84M30 67L9 84M-25 80L-10 97M25 80L10 97" stroke="#fff1b6" strokeWidth="2"/>
+        </g>
+        <path d="M0 252Q190 234 380 251T760 248V300H0Z" fill="#082b44"/>
+        <path d="M0 268Q180 248 380 270T760 263" fill="none" stroke="#f3c254" strokeWidth="3" opacity=".8"/>
+      </svg>
+      <div className="welcome-city-label"><span>✦</span> ASTANA · QAZAQSTAN</div>
+      <div className="welcome-taxi-wrap">
+        <svg className="welcome-taxi-art" viewBox="0 0 500 205" aria-hidden="true">
+          <defs><linearGradient id="welcomeCarPaint" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff"/><stop offset=".65" stopColor="#e7f0f4"/><stop offset="1" stopColor="#9caebb"/></linearGradient><linearGradient id="welcomeCarGlass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#103a57"/><stop offset="1" stopColor="#04182a"/></linearGradient></defs>
+          <ellipse cx="250" cy="174" rx="210" ry="18" fill="#061d30" opacity=".5"/>
+          <path d="M68 130L92 91Q101 80 122 76L181 39Q195 30 219 31H308Q335 34 352 57L385 92L425 105Q444 112 449 135L444 154H49L47 141Q49 130 68 130Z" fill="url(#welcomeCarPaint)" stroke="#d7e5eb" strokeWidth="3"/>
+          <path d="M120 81L188 45Q199 39 220 40H302Q327 43 342 63L366 91H106Z" fill="url(#welcomeCarGlass)" stroke="#d9e8ed" strokeWidth="3"/>
+          <path d="M231 43V90M305 43L329 89" stroke="#aec6d1" strokeWidth="3"/>
+          <path d="M91 96H373L397 111H79Z" fill="#f5fbff"/>
+          <path d="M60 134Q111 129 161 133T266 134T429 132" stroke="#cf9c2a" strokeWidth="5" fill="none"/>
+          <path d="M83 139h54v-10H83z" fill="#092b45"/><path d="M89 131h7v6h-7zm13 0h7v6h-7zm13 0h7v6h-7zm13 0h3v6h-3z" fill="#f6c344"/>
+          <path d="M143 150H362" stroke="#ffffff" strokeWidth="2" opacity=".8"/>
+          <path d="M176 42l-41 46h-24l66-42z" fill="#2a6a8b" opacity=".8"/>
+          <path d="M213 42H301Q323 46 338 67L355 89H213Z" fill="#0b2a44"/>
+          <path d="M213 48V86M301 48L323 86" stroke="#9ebdce" strokeWidth="3"/>
+          <rect x="220" y="14" width="77" height="25" rx="6" fill="#ffc833" stroke="#fff0a3" strokeWidth="2"/>
+          <path d="M230 21h8v11h-8zm14 0h8v11h-8zm14 0h8v11h-8zm14 0h8v11h-8zm14 0h6v11h-6z" fill="#082941"/>
+          <path d="M48 133L64 120L80 121L73 139H50Z" fill="#f5fbff"/>
+          <path d="M417 116L441 124L442 137L418 135Z" fill="#ffcf49"/>
+          <circle cx="136" cy="151" r="34" fill="#102536"/><circle cx="136" cy="151" r="23" fill="#bac9d1"/><circle cx="136" cy="151" r="14" fill="#213d4e"/><circle cx="136" cy="151" r="6" fill="#e7eff3"/>
+          <circle cx="370" cy="151" r="34" fill="#102536"/><circle cx="370" cy="151" r="23" fill="#bac9d1"/><circle cx="370" cy="151" r="14" fill="#213d4e"/><circle cx="370" cy="151" r="6" fill="#e7eff3"/>
+          <path d="M189 100h112" stroke="#f5fbff" strokeWidth="3" opacity=".8"/>
+          <circle cx="56" cy="128" r="4" fill="#fff"/><circle cx="438" cy="128" r="4" fill="#fff"/>
+        </svg>
+        <div className="welcome-taxi-brand"><span>✦</span> НАШЕ ТАКСИ</div>
+      </div>
+    </section>
+
+    <div className="welcome-intro">
+      <p>{welcomeLang==="kz"?"Қала ішінде жүру оңай әрі ыңғайлы.":"Поездки по городу — просто и удобно."}</p>
+      <div><span></span><b>{welcomeLang==="kz"?"ӨЗІМІЗДІҢ СЕРВИС":"СВОЙ СЕРВИС"}</b><span></span></div>
     </div>
-    <button type="button" className="button install" onClick={install}>
-      <span style={{fontSize:24}}>📲</span>
-      <span><b>Установить «Мой Такси»</b><small>Отдельная иконка для пассажира и водителя</small></span>
+    <button type="button" className="welcome-cta" onClick={()=>document.getElementById("welcome-roles")?.scrollIntoView({behavior:"smooth",block:"center"})}>
+      {welcomeLang==="kz"?"Сапарды бастау":"Начать поездку"} <span aria-hidden="true">➜</span>
     </button>
+    <section className="welcome-roles" id="welcome-roles" aria-label={welcomeLang==="kz"?"Рөлді таңдаңыз":"Выберите режим"}>
+      <a className="welcome-role-card" href="/passenger">
+        <span className="welcome-role-icon passenger-icon" aria-hidden="true">♙</span>
+        <span className="welcome-role-copy"><b>{welcomeLang==="kz"?"ЖОЛАУШЫ":"ПАССАЖИР"}</b><small>{welcomeLang==="kz"?"Такси шақыру":"Заказать такси"}</small></span>
+        <span className="welcome-role-arrow" aria-hidden="true">›</span>
+      </a>
+      <button type="button" className="welcome-role-card" onClick={()=>setEntryMode("driver")}>
+        <span className="welcome-role-icon driver-icon" aria-hidden="true">🚕</span>
+        <span className="welcome-role-copy"><b>{welcomeLang==="kz"?"ЖҮРГІЗУШІ":"ВОДИТЕЛЬ"}</b><small>{welcomeLang==="kz"?"Тапсырыс қабылдау":"Принимать заказы"}</small></span>
+        <span className="welcome-role-arrow" aria-hidden="true">›</span>
+      </button>
+    </section>
+    <footer className="welcome-footer">
+      <div className="welcome-language-picker" role="group" aria-label="Язык">
+        <button type="button" className={welcomeLang==="kz"?"active":""} aria-pressed={welcomeLang==="kz"} onClick={()=>setWelcomeLang("kz")}><span className="welcome-kz-dot">KZ</span> Қазақша</button>
+        <button type="button" className={welcomeLang==="ru"?"active":""} aria-pressed={welcomeLang==="ru"} onClick={()=>setWelcomeLang("ru")}><span className="welcome-globe">◎</span> Русский</button>
+      </div>
+      <small>{welcomeLang==="kz"?"Бір қосымша · екі режим":"Одно приложение · два режима"}</small>
+    </footer>
     {notice && <div className="success" role="status">{notice}</div>}
-    <p className="muted small role-test-note">Мой Такси сейчас работает в тестовом режиме.</p>
-  </section>
+  </div>
 </main>;
 if(!session||!driver) return <main className="app auth-app"><header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Панель водителя</span></header><section className="hero panel"><div className="hero-icon">🚕</div><p className="eyebrow">ЛИЧНЫЙ СЕРВИС</p><h1>{authMode==="register"?"Регистрация водителя":"Вход водителя"}</h1><p className="muted">Один аккаунт — твой QR-код и твои клиенты.</p></section>{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}<section className="panel auth-panel"><div className="switcher"><button className={authMode==="login"?"switch active":"switch"} onClick={()=>setAuthMode("login")}>Войти</button><button className={authMode==="register"?"switch active":"switch"} onClick={()=>setAuthMode("register")}>Регистрация</button></div><form onSubmit={auth}>{authMode==="register"&&<div className="field"><label>Имя</label><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Имя водителя"/></div>}<div className="field"><label>Номер телефона</label><input required type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+7 777 000 00 00"/></div><div className="field"><label>Пароль</label><input required type="password" minLength={8} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Не менее 8 символов"/></div>{authMode==="register"&&<><div className="field"><label>Автомобиль</label><input value={form.car_model} onChange={e=>setForm({...form,car_model:e.target.value})} placeholder="Toyota Camry"/></div><div className="field"><label>Госномер</label><input value={form.car_plate} onChange={e=>setForm({...form,car_plate:e.target.value})} placeholder="123 ABC 01"/></div><div className="field"><label>Цвет машины</label><input value={form.car_color} onChange={e=>setForm({...form,car_color:e.target.value})} placeholder="Белый"/></div><div className="field"><label>Класс автомобиля</label><select value={form.vehicle_class||"economy"} onChange={e=>setForm({...form,vehicle_class:e.target.value})}><option value="economy">Эконом</option><option value="comfort">Комфорт</option><option value="comfort_plus">Комфорт+</option><option value="business">Бизнес</option><option value="minivan">Минивэн</option><option value="premium">Премиум</option></select><p className="muted small">Выбери класс по требованиям платформы. Позже добавим проверку категории по марке, модели и документам.</p></div></>}<button className="button primary" disabled={busy}>{busy?"Подожди…":authMode==="register"?"Создать аккаунт":"Войти"}</button></form></section></main>;
  const link=origin+"/c/"+driver.public_code,qr="https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data="+encodeURIComponent(link),newCount=orders.filter(o=>o.status==="new").length,active=orders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status));
