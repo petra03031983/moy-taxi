@@ -16,26 +16,47 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
   if(nearPoint)return nearPoint;
   throw new Error("Не удалось получить GPS клиента.");
  }
- const queries=[clean];
- if(nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73)queries.push(clean+", Астана, Казахстан");
- queries.push(clean+", Казахстан");
+ const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
+ const queries:string[]=[];
+ if(!hasCity&&nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73)queries.push(clean+", Астана, Казахстан");
+ queries.push(clean);
+ if(!/казахстан|қазақстан|kazakhstan/i.test(clean))queries.push(clean+", Казахстан");
  for(const query of [...new Set(queries)]){
   const params=new URLSearchParams({q:query,fields:"items.point,items.full_address_name,items.address,items.geometry.centroid",locale:"ru_KZ",key});
+  if(nearPoint)params.set("sort_point",nearPoint.lng+","+nearPoint.lat);
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7500);
   try{
    const response=await fetch("https://catalog.api.2gis.com/3.0/items/geocode?"+params.toString(),{headers:{"Accept":"application/json"},signal:controller.signal});
+   if(response.status===401||response.status===403)throw new Error("2ГИС отклонил ключ Geocoder API. Проверь доступ к геокодеру.");
    if(!response.ok)continue;
    const data=await response.json();
    const items=data?.result?.items||[];
-   for(const item of items){
-    const point=pointFrom2gis(item);
-    if(point)return point;
+   const points=items.map((item:any)=>pointFrom2gis(item)).filter((point:any)=>point!==null);
+   if(points.length){
+    if(nearPoint)points.sort((a:any,b:any)=>km(nearPoint.lat,nearPoint.lng,a.lat,a.lng)-km(nearPoint.lat,nearPoint.lng,b.lat,b.lng));
+    return points[0];
    }
-  }catch(e){if((e as any)?.name!=="AbortError")console.error("2GIS geocoder failed",String(e))}
-  finally{clearTimeout(timer)}
+  }catch(e){
+   if(e instanceof Error&&e.message.includes("2ГИС отклонил ключ"))throw e;
+   if((e as any)?.name!=="AbortError")console.error("2GIS geocoder failed",query,String(e));
+  }finally{clearTimeout(timer)}
  }
- throw new Error("2ГИС не нашёл этот адрес. Добавь название города или выбери точный вариант из подсказок.");
+ throw new Error("2ГИС не нашёл этот адрес. Добавь город или выбери точный вариант из подсказок.");
 }
+async function reverseGeocodePoint2gis(point:{lat:number,lng:number},key:string){
+ try{
+  const params=new URLSearchParams({lon:String(point.lng),lat:String(point.lat),fields:"items.full_address_name,items.address,items.adm_div",locale:"ru_KZ",key});
+  const response=await fetch("https://catalog.api.2gis.com/3.0/items/geocode?"+params.toString(),{headers:{"Accept":"application/json"}});
+  if(!response.ok)return null;
+  const data=await response.json(),item=data?.result?.items?.[0];
+  if(!item)return null;
+  const label=String(item.full_address_name||(typeof item.address==="string"?item.address:"")||item.address?.full_address_name||item.address?.name||item.address_name||item.name||"");
+  const divisions=(item.adm_div||[]).map((x:any)=>x.name||x.caption).filter(Boolean);
+  const city=divisions.find((v:string)=>/астана|алматы|тал[аә]пкер|город/i.test(v))||divisions[0]||"Казахстан";
+  return label?{label,city}:null;
+ }catch(e){console.error("2GIS reverse geocoder fallback failed",String(e));return null}
+}
+
 function wktLinePoints(wkt:string){
  const match=/LINESTRING(?:\s+Z)?\s*\(([^)]+)\)/i.exec(String(wkt||""));
  if(!match)return [];
@@ -180,6 +201,17 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
   }
  }
  if(errors.length)console.error("2GIS suggestion providers returned errors",errors.slice(0,10));
+ // Final fallback: even if Suggest returns no coordinate-bearing item, resolve the typed address through the official 2GIS Geocoder.
+ try{
+  const point=await geocodePoint(clean,nearPoint,key);
+  const canonical=await reverseGeocodePoint2gis(point,key);
+  const label=canonical?.label||(nearAstana&&!hasCity?clean+", Астана, Казахстан":clean);
+  const city=canonical?.city||(nearAstana?"Астана":"Казахстан");
+  return [{name:label.split(",")[0]||clean,label,city,lat:point.lat,lng:point.lng,provider:"2gis",suggest_type:"geocoder"}];
+ }catch(e){
+  if(e instanceof Error&&e.message.includes("2ГИС отклонил ключ"))throw e;
+  console.error("2GIS fallback geocoding failed",clean,String(e));
+ }
  return [];
 }
 
