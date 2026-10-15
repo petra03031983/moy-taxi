@@ -733,14 +733,16 @@ if(a==="driver_skip_order"){
  if(error)return fail("Не удалось изменить статус.",500);
  return reply({ok:true,is_online:u.is_online,driver:pub(u)});
 }if(a==="driver_update_profile"){const name=String(p.name||"").trim().slice(0,100),car=String(p.car_model||"").trim().slice(0,100),plate=String(p.car_plate||"").trim().slice(0,30),color=String(p.car_color||"").trim().slice(0,40),photo=String(p.photo_url||""),vclass=vehicleClass(p.vehicle_class||d.vehicle_class);if(!name)return fail("Имя не может быть пустым.");if(photo.length>250000)return fail("Фото слишком большое.");const {data:u,error}=await c.from("drivers").update({name,car_model:car||null,car_plate:plate||null,car_color:color||null,vehicle_class:vclass,photo_url:photo||null,updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось обновить профиль.",500);return reply({ok:true,driver:pub(u)})}if(a==="driver_list"){
- if(!driverCanWork(d))return fail(d.verification_status!=="approved"?"Владелец ещё не подтвердил документы.":"Фотоконтроль просрочен или ожидает подтверждения.");
- const [assignedQ,broadcastQ]=await Promise.all([
-  c.from("orders").select("*,clients(name,phone,photo_url)").eq("driver_id",d.id).in("status",["new","accepted","arrived","client_ready","started"]).order("created_at",{ascending:false}),
-  c.from("orders").select("*,clients(name,phone,photo_url)").is("driver_id",null).eq("vehicle_class",vehicleClass(d.vehicle_class)).eq("status","new").order("created_at",{ascending:false}).limit(100)
- ]);
- if(assignedQ.error||broadcastQ.error)return fail("Не удалось загрузить заказы.",500);
- const ids=new Set((assignedQ.data||[]).map((o:any)=>o.id));
- const all=[...(assignedQ.data||[]),...(broadcastQ.data||[]).filter((o:any)=>!ids.has(o.id))].sort((a:any,b:any)=>Date.parse(b.created_at)-Date.parse(a.created_at));
+ const {data:assignedOrders,error:assignedError}=await c.from("orders").select("*,clients(name,phone,photo_url)").eq("driver_id",d.id).in("status",["new","accepted","arrived","client_ready","started"]).order("created_at",{ascending:false});
+ if(assignedError)return fail("Не удалось загрузить текущие заказы.",500);
+ let broadcastOrders:any[]=[];
+ if(driverCanWork(d)){
+  const {data:broadcast,error:broadcastError}=await c.from("orders").select("*,clients(name,phone,photo_url)").is("driver_id",null).eq("vehicle_class",vehicleClass(d.vehicle_class)).eq("status","new").order("created_at",{ascending:false}).limit(100);
+  if(broadcastError)return fail("Не удалось загрузить новые заказы.",500);
+  broadcastOrders=broadcast||[];
+ }
+ const ids=new Set((assignedOrders||[]).map((o:any)=>o.id));
+ const all=[...(assignedOrders||[]),...broadcastOrders.filter((o:any)=>!ids.has(o.id))].sort((a:any,b:any)=>Date.parse(b.created_at)-Date.parse(a.created_at));
  const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
  const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="skipped").map((x:any)=>x.order_id));
  return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),is_online:d.is_online});
