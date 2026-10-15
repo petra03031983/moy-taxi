@@ -186,20 +186,25 @@ export default function Home(){
     <p className="muted small role-test-note">Мой Такси сейчас работает в тестовом режиме.</p>
   </section>
 </main>;
-if(session&&driver&&driver.verification_status!=="approved") return <main className="app dashboard">
- <header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Проверка водителя</span></header>
- {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="success" role="status">{notice}</div>}
- <section className="hero panel"><div className="hero-icon">🪪</div><p className="eyebrow">РЕГИСТРАЦИЯ ВОДИТЕЛЯ</p>
- <h1>{driver.verification_status==="rejected"?"Нужно исправить данные":"Документы на проверке"}</h1>
- <p className="muted">{driver.verification_status==="rejected"?(driver.verification_note||"Владелец попросил повторно отправить документы и фотографии."): "Владелец проверит водительское удостоверение, техпаспорт, селфи и фотографии автомобиля. До подтверждения документов заказы недоступны."}</p>
- {driver.verification_status==="rejected"&&<form onSubmit={resubmitVerification}>
- <VerificationFields form={form} setForm={setForm} onPhotoChange={handlePhotoUpload}/>
- <button className="button primary" disabled={busy}>{busy?"Отправляем…":"Отправить исправленные документы"}</button>
- </form>}
- <a className="button secondary" href="/passenger">🚕 Переключиться в режим пассажира</a>
- <button className="button danger" style={{marginTop:10}} onClick={logout}>Выйти из аккаунта водителя</button>
- </section>
+if(session&&driver&&driver.verification_status!=="approved"){
+ const needsInitialDocuments=driver.verification_status==="pending"&&driver.verification_files_submitted===false;
+ const canResubmitDocuments=driver.verification_status==="rejected"||needsInitialDocuments;
+ return <main className="app dashboard">
+  <header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Проверка водителя</span></header>
+  {error&&<div className="error" role="alert">{error}</div>}{notice&&<div className="success" role="status">{notice}</div>}
+  <section className="hero panel"><div className="hero-icon">🪪</div><p className="eyebrow">РЕГИСТРАЦИЯ ВОДИТЕЛЯ</p>
+  <h1>{driver.verification_status==="rejected"?"Нужно исправить данные":needsInitialDocuments?"Заверши регистрацию водителя":"Документы на проверке"}</h1>
+  <p className="muted">{driver.verification_status==="rejected"?(driver.verification_note||"Владелец попросил повторно отправить документы и фотографии."):needsInitialDocuments?"Этому аккаунту ещё не отправляли документы. Заполни форму ниже, чтобы владелец мог проверить водительское удостоверение, техпаспорт, селфи и автомобиль.":"Владелец проверит водительское удостоверение, техпаспорт, селфи и фотографии автомобиля. До подтверждения документов заказы недоступны."}</p>
+  {canResubmitDocuments&&<form onSubmit={resubmitVerification}>
+   <VerificationFields form={form} setForm={setForm} onPhotoChange={handlePhotoUpload}/>
+   <button className="button primary" disabled={busy}>{busy?"Отправляем…":needsInitialDocuments?"Отправить документы на первую проверку":"Отправить исправленные документы"}</button>
+  </form>}
+  <a className="button secondary" href="/passenger">🚕 Переключиться в режим пассажира</a>
+  <button className="button danger" style={{marginTop:10}} onClick={logout}>Выйти из аккаунта водителя</button>
+  </section>
  </main>;
+}
+
 if(!session||!driver) return <main className="app auth-app"><header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Панель водителя</span></header><section className="hero panel"><div className="hero-icon">🚕</div><p className="eyebrow">ЛИЧНЫЙ СЕРВИС</p><h1>{authMode==="register"?"Регистрация водителя":"Вход водителя"}</h1><p className="muted">Один аккаунт — твой QR-код и твои клиенты.</p></section>{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}<section className="panel auth-panel"><div className="switcher"><button className={authMode==="login"?"switch active":"switch"} onClick={()=>setAuthMode("login")}>Войти</button><button className={authMode==="register"?"switch active":"switch"} onClick={()=>setAuthMode("register")}>Регистрация</button></div><form onSubmit={auth}>
  {authMode==="register"&&<div className="field"><label>Полное имя водителя</label><input required maxLength={100} value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} placeholder="Как в удостоверении"/></div>}
  <div className="field"><label>Номер телефона</label><input required type="tel" value={form.phone} onChange={e=>setForm(v=>({...v,phone:e.target.value}))} placeholder="+7 777 000 00 00" autoComplete="tel"/></div>
