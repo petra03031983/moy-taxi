@@ -1,6 +1,6 @@
 export async function GET() {
   const body = {
-    id: "/admin-owner",
+    id: "/admin",
     name: "Кабинет владельца — Мой Такси",
     short_name: "Владелец",
     description: "Отдельная панель управления сервисом Мой Такси.",
