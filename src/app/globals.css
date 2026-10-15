@@ -178,3 +178,14 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .role-test-note{text-align:center;margin:18px 0 8px}
 .owner-shortcut-link{display:block;text-align:center;color:var(--green);font-size:13px;font-weight:700;text-decoration:none;padding:10px}
 .owner-shortcut-link:active{text-decoration:underline}
+
+
+.client-price-control{margin:14px 0 18px;padding:14px;border:1px solid #cfe4d9;border-radius:18px;background:#f2faf5}
+.client-price-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.client-price-heading b{font-size:17px}
+.client-price-heading span{font-size:13px;color:#668278}
+.client-price-stepper{display:grid;grid-template-columns:54px minmax(0,1fr) 54px;gap:10px;align-items:center}
+.client-price-stepper button{height:48px;border:0;border-radius:14px;background:#176b4d;color:#fff;font-size:30px;font-weight:700;line-height:1}
+.client-price-stepper button:disabled{opacity:.4}
+.client-price-stepper strong{text-align:center;font-size:24px;white-space:nowrap;color:#176b4d}
+.client-price-control p{margin:10px 0 0;color:#678077;font-size:13px;line-height:1.45}
