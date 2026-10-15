@@ -82,6 +82,11 @@ export default function Home(){
       <a className="button primary" href="/passenger"><span>🧍</span><span><b>Я пассажир</b><small>Указать адрес и заказать такси</small></span><span>›</span></a>
       <button type="button" className="button secondary" onClick={()=>setEntryMode("driver")}><span>🚘</span><span><b>Я водитель</b><small>Войти или зарегистрироваться</small></span><span>›</span></button>
     </div>
+    <button type="button" className="button install" onClick={install}>
+      <span style={{fontSize:24}}>📲</span>
+      <span><b>Установить «Мой Такси»</b><small>Отдельная иконка для пассажира и водителя</small></span>
+    </button>
+    {notice && <div className="success" role="status">{notice}</div>}
     <p className="muted small role-test-note">Мой Такси сейчас работает в тестовом режиме.</p>
   </section>
 </main>;
