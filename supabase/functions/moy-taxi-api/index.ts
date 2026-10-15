@@ -625,7 +625,7 @@ if(a==="driver_skip_order"){
 }if(a==="driver_update_profile"){const name=String(p.name||"").trim().slice(0,100),car=String(p.car_model||"").trim().slice(0,100),plate=String(p.car_plate||"").trim().slice(0,30),color=String(p.car_color||"").trim().slice(0,40),photo=String(p.photo_url||""),vclass=vehicleClass(p.vehicle_class||d.vehicle_class);if(!name)return fail("Имя не может быть пустым.");if(photo.length>250000)return fail("Фото слишком большое.");const {data:u,error}=await c.from("drivers").update({name,car_model:car||null,car_plate:plate||null,car_color:color||null,vehicle_class:vclass,photo_url:photo||null,updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось обновить профиль.",500);return reply({ok:true,driver:pub(u)})}if(a==="driver_list"){
  const [assignedQ,broadcastQ]=await Promise.all([
   c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).in("status",["new","accepted","arrived","client_ready","started"]).order("created_at",{ascending:false}),
-  c.from("orders").select("*,clients(name,phone)").is("driver_id",null).eq("vehicle_class",vehicleClass(d.vehicle_class)).eq("status","new").order("created_at",{ascending:false}).limit(100)
+  c.from("orders").select("*,clients(name,phone)").is("driver_id",null).eq("status","new").order("created_at",{ascending:false}).limit(100)
  ]);
  if(assignedQ.error||broadcastQ.error)return fail("Не удалось загрузить заказы.",500);
  const locationAge=d.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
