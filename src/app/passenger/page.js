@@ -198,7 +198,7 @@ export default function PassengerPage() {
     if (!route || !destinationPoint) { setError("Подожди, пока рассчитается маршрут и появятся цены."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
-      const fare = Number(route.estimated_prices?.[selectedClass] || 0);
+      const fare = Number(quote || 0);
       if (!fare) throw new Error("Не удалось рассчитать цену для этого класса. Пересчитай маршрут.");
       const result = await callApi("create_order", {
         driver_code: "AUTO", name, phone, pickup_address: pickup || "Моё местоположение",
