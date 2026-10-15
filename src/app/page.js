@@ -15,8 +15,43 @@ function twoGisTripRoute(fromLat, fromLng, toLat, toLng, address) {
   return twoGisRoute(toLat, toLng, address);
 }
 const VEHICLE_CLASSES=[["economy","Эконом"],["comfort","Комфорт"],["comfort_plus","Комфорт+"],["business","Бизнес"],["minivan","Минивэн"],["premium","Премиум"]];
-const emptyForm={name:"",phone:"",password:"",car_model:"",car_plate:"",car_color:"",vehicle_class:"economy",photo_url:""};
+const DRIVER_DOCUMENT_FIELDS=[
+ {key:"license_front",label:"Водительское удостоверение — лицевая сторона"},
+ {key:"license_back",label:"Водительское удостоверение — обратная сторона"},
+ {key:"vehicle_reg_front",label:"Техпаспорт — лицевая сторона"},
+ {key:"vehicle_reg_back",label:"Техпаспорт — обратная сторона"},
+ {key:"id_selfie",label:"Селфи: лицо и лицевая сторона удостоверения личности",capture:"user"}
+];
+const CAR_PHOTO_FIELDS=[
+ {key:"left",label:"Левая сторона автомобиля"},
+ {key:"front",label:"Перед автомобиля"},
+ {key:"right",label:"Правая сторона автомобиля"},
+ {key:"rear",label:"Задняя сторона автомобиля"},
+ {key:"front_seat",label:"Переднее пассажирское сиденье — ремни видны"},
+ {key:"rear_seat",label:"Заднее сиденье — ремни видны"},
+ {key:"trunk",label:"Открытый багажник"}
+];
+const blankCarPhotos=()=>Object.fromEntries(CAR_PHOTO_FIELDS.map(x=>[x.key,""]));
+const blankDocuments=()=>Object.fromEntries(DRIVER_DOCUMENT_FIELDS.map(x=>[x.key,""]));
+const emptyForm={name:"",phone:"",password:"",car_model:"",car_plate:"",car_color:"",vehicle_class:"economy",photo_url:"",document_photos:blankDocuments(),car_photos:blankCarPhotos(),car_cleanliness_confirmed:false,legal_consent:false};
 function cleanSession(v){return v&&typeof v.driver_id==="string"&&typeof v.session_token==="string"?v:null}
+function driverReadyForWork(d){return d?.verification_status==="approved"&&Boolean(d?.documents_verified)&&d?.photo_control_status==="approved"&&Boolean(d?.next_photo_control_at)&&Date.parse(d.next_photo_control_at)>Date.now()}
+function compressPhotoFile(file,maxDimension=1100,quality=.68){return new Promise((resolve,reject)=>{if(!file){reject(new Error("Выбери фотографию."));return}const reader=new FileReader();reader.onerror=()=>reject(new Error("Не удалось прочитать фотографию."));reader.onload=()=>{const img=new Image();img.onerror=()=>reject(new Error("Не удалось открыть изображение."));img.onload=()=>{try{const scale=Math.min(1,maxDimension/Math.max(img.width,img.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);const data=canvas.toDataURL("image/jpeg",quality);if(data.length>320000)reject(new Error("Фото слишком большое. Сними документ ближе и выбери его снова."));else resolve(data)}catch{reject(new Error("Не удалось обработать фотографию."))}};img.src=String(reader.result||"")};reader.readAsDataURL(file)})}
+function VerificationFields({form,setForm,onPhotoChange}){return <>
+ <div className="field"><label>Марка и модель автомобиля</label><input required maxLength={100} value={form.car_model} onChange={e=>setForm(v=>({...v,car_model:e.target.value}))} placeholder="Toyota Camry"/></div>
+ <div className="field"><label>Государственный номер</label><input required maxLength={30} value={form.car_plate} onChange={e=>setForm(v=>({...v,car_plate:e.target.value}))} placeholder="123 ABC 01"/></div>
+ <div className="field"><label>Цвет автомобиля</label><input required maxLength={40} value={form.car_color} onChange={e=>setForm(v=>({...v,car_color:e.target.value}))} placeholder="Белый"/></div>
+ <div className="field"><label>Класс автомобиля</label><select required value={form.vehicle_class||"economy"} onChange={e=>setForm(v=>({...v,vehicle_class:e.target.value}))}><option value="economy">Эконом</option><option value="comfort">Комфорт</option><option value="comfort_plus">Комфорт+</option><option value="business">Бизнес</option><option value="minivan">Минивэн</option><option value="premium">Премиум</option></select></div>
+ <div className="divider-owner" />
+ <h3>Документы водителя</h3><p className="muted small">Сфотографируй документы целиком, без бликов, чтобы текст и края были видны. Фото хранятся в закрытой базе и не показываются клиентам.</p>
+ {DRIVER_DOCUMENT_FIELDS.map(item=><div className="field" key={item.key}><label>{item.label}</label>{form.document_photos?.[item.key]&&<img src={form.document_photos[item.key]} alt={item.label} style={{width:"100%",maxWidth:220,maxHeight:145,objectFit:"contain",borderRadius:12,marginBottom:7,background:"#f2f5f2"}}/>}<input type="file" accept="image/*" capture={item.capture||"environment"} required={!form.document_photos?.[item.key]} onChange={e=>onPhotoChange(e,"document_photos",item.key)}/></div>)}
+ <div className="divider-owner" />
+ <h3>Фотоконтроль автомобиля</h3><p className="muted small">Машина должна быть чистой. На фотографиях переднего и заднего сидений должны быть хорошо видны ремни безопасности. Для фото багажника открой его.</p>
+ {CAR_PHOTO_FIELDS.map(item=><div className="field" key={item.key}><label>{item.label}</label>{form.car_photos?.[item.key]&&<img src={form.car_photos[item.key]} alt={item.label} style={{width:"100%",maxWidth:220,maxHeight:145,objectFit:"contain",borderRadius:12,marginBottom:7,background:"#f2f5f2"}}/>}<input type="file" accept="image/*" capture="environment" required={!form.car_photos?.[item.key]} onChange={e=>onPhotoChange(e,"car_photos",item.key)}/></div>)}
+ <div className="field"><label><input type="checkbox" required checked={Boolean(form.car_cleanliness_confirmed)} onChange={e=>setForm(v=>({...v,car_cleanliness_confirmed:e.target.checked}))}/> Подтверждаю, что автомобиль чистый, ремни безопасности видны, фотографии сделаны сейчас.</label></div>
+ <div className="field"><label><input type="checkbox" required checked={Boolean(form.legal_consent)} onChange={e=>setForm(v=>({...v,legal_consent:e.target.checked}))}/> Я ознакомился с <a href="/legal/driver-terms" target="_blank" rel="noreferrer">соглашением водителя</a> и <a href="/legal/privacy" target="_blank" rel="noreferrer">политикой обработки персональных данных</a>, даю согласие на обработку документов и фотографий для проверки.</label></div>
+ </>}
+
 export default function Home(){
  const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]});
  const previousIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
