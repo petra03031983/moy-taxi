@@ -665,11 +665,21 @@ if(a==="driver_submit_photo_control"){
  return reply({ok:true,driver:{...pub(u),verification_note:""},message:"Фотоконтроль отправлен владельцу. До подтверждения выход на линию закрыт."});
 }
 if(a==="driver_me"){
- const {data:ratingRows}=await c.from("driver_ratings").select("stars").eq("driver_id",d.id).limit(10000);
- const scores=(ratingRows||[]).map((x:any)=>Number(x.stars)).filter((x:number)=>x>=1&&x<=5);
- const {data:verificationFiles,error:verificationFilesError}=await c.from("driver_verification_files").select("driver_id").eq("driver_id",d.id).maybeSingle();
- if(verificationFilesError)return fail("Не удалось проверить файлы водительской регистрации.",500);
- return reply({ok:true,driver:{...pub(d),verification_note:d.verification_note||"",verification_files_submitted:Boolean(verificationFiles),rating_average:scores.length?Number((scores.reduce((a:number,b:number)=>a+b,0)/scores.length).toFixed(2)):null,rating_count:scores.length}});
+ const [ratingQ,verificationFilesQ,activeRideQ]=await Promise.all([
+  c.from("driver_ratings").select("stars").eq("driver_id",d.id).limit(10000),
+  c.from("driver_verification_files").select("driver_id").eq("driver_id",d.id).maybeSingle(),
+  c.from("orders").select("id").eq("driver_id",d.id).in("status",["accepted","arrived","client_ready","started"]).limit(1).maybeSingle()
+ ]);
+ if(verificationFilesQ.error)return fail("Не удалось проверить файлы водительской регистрации.",500);
+ if(activeRideQ.error)return fail("Не удалось проверить текущую поездку.",500);
+ const scores=(ratingQ.data||[]).map((x:any)=>Number(x.stars)).filter((x:number)=>x>=1&&x<=5);
+ const publicDriver=pub(d);
+ // An overdue weekly photo check must not hide a ride already in progress. Keep the driver UI polling only during that ride; server-side order actions still enforce the actual verification status and no new broadcast orders are returned.
+ if(activeRideQ.data&&d.verification_status==="approved"&&d.documents_verified&&!driverCanWork(d)){
+  publicDriver.photo_control_status="approved";
+  publicDriver.next_photo_control_at=new Date(Date.now()+60*60*1000).toISOString();
+ }
+ return reply({ok:true,driver:{...publicDriver,verification_note:d.verification_note||"",verification_files_submitted:Boolean(verificationFilesQ.data),rating_average:scores.length?Number((scores.reduce((a:number,b:number)=>a+b,0)/scores.length).toFixed(2)):null,rating_count:scores.length}});
 }
 if(a==="driver_wallet"){
  const {data:settingsRow}=await c.from("platform_settings").select("test_mode,minimum_wallet_balance").eq("id",true).maybeSingle();
