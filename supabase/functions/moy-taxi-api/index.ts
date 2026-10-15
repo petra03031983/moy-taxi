@@ -400,6 +400,13 @@ if(a.startsWith("admin_")){
   const {data:current,error:currentError}=await c.from("drivers").select("id,verification_status,photo_control_status,documents_verified,last_photo_control_at").eq("id",driverId).maybeSingle();
   if(currentError||!current)return fail("Водитель не найден.",404);
   if(kind==="photo_control"&&current.verification_status!=="approved")return fail("Сначала подтверди документы водителя.");
+  if(decision==="approved"){
+   const {data:files,error:fileError}=await c.from("driver_verification_files").select("document_photos,car_photos,weekly_selfie_photo").eq("driver_id",driverId).maybeSingle();
+   if(fileError)return fail("Не удалось проверить фотографии водителя.",500);
+   if(!files)return fail("Нельзя подтвердить: материалы проверки не загружены.");
+   if(kind==="onboarding"&&(!validPhotoSet(files.document_photos,DRIVER_DOC_KEYS)||!validPhotoSet(files.car_photos,CAR_PHOTO_KEYS)||files.car_photos?.cleanliness_confirmed!==true))return fail("Нельзя подтвердить регистрацию: нужны все документы и 7 фотографий чистого автомобиля.");
+   if(kind==="photo_control"&&(!validPhotoSet(files.car_photos,CAR_PHOTO_KEYS)||files.car_photos?.cleanliness_confirmed!==true||!validPhoto(files.weekly_selfie_photo)))return fail("Нельзя подтвердить фотоконтроль: нужны все 7 фотографий автомобиля и свежее селфи водителя.");
+  }
   const now=new Date().toISOString();
   const patch:any={is_online:false,updated_at:now,verification_note:decision==="rejected"?(note||"Нужно повторно отправить документы и фотографии."):null};
   if(kind==="onboarding"){
