@@ -17,9 +17,11 @@ const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFract
 function routeUrl(a, b) {
   return "https://2gis.kz/directions/points/" + a.lng + "," + a.lat + "|" + b.lng + "," + b.lat;
 }
+function compressClientPhoto(file,maxDimension=420,quality=.75){return new Promise((resolve,reject)=>{if(!file){reject(new Error("Выбери фото клиента."));return}const reader=new FileReader();reader.onerror=()=>reject(new Error("Не удалось прочитать фото."));reader.onload=()=>{const img=new Image();img.onerror=()=>reject(new Error("Не удалось открыть фото."));img.onload=()=>{try{const scale=Math.min(1,maxDimension/Math.max(img.width,img.height)),canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);const data=canvas.toDataURL("image/jpeg",quality);if(data.length>320000)reject(new Error("Фото слишком большое. Выбери другое изображение."));else resolve(data)}catch{reject(new Error("Не удалось обработать фото."))}};img.src=String(reader.result||"")};reader.readAsDataURL(file)})}
 export default function PassengerPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [clientPhoto, setClientPhoto] = useState("");
   const [showContactFields, setShowContactFields] = useState(false);
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
@@ -50,8 +52,8 @@ export default function PassengerPage() {
   useEffect(() => {
     try {
       const profile = JSON.parse(localStorage.getItem("moyTaxiClientProfile") || "{}");
-      setName(profile.name || ""); setPhone(profile.phone || "");
-      setShowContactFields(!profile.name || !profile.phone);
+      setName(profile.name || ""); setPhone(profile.phone || ""); setClientPhoto(profile.photo_url || "");
+      setShowContactFields(!profile.name || !profile.phone || !profile.photo_url);
       const saved = JSON.parse(localStorage.getItem("moyTaxiGeneralOrder") || "null");
       if (saved?.id && saved?.client_token) setOrder(saved);
     } catch {}
@@ -193,7 +195,15 @@ export default function PassengerPage() {
     await calculateRouteData();
   }
 
+  async function captureClientPhoto(event) {
+    const file=event.target.files?.[0];if(!file)return;
+    try{const data=await compressClientPhoto(file);setClientPhoto(data);setError("");}
+    catch(e){setError(e.message||"Не удалось обработать фото клиента.");}
+    finally{event.target.value="";}
+  }
+
   async function submitOrder() {
+    if (!clientPhoto) { setError("Добавь фотографию клиента перед заказом."); return; }
     if (!pickupPoint) { setError("Разреши доступ к геопозиции телефона, чтобы определить точку подачи."); return; }
     if (!route || !destinationPoint) { setError("Подожди, пока рассчитается маршрут и появятся цены."); return; }
     setBusy(true); setError(""); setNotice("");
@@ -205,12 +215,12 @@ export default function PassengerPage() {
         destination_address: destination, pickup_lat: pickupPoint.lat, pickup_lng: pickupPoint.lng,
         destination_lat: destinationPoint.lat, destination_lng: destinationPoint.lng,
         route_distance_km: route.distanceKm, vehicle_class: selectedClass, trip_type: tripType,
-        payment_method: paymentMethod, client_price: fare, comment,
+        payment_method: paymentMethod, client_price: fare, comment, client_photo_url: clientPhoto,
       });
       const saved = { ...result.order, assigned_driver: result.assigned_driver, offers: [], pickup_point: pickupPoint,
         destination_point: destinationPoint, route_distance_km: route.distanceKm, vehicle_class: selectedClass };
       setOrder(saved); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(saved));
-      localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone }));
+      localStorage.setItem("moyTaxiClientProfile", JSON.stringify({ name, phone, photo_url: clientPhoto }));
       setShowContactFields(false);
       setNotice(testMode ? "Заказ отправлен. Тестовый режим: никаких списаний." : "Заказ отправлен водителям.");
       setComment("");
@@ -307,7 +317,7 @@ export default function PassengerPage() {
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
     </section> : <section className="panel">
       <form onSubmit={event => event.preventDefault()}>
-        {(showContactFields || !name.trim() || !phone.trim()) ? <div className="contact-fields"><div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : <button type="button" className="saved-contact" onClick={()=>setShowContactFields(true)}>👤 {name} · {phone} <span>Изменить</span></button>}
+        {(showContactFields || !name.trim() || !phone.trim() || !clientPhoto) ? <div className="contact-fields"><div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div><div className="field"><label>Фотография клиента</label>{clientPhoto&&<img src={clientPhoto} alt="Фото клиента" style={{width:100,height:100,objectFit:"cover",borderRadius:16,marginBottom:7}}/>}<input type="file" accept="image/*" capture="user" required={!clientPhoto} onChange={captureClientPhoto}/><p className="muted small">Добавь своё фото один раз — оно сохранится в профиле для следующих поездок.</p></div></div> : <button type="button" className="saved-contact" onClick={()=>setShowContactFields(true)}>{clientPhoto&&<img src={clientPhoto} alt="Фото клиента" style={{width:34,height:34,objectFit:"cover",borderRadius:"50%",verticalAlign:"middle",marginRight:8}}/>}👤 {name} · {phone} <span>Изменить</span></button>}
         <div className="pickup-auto-bar">
           <div className="pickup-auto-icon">📍</div>
           <div className="pickup-auto-copy"><b>{locating ? "Определяем ваше местоположение…" : pickupPoint ? "Место подачи определено" : "Нужно разрешить GPS"}</b><span>{pickupPoint ? (pickup && pickup !== "Моё местоположение" ? pickup : "Точка подачи определена автоматически по GPS") : "Разреши доступ к геопозиции — адрес подачи вводить не нужно."}</span></div>
@@ -329,7 +339,7 @@ export default function PassengerPage() {
         </section>}
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
         {route && <div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi перевод</b></button></div></div>}
-        <button className="button primary submit-order" type="button" onClick={submitOrder} disabled={busy || !name.trim() || !phone.trim() || !pickupPoint || !destinationPoint || !route || !onlineClasses.includes(selectedClass)}>{busy ? "Подождите…" : route ? "🚕 Заказать такси · "+money(quote) : "Введите адрес назначения"}</button>
+        <button className="button primary submit-order" type="button" onClick={submitOrder} disabled={busy || !name.trim() || !phone.trim() || !clientPhoto || !pickupPoint || !destinationPoint || !route || !onlineClasses.includes(selectedClass)}>{busy ? "Подождите…" : route ? "🚕 Заказать такси · "+money(quote) : "Введите адрес назначения"}</button>
       </form>
       {route && destinationPoint && <div className="quote-panel"><div className="route-summary"><b>{route.distanceKm.toFixed(1)} км</b><span>· около {route.durationMin} мин.</span></div><p className="muted small">Цена примерная и может измениться, если водитель предложит другую.</p><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">🗺️ Посмотреть маршрут</a></div>}
     </section>}
