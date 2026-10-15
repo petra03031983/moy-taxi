@@ -118,6 +118,12 @@ export default function ClientOrder() {
   }, [driverCode]);
 
   useEffect(() => {
+    if(name.trim() && phone.trim() && clientPhoto) {
+      try { localStorage.setItem("moyTaxiClientProfile", JSON.stringify({name, phone, photo_url: clientPhoto})); } catch {}
+    }
+  }, [name, phone, clientPhoto]);
+
+  useEffect(() => {
     if (!driverCode) return;
     let live = true;
     const load = async () => {
