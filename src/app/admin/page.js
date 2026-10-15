@@ -9,6 +9,17 @@ const VEHICLE_CLASSES = [
   ["economy","Эконом"],["comfort","Комфорт"],["comfort_plus","Комфорт+"],
   ["business","Бизнес"],["minivan","Минивэн"],["premium","Премиум"]
 ];
+const DRIVER_DOC_FIELDS = [
+  ["license_front","Водительское удостоверение — лицевая сторона"],
+  ["license_back","Водительское удостоверение — обратная сторона"],
+  ["vehicle_reg_front","Техпаспорт — лицевая сторона"],
+  ["vehicle_reg_back","Техпаспорт — обратная сторона"],
+  ["id_selfie","Селфи водителя с удостоверением личности"]
+];
+const CAR_PHOTO_FIELDS = [
+  ["left","Левая сторона автомобиля"],["front","Перед автомобиля"],["right","Правая сторона автомобиля"],["rear","Задняя сторона автомобиля"],
+  ["front_seat","Переднее пассажирское сиденье"],["rear_seat","Заднее сиденье"],["trunk","Открытый багажник"]
+];
 const DEFAULT_RATES = {
   economy:{rate_per_km:40,minimum_fare:500},comfort:{rate_per_km:50,minimum_fare:700},
   comfort_plus:{rate_per_km:60,minimum_fare:900},business:{rate_per_km:80,minimum_fare:1500},
@@ -34,6 +45,8 @@ export default function OwnerAdmin() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [verificationDetails, setVerificationDetails] = useState({});
+  const [verificationNotes, setVerificationNotes] = useState({});
 
   const loadAll = useCallback(async sessionToken => {
     const payload = { admin_token: sessionToken };
@@ -80,6 +93,31 @@ export default function OwnerAdmin() {
       await loadAll(result.admin_token);
       setNotice("Вход в кабинет владельца выполнен.");
     } catch (e) { setError(e.message || "Не удалось войти."); }
+    finally { setBusy(false); }
+  }
+
+  async function loadVerification(driverId) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_driver_verification_detail", { admin_token: token, driver_id: driverId });
+      setVerificationDetails(prev => ({ ...prev, [driverId]: result }));
+    } catch (e) { setError(e.message || "Не удалось загрузить документы водителя."); }
+    finally { setBusy(false); }
+  }
+
+  async function reviewVerification(driver, decision) {
+    const kind = driver.verification_status === "approved" ? "photo_control" : "onboarding";
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_review_driver_verification", {
+        admin_token: token, driver_id: driver.id, kind, decision,
+        note: verificationNotes[driver.id] || ""
+      });
+      await loadAll(token);
+      const detail = await callApi("admin_driver_verification_detail", { admin_token: token, driver_id: driver.id });
+      setVerificationDetails(prev => ({ ...prev, [driver.id]: detail }));
+      setNotice(result.message || "Решение сохранено.");
+    } catch (e) { setError(e.message || "Не удалось сохранить решение проверки."); }
     finally { setBusy(false); }
   }
 
@@ -281,7 +319,37 @@ export default function OwnerAdmin() {
     </section>}
 
     {tab === "drivers" && <section className="panel"><div className="section-heading"><div><h2>Водители</h2><p className="muted">Новые регистрации появляются здесь автоматически.</p></div><span className="status">{drivers.length} в списке</span></div>
-      {drivers.length===0?<p className="muted">Пока нет зарегистрированных водителей.</p>:drivers.map(d=><article className="order" key={d.id}><div className="order-top"><h3>{d.name}</h3><span className="status">{d.is_online?"🟢 На линии":"Не на линии"}</span></div><p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p><p><b>Машина:</b> {[d.car_model,d.car_color,d.car_plate].filter(Boolean).join(" · ")||"Не указана"}</p><p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===d.vehicle_class)?.[1]||"Эконом"}</p><p><b>Лицевой счёт:</b> <strong>{currency(d.wallet_balance)}</strong></p><div className="wallet-topup-row"><input aria-label={"Сумма пополнения для "+d.name} type="number" min="1" max="1000000" step="100" value={walletAmounts[d.id]??""} onChange={e=>setWalletAmounts(prev=>({...prev,[d.id]:e.target.value}))} placeholder="Сумма пополнения, ₸"/><button className="button secondary" type="button" disabled={busy||!walletAmounts[d.id]} onClick={()=>topupWallet(d)}>Пополнить</button></div><p className="muted small">Зачисляй только после проверки поступления денег. Автоматическая оплата пока не подключена.</p><p><b>Персональный код:</b> {d.public_code}</p><p className="muted small">Регистрация: {dateTime(d.created_at)}</p></article>)}
+      {drivers.length===0?<p className="muted">Пока нет зарегистрированных водителей.</p>:drivers.map(d=>{
+        const detail=verificationDetails[d.id];
+        const due=Boolean(d.next_photo_control_at)&&Date.parse(d.next_photo_control_at)<=Date.now();
+        const stateLabel=d.verification_status!=="approved"?(d.verification_status==="rejected"?"Документы отклонены":"Ожидает проверки"):d.photo_control_status==="pending"?"Фотоконтроль на проверке":d.photo_control_status==="rejected"?"Фотоконтроль отклонён":due?"Фотоконтроль просрочен":"Проверен";
+        const reviewKind=d.verification_status==="approved"?"photo_control":"onboarding";
+        const needsReview=d.verification_status!=="approved"||d.photo_control_status!=="approved"||due;
+        return <article className="order" key={d.id}>
+          <div className="order-top"><h3>{d.name}</h3><span className={needsReview?"status":"status"}>{d.is_online?"🟢 На линии":"Не на линии"} · {stateLabel}</span></div>
+          <p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p>
+          <p><b>Машина:</b> {[d.car_model,d.car_color,d.car_plate].filter(Boolean).join(" · ")||"Не указана"}</p>
+          <p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===d.vehicle_class)?.[1]||"Эконом"}</p>
+          <p><b>Лицевой счёт:</b> <strong>{currency(d.wallet_balance)}</strong></p>
+          <div className="wallet-topup-row"><input aria-label={"Сумма пополнения для "+d.name} type="number" min="1" max="1000000" step="100" value={walletAmounts[d.id]??""} onChange={e=>setWalletAmounts(prev=>({...prev,[d.id]:e.target.value}))} placeholder="Сумма пополнения, ₸"/><button className="button secondary" type="button" disabled={busy||!walletAmounts[d.id]} onClick={()=>topupWallet(d)}>Пополнить</button></div>
+          <p className="muted small">Зачисляй только после проверки поступления денег. Автоматическая оплата пока не подключена.</p>
+          <p><b>Персональный код:</b> {d.public_code}</p><p className="muted small">Регистрация: {dateTime(d.created_at)}</p>
+          <button type="button" className="button secondary" disabled={busy} onClick={()=>detail?setVerificationDetails(prev=>{const next={...prev};delete next[d.id];return next}):loadVerification(d.id)}>{detail?"Скрыть документы и фото":"Проверить документы и фотоконтроль"}</button>
+          {detail&&<section className="owner-review-detail">
+            <h3>Документы водителя</h3>
+            {!detail.files?.document_photos&&<p className="muted">Фотографии документов не загружены.</p>}
+            <div className="owner-verification-gallery">{DRIVER_DOC_FIELDS.map(([key,label])=>detail.files?.document_photos?.[key]?<figure key={key}><img src={detail.files.document_photos[key]} alt={label}/><figcaption>{label}</figcaption></figure>:<div className="muted small" key={key}>{label}: нет фото</div>)}</div>
+            <div className="divider-owner"/>
+            <h3>Фотоконтроль автомобиля</h3>
+            {!detail.files?.car_photos&&<p className="muted">Фотографии автомобиля не загружены.</p>}
+            <div className="owner-verification-gallery">{CAR_PHOTO_FIELDS.map(([key,label])=>detail.files?.car_photos?.[key]?<figure key={key}><img src={detail.files.car_photos[key]} alt={label}/><figcaption>{label}</figcaption></figure>:<div className="muted small" key={key}>{label}: нет фото</div>)}</div>
+            {detail.files?.weekly_selfie_photo&&<div className="field"><label>Новое селфи для еженедельного фотоконтроля</label><img src={detail.files.weekly_selfie_photo} alt="Селфи водителя" style={{width:120,height:120,objectFit:"cover",borderRadius:14}}/></div>}
+            <p className="muted small">Согласие на обработку персональных данных: {detail.driver?.legal_consent_at?dateTime(detail.driver.legal_consent_at):"не зафиксировано"} · версия соглашения {detail.files?.agreement_version||detail.driver?.legal_consent_version||"—"}</p>
+            {needsReview&&<><div className="field"><label>Комментарий для водителя (если отклоняешь)</label><textarea rows={2} value={verificationNotes[d.id]||""} onChange={e=>setVerificationNotes(prev=>({...prev,[d.id]:e.target.value}))} placeholder="Например: пересними техпаспорт без бликов"/></div>
+            <div className="actions"><button type="button" className="button primary" disabled={busy} onClick={()=>reviewVerification(d,"approved")}>{reviewKind==="onboarding"?"Подтвердить документы и регистрацию":"Подтвердить фотоконтроль"}</button><button type="button" className="button danger" disabled={busy} onClick={()=>reviewVerification(d,"rejected")}>Отклонить и попросить переснять</button></div></>}
+          </section>}
+        </article>
+      })}
     </section>}
 
     {tab === "orders" && <section className="panel"><div className="section-heading"><div><h2>Последние заказы</h2><p className="muted">До 200 последних заказов всех водителей.</p></div></div>
