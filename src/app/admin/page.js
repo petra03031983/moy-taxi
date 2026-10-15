@@ -325,6 +325,10 @@ export default function OwnerAdmin() {
         const stateLabel=d.verification_status!=="approved"?(d.verification_status==="rejected"?"Документы отклонены":"Ожидает проверки"):d.photo_control_status==="pending"?"Фотоконтроль на проверке":d.photo_control_status==="rejected"?"Фотоконтроль отклонён":due?"Фотоконтроль просрочен":"Проверен";
         const reviewKind=d.verification_status==="approved"?"photo_control":"onboarding";
         const needsReview=d.verification_status!=="approved"||d.photo_control_status!=="approved"||due;
+        const completeCarPhotos=CAR_PHOTO_FIELDS.every(([key])=>Boolean(detail?.files?.car_photos?.[key]))&&detail?.files?.car_photos?.cleanliness_confirmed===true;
+        const canApprove=reviewKind==="onboarding"
+          ? DRIVER_DOC_FIELDS.every(([key])=>Boolean(detail?.files?.document_photos?.[key]))&&completeCarPhotos
+          : completeCarPhotos&&Boolean(detail?.files?.weekly_selfie_photo);
         return <article className="order" key={d.id}>
           <div className="order-top"><h3>{d.name}</h3><span className={needsReview?"status":"status"}>{d.is_online?"🟢 На линии":"Не на линии"} · {stateLabel}</span></div>
           <p><b>Телефон:</b> <a href={`tel:${d.phone}`}>{d.phone}</a></p>
@@ -346,7 +350,7 @@ export default function OwnerAdmin() {
             {detail.files?.weekly_selfie_photo&&<div className="field"><label>Новое селфи для еженедельного фотоконтроля</label><img src={detail.files.weekly_selfie_photo} alt="Селфи водителя" style={{width:120,height:120,objectFit:"cover",borderRadius:14}}/></div>}
             <p className="muted small">Согласие на обработку персональных данных: {detail.driver?.legal_consent_at?dateTime(detail.driver.legal_consent_at):"не зафиксировано"} · версия соглашения {detail.files?.agreement_version||detail.driver?.legal_consent_version||"—"}</p>
             {needsReview&&<><div className="field"><label>Комментарий для водителя (если отклоняешь)</label><textarea rows={2} value={verificationNotes[d.id]||""} onChange={e=>setVerificationNotes(prev=>({...prev,[d.id]:e.target.value}))} placeholder="Например: пересними техпаспорт без бликов"/></div>
-            <div className="actions"><button type="button" className="button primary" disabled={busy} onClick={()=>reviewVerification(d,"approved")}>{reviewKind==="onboarding"?"Подтвердить документы и регистрацию":"Подтвердить фотоконтроль"}</button><button type="button" className="button danger" disabled={busy} onClick={()=>reviewVerification(d,"rejected")}>Отклонить и попросить переснять</button></div></>}
+            {!canApprove&&<p className="muted small">Подтверждение станет доступно, когда загрузят все обязательные фотографии и отметят, что машина чистая, а ремни безопасности видны.</p>}<div className="actions"><button type="button" className="button primary" disabled={busy||!canApprove} onClick={()=>reviewVerification(d,"approved")}>{reviewKind==="onboarding"?"Подтвердить документы и регистрацию":"Подтвердить фотоконтроль"}</button><button type="button" className="button danger" disabled={busy} onClick={()=>reviewVerification(d,"rejected")}>Отклонить и попросить переснять</button></div></>}
           </section>}
         </article>
       })}
