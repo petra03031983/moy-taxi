@@ -1980,3 +1980,50 @@ html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-invite-link{backg
  .app.owner-dashboard .owner-commission-adjuster{align-items:flex-start;flex-direction:column}
  .app.owner-dashboard .owner-commission-stepper{align-self:flex-end}
 }
+
+/* MOY TAXI PASSENGER PICKUP OVERRIDE V2 */
+.client-app .pickup-address-field{position:relative;margin-top:8px}
+.client-app .pickup-address-field>label{color:#176b4b;font-weight:850}
+.client-app .pickup-address-field>input{
+ min-height:54px;
+ border-color:#cfe3d4;
+ background:#fbfefb;
+ border-radius:15px;
+}
+.client-app .pickup-address-field>input:focus{
+ border-color:#6ab786;
+ box-shadow:0 0 0 3px #2a89551a;
+}
+.client-app .pickup-address-actions{
+ display:flex;
+ flex-direction:column;
+ align-items:stretch;
+ gap:8px;
+ margin-top:9px;
+}
+.client-app .pickup-address-hint{
+ color:#718076;
+ font-size:12px;
+ line-height:1.45;
+}
+.client-app .pickup-gps-button{
+ width:100%;
+ min-height:42px;
+ border:1px solid #d3e7d8;
+ border-radius:13px;
+ background:#eaf6ee;
+ color:#176b4b;
+}
+.client-app .calculate-route-button{
+ width:100%;
+ margin:-2px 0 14px;
+ border:1px solid #d3e7d8;
+ background:#eaf6ee;
+ color:#176b4b;
+}
+.client-app .pickup-address-field .address-suggestions{margin-top:6px}
+@media(max-width:430px){
+ .client-app .pickup-address-field>input{min-height:51px}
+ .client-app .pickup-address-actions{gap:7px}
+ .client-app .pickup-address-hint{font-size:11px}
+}
