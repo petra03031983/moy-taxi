@@ -632,3 +632,65 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .driver-settings-page{padding:0;overflow:hidden;background:#fff;color:#151515}.driver-settings-header{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:18px 18px 10px}.driver-settings-header h2{margin:0;text-align:center;font-size:23px}.driver-settings-back{border:0;background:transparent;font-size:38px;line-height:1;padding:0;cursor:pointer;color:inherit}.driver-settings-tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #ddd}.driver-settings-tabs button{border:0;background:transparent;padding:16px 8px;font-size:17px;font-weight:800;border-bottom:3px solid transparent;color:inherit}.driver-settings-tabs button.active{border-bottom-color:#111}.driver-settings-body{padding:0 18px 24px}.driver-settings-row{width:100%;min-height:76px;display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center;border:0;border-bottom:1px solid #eee;background:transparent;text-align:left;color:inherit}.driver-settings-row span:nth-child(2){display:flex;flex-direction:column;gap:5px}.driver-settings-row b{font-size:17px}.driver-settings-row small{font-size:13px;line-height:1.35;color:#777}.driver-settings-icon{font-size:29px;text-align:center}.driver-settings-link{cursor:pointer}.driver-settings-title{font-size:18px;font-weight:800;margin:22px 0 12px}.driver-settings-choice{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:8px;margin-bottom:8px}.driver-settings-choice button{border:0;border-radius:28px;padding:12px 8px;background:#f0efeb;font-weight:800;font-size:15px}.driver-settings-choice button.active{background:#171717;color:#fff}.driver-settings-toggle{width:64px;height:38px;border:0;border-radius:24px;background:#efeee9;padding:4px;cursor:pointer}.driver-settings-toggle i{display:block;width:30px;height:30px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #aaa;transition:transform .2s}.driver-settings-toggle.on{background:#111}.driver-settings-toggle.on i{transform:translateX(26px)}.driver-settings-filter-card{background:#f7f6f2;border-radius:18px;padding:12px 14px;margin-top:8px}.driver-settings-filter-card .field{margin-bottom:10px}.driver-settings-filter-card .field:last-child{margin-bottom:0}.driver-settings-filter-card label{font-size:13px}.driver-settings-filter-card input,.driver-settings-filter-card select,.driver-tariff-row input{width:100%;box-sizing:border-box}.driver-settings-save{width:100%;margin-top:18px}.driver-tariff-list{display:grid;gap:8px}.driver-tariff-row{display:grid;grid-template-columns:1fr 125px;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid #eee;font-weight:700}.driver-tariff-row div{display:grid;grid-template-columns:1fr auto;gap:5px;align-items:center}.driver-tariff-row input{min-width:0}.driver-quick-switch{position:fixed;right:16px;bottom:86px;z-index:30;border:0;border-radius:24px;padding:12px 16px;background:#111;color:#fff;font-weight:800;box-shadow:0 5px 20px #0002}
 html[data-moy-taxi-theme="dark"] .driver-settings-page{background:#171717;color:#fff}html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-tabs{border-color:#333}html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-row{border-color:#333}html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-row small{color:#aaa}html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-filter-card{background:#222}html[data-moy-taxi-theme="dark"] .driver-settings-page input,html[data-moy-taxi-theme="dark"] .driver-settings-page select{background:#242424;color:#fff;border-color:#444}html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-choice button{background:#292929;color:#fff}html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-choice button.active{background:#fff;color:#111}
 @media (prefers-color-scheme: dark){html[data-moy-taxi-theme="system"] .driver-settings-page{background:#171717;color:#fff}html[data-moy-taxi-theme="system"] .driver-settings-page .driver-settings-row{border-color:#333}html[data-moy-taxi-theme="system"] .driver-settings-page .driver-settings-filter-card{background:#222}}
+
+
+/* MOY TAXI TARIFFS VEHICLE-AWARE V3 */
+.driver-settings-page{background:#f3f2ed;color:#161815;border:0;box-shadow:none;border-radius:28px;padding:0;overflow:hidden}
+.driver-settings-header{padding:19px 18px 12px;grid-template-columns:42px 1fr 42px}
+.driver-settings-header h2{font-size:22px;letter-spacing:0}
+.driver-settings-tabs{background:transparent;border-bottom:1px solid #deddd7}
+.driver-settings-tabs button{padding:17px 8px 15px;font-size:17px;border-bottom-width:3px}
+.driver-settings-tabs button.active{border-bottom-color:#161815}
+.driver-settings-body{padding:0 0 18px;background:#f3f2ed}
+.driver-vehicle-card{display:flex;gap:12px;align-items:center;justify-content:space-between;background:#fff;border-radius:0 0 26px 26px;padding:24px 20px 22px;margin:0 0 10px;min-height:104px}
+.driver-vehicle-info{min-width:0;display:flex;flex-direction:column;gap:3px}
+.driver-vehicle-info b{font-size:20px;line-height:1.2;overflow-wrap:anywhere}
+.driver-vehicle-info small{font-size:14px;color:#777;font-weight:650}
+.driver-vehicle-info .driver-vehicle-class{font-size:12px;color:#8a8a83;font-weight:600;margin-top:4px}
+.driver-vehicle-edit{flex:0 0 auto;border:0;border-radius:20px;background:#f1f0eb;color:#171816;font-weight:800;font-size:16px;padding:16px 20px;cursor:pointer}
+.driver-vehicle-edit-form{background:#fff;border-radius:22px;margin:0 0 12px;padding:16px 18px}
+.driver-vehicle-edit-form .field{margin:8px 0 14px}
+.driver-tariff-section{background:#fff;border-radius:28px;padding:22px 20px 8px;margin:12px 0 0}
+.driver-tariff-section h3{font-size:24px;line-height:1.2;letter-spacing:-.35px;margin:8px 0 22px}
+.driver-tariff-option{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:12px;align-items:center;min-height:82px;padding:9px 0}
+.driver-tariff-option-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.driver-tariff-option-copy b{font-size:18px;line-height:1.25}
+.driver-tariff-option-copy small{font-size:14px;line-height:1.3;color:#7c7d78;font-weight:650}
+.driver-tariff-option .driver-settings-toggle{background:#f3f2ed;width:64px;height:40px}
+.driver-tariff-option .driver-settings-toggle i{width:32px;height:32px}
+.driver-tariff-option .driver-settings-toggle.on{background:#b8f000}
+.driver-tariff-option .driver-settings-toggle.on i{transform:translateX(24px)}
+.driver-tariff-option .driver-settings-toggle:disabled{opacity:.48;cursor:not-allowed}
+.driver-courier-section{padding-top:19px;padding-bottom:8px}
+.driver-courier-section h3{display:flex;gap:9px;align-items:center;flex-wrap:wrap;font-size:23px;margin-bottom:17px}
+.driver-courier-section h3 span{font-size:14px;letter-spacing:0;font-weight:750;background:#e3f8bd;border-radius:15px;padding:7px 11px}
+.driver-tariff-guide{margin:14px 0 0;background:#d2f1fb;border-radius:26px;padding:23px 20px;display:flex;flex-direction:column;gap:20px}
+.driver-tariff-guide>div{display:grid;grid-template-columns:42px 1fr;gap:13px;align-items:start}
+.driver-tariff-guide-icon{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:12px;background:#4260ec;color:#fff;font-weight:900;font-size:19px}
+.driver-tariff-guide section b{font-size:19px}
+.driver-tariff-guide p{font-size:15px;line-height:1.4;margin:5px 0 0;color:#243545}
+.driver-settings-page .driver-settings-row{border-color:#e8e6df}
+.driver-settings-page .driver-settings-choice button.active{background:#171816;color:#fff}
+html[data-moy-taxi-theme="dark"] body{background:#101211;color:#eef3ee}
+html[data-moy-taxi-theme="dark"] .panel,html[data-moy-taxi-theme="dark"] .driver-settings-page,html[data-moy-taxi-theme="dark"] .driver-vehicle-card,html[data-moy-taxi-theme="dark"] .driver-vehicle-edit-form,html[data-moy-taxi-theme="dark"] .driver-tariff-section{background:#181b19;color:#eef3ee;border-color:#292e2a}
+html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-tabs{border-color:#343934}
+html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-tabs button.active{border-bottom-color:#eef3ee}
+html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-vehicle-edit,html[data-moy-taxi-theme="dark"] .driver-settings-page .driver-settings-choice button{background:#292e2a;color:#eef3ee}
+html[data-moy-taxi-theme="dark"] .driver-tariff-guide{background:#163542}
+html[data-moy-taxi-theme="dark"] .driver-tariff-guide p{color:#ddeaf1}
+@media(prefers-color-scheme:dark){
+ html[data-moy-taxi-theme="system"] body{background:#101211;color:#eef3ee}
+ html[data-moy-taxi-theme="system"] .driver-settings-page,html[data-moy-taxi-theme="system"] .driver-vehicle-card,html[data-moy-taxi-theme="system"] .driver-vehicle-edit-form,html[data-moy-taxi-theme="system"] .driver-tariff-section{background:#181b19;color:#eef3ee}
+ html[data-moy-taxi-theme="system"] .driver-vehicle-edit,html[data-moy-taxi-theme="system"] .driver-settings-choice button{background:#292e2a;color:#eef3ee}
+ html[data-moy-taxi-theme="system"] .driver-tariff-guide{background:#163542}
+ html[data-moy-taxi-theme="system"] .driver-tariff-guide p{color:#ddeaf1}
+}
+@media(max-width:480px){
+ .driver-settings-page{border-radius:24px}
+ .driver-vehicle-card{padding:22px 16px}
+ .driver-vehicle-edit{padding:14px 16px}
+ .driver-tariff-section{padding:19px 16px 7px;border-radius:24px}
+ .driver-tariff-section h3{font-size:23px}
+ .driver-courier-section h3{font-size:21px}
+ .driver-tariff-guide{padding:20px 16px}
+}
