@@ -902,3 +902,25 @@ html[data-moy-taxi-theme="dark"] .driver-radar-empty{color:#e8f3eb}html[data-moy
 .driver-radar-center span{display:none}
 html[data-moy-taxi-theme="dark"] .driver-radar-center{background:#36e477;box-shadow:0 0 0 5px #36e47728,0 0 18px #36e47780}
 @media(prefers-color-scheme:dark){html[data-moy-taxi-theme="system"] .driver-radar-center{background:#36e477;box-shadow:0 0 0 5px #36e47728,0 0 18px #36e47780}}
+
+
+/* MOY TAXI RADAR GROWTH BRIGHT V3 */
+.driver-radar-visual{
+ width:min(calc(220px + var(--radar-grow, 0px)),94vw,calc(100dvh - 320px),760px);
+ height:min(calc(220px + var(--radar-grow, 0px)),94vw,calc(100dvh - 320px),760px);
+ border:2px solid #22c765;
+ background:radial-gradient(circle at center,#ffffff 0%,#eafff0 34%,#c5f7d6 66%,#73e49a 100%);
+ box-shadow:0 0 0 5px #19c75b22,0 0 36px #18b95565,0 0 88px #1bc95b40,inset 0 0 44px #2ec26d42;
+ transition:width 4.8s ease,height 4.8s ease,border-color .5s ease,box-shadow .5s ease,background .5s ease;
+}
+.driver-radar-ring{border:1.5px solid #0b994d75;box-shadow:0 0 14px #20c65c22}
+.driver-radar-cross{background:#0b994d35}
+.driver-radar-sweep{background:conic-gradient(from 0deg,transparent 0deg,transparent 242deg,#16a35412 265deg,#16a35430 302deg,#16a35475 342deg,#16a3540a 360deg)}
+html[data-moy-taxi-theme="dark"] .driver-radar-visual{background:radial-gradient(circle at center,#182c20 0%,#173c25 38%,#145d31 72%,#0f7a39 100%);border-color:#43ef83;box-shadow:0 0 0 5px #36e47728,0 0 38px #19d45c75,0 0 90px #1bc95b4d,inset 0 0 44px #2ec26d3d}
+html[data-moy-taxi-theme="dark"] .driver-radar-ring{border-color:#62efa080;box-shadow:0 0 15px #33e87530}
+html[data-moy-taxi-theme="dark"] .driver-radar-cross{background:#62efa03d}
+@media(prefers-color-scheme:dark){
+ html[data-moy-taxi-theme="system"] .driver-radar-visual{background:radial-gradient(circle at center,#182c20 0%,#173c25 38%,#145d31 72%,#0f7a39 100%);border-color:#43ef83;box-shadow:0 0 0 5px #36e47728,0 0 38px #19d45c75,0 0 90px #1bc95b4d,inset 0 0 44px #2ec26d3d}
+ html[data-moy-taxi-theme="system"] .driver-radar-ring{border-color:#62efa080;box-shadow:0 0 15px #33e87530}
+ html[data-moy-taxi-theme="system"] .driver-radar-cross{background:#62efa03d}
+}
