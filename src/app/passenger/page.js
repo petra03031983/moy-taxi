@@ -46,6 +46,7 @@ export default function PassengerPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const routeRequestRef = useRef(false);
+  const pickupManuallyChosenRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -61,23 +62,28 @@ export default function PassengerPage() {
     }).catch(() => setNotice("Используются временные тарифы. Проверь соединение перед заказом."));
     if (!navigator.geolocation) { setLocating(false); return; }
     navigator.geolocation.getCurrentPosition(position => {
-      const point = { lat: position.coords.latitude, lng: position.coords.longitude };
-      setPickupPoint(point); setPickup(current => current.trim() ? current : "Моё местоположение");
-      callApi("address_reverse", point).then(result => setPickup(current =>
-        !current.trim() || current === "Моё местоположение" ? result.label : current
-      )).catch(() => {});
       setLocating(false);
+      if (pickupManuallyChosenRef.current) return;
+      const point = { lat: position.coords.latitude, lng: position.coords.longitude };
+      setPickupPoint(point);
+      setPickup(current => pickupManuallyChosenRef.current || current.trim() ? current : "Моё местоположение");
+      callApi("address_reverse", point).then(result => setPickup(current =>
+        !pickupManuallyChosenRef.current && (!current.trim() || current === "Моё местоположение") ? result.label : current
+      )).catch(() => {});
     }, () => setLocating(false), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   }, []);
 
   useEffect(() => {
-    if (pickup.trim().length < 3 || pickupPoint || pickup === "Моё местоположение") { setPickupSuggestions([]); return; }
+    if (pickup.trim().length < 3 || pickupPoint || pickup === "Моё местоположение") {
+      setPickupSuggestions([]);
+      return;
+    }
     let active = true;
     const timer = setTimeout(() => {
       callApi("address_suggest", { query: pickup }).then(result => {
         if (active) setPickupSuggestions(result.suggestions || []);
       }).catch(() => { if (active) setPickupSuggestions([]); });
-    }, 450);
+    }, 350);
     return () => { active = false; clearTimeout(timer); };
   }, [pickup, pickupPoint]);
 
@@ -149,8 +155,8 @@ export default function PassengerPage() {
 
   async function calculateRouteData() {
     if (routeRequestRef.current || busy) return;
-    if (!pickupPoint) { setError("Разреши доступ к геопозиции телефона — приложение само определит точку подачи."); return; }
-    if (!destination.trim()) { setError("Введи конечный адрес — точка подачи определится автоматически."); return; }
+    if (!pickup.trim()) { setError("Введи адрес подачи или нажми «Моё местоположение»."); return; }
+    if (!destination.trim()) { setError("Введи адрес назначения."); return; }
     routeRequestRef.current = true;
     setBusy(true); setError(""); setNotice("");
     try {
@@ -266,18 +272,23 @@ export default function PassengerPage() {
   function detectPickup() {
     if (!navigator.geolocation) {
       setLocating(false);
-      setPickupPoint(null);
-      setError("Этот браузер не передаёт геопозицию. Открой приложение в Chrome и разреши местоположение.");
+      setError("Этот браузер не передаёт геопозицию. Можно указать адрес подачи вручную.");
       return;
     }
-    setLocating(true); setError("");
+    pickupManuallyChosenRef.current = false;
+    setLocating(true); setError(""); setNotice(""); setRoute(null);
+    setPickupPoint(null); setPickup("Моё местоположение"); setPickupSuggestions([]);
     navigator.geolocation.getCurrentPosition(position => {
+      setLocating(false);
+      if (pickupManuallyChosenRef.current) return;
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
-      setPickupPoint(point); setPickup("Моё местоположение"); setLocating(false); setRoute(null);
-      callApi("address_reverse", point).then(result => setPickup(result.label || "Моё местоположение")).catch(() => {});
+      setPickupPoint(point); setPickup("Моё местоположение");
+      callApi("address_reverse", point).then(result => {
+        if (!pickupManuallyChosenRef.current) setPickup(result.label || "Моё местоположение");
+      }).catch(() => {});
     }, () => {
-      setPickupPoint(null); setLocating(false);
-      setError("Не удалось определить GPS. В Chrome нажми на значок настроек сайта → Разрешения → Местоположение → Разрешить, затем повтори.");
+      setPickupPoint(null); setLocating(false); setPickup("");
+      setError("Не удалось определить GPS. Введи адрес подачи вручную или разреши местоположение в Chrome.");
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 });
   }
 
@@ -308,15 +319,40 @@ export default function PassengerPage() {
     </section> : <section className="panel">
       <form onSubmit={event => event.preventDefault()}>
         {(showContactFields || !name.trim() || !phone.trim()) ? <div className="contact-fields"><div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : <button type="button" className="saved-contact" onClick={()=>setShowContactFields(true)}>👤 {name} · {phone} <span>Изменить</span></button>}
-        <div className="pickup-auto-bar">
-          <div className="pickup-auto-icon">📍</div>
-          <div className="pickup-auto-copy"><b>{locating ? "Определяем ваше местоположение…" : pickupPoint ? "Место подачи определено" : "Нужно разрешить GPS"}</b><span>{pickupPoint ? (pickup && pickup !== "Моё местоположение" ? pickup : "Точка подачи определена автоматически по GPS") : "Разреши доступ к геопозиции — адрес подачи вводить не нужно."}</span></div>
-          {!pickupPoint && <button type="button" className="button secondary" onClick={detectPickup} disabled={locating}>Разрешить GPS</button>}
+        <div className="field address-field pickup-address-field">
+          <label htmlFor="pickupAddress">Откуда забрать?</label>
+          <input id="pickupAddress" required maxLength={300} value={pickup} onChange={e=>{
+            const value=e.target.value;
+            pickupManuallyChosenRef.current=true;
+            setPickup(value); setPickupPoint(null); setPickupSuggestions([]); setRoute(null); setError(""); setNotice("");
+          }} onKeyDown={e=>{
+            if(e.key==="Enter"&&pickupSuggestions.length){
+              e.preventDefault();
+              const item=pickupSuggestions[0];
+              pickupManuallyChosenRef.current=true;
+              setPickup(item.label);
+              setPickupPoint({lat:Number(item.lat),lng:Number(item.lng)});
+              setPickupSuggestions([]);
+              setRoute(null); setError(""); setNotice("");
+            }
+          }} placeholder="Адрес подачи: улица, дом, ориентир" autoComplete="off" />
+          {pickupSuggestions.length>0&&<div className="address-suggestions">{pickupSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-pickup-"+i} onClick={()=>{
+            pickupManuallyChosenRef.current=true;
+            setPickup(item.label);
+            setPickupPoint({lat:Number(item.lat),lng:Number(item.lng)});
+            setPickupSuggestions([]);
+            setRoute(null); setError(""); setNotice("");
+          }}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}
+          <div className="pickup-address-actions">
+            <span className="pickup-address-hint">{pickupPoint ? "✓ Точка подачи выбрана. Можешь изменить адрес вручную." : pickup.trim().length>=3 ? "Выбери адрес из подсказок или рассчитай маршрут по введённому адресу." : "Можно указать любой адрес — не обязательно текущее местоположение телефона."}</span>
+            <button type="button" className="button secondary pickup-gps-button" onClick={detectPickup} disabled={locating}>{locating ? "Определяем GPS…" : "📍 Моё местоположение"}</button>
+          </div>
         </div>
         <div className="field address-field"><label>Куда едем?</label><input required maxLength={300} value={destination} onChange={e=>{setDestination(e.target.value);setPriceAdjustment(0);setRoute(null);setDestinationPoint(null);setError("");setSuggestionError("");}} onKeyDown={e=>{if(e.key==="Enter"&&destinationSuggestions.length){e.preventDefault();const item=destinationSuggestions[0];setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setPriceAdjustment(0);setRoute(null);}}} placeholder="Например: аэропорт, улица, дом или ТРЦ" autoComplete="off" />{suggestionLoading && <p className="muted small">🔎 Ищем адреса…</p>}{destinationSuggestions.length>0&&<div className="address-suggestions">{destinationSuggestions.map((item,i)=><button type="button" className="address-suggestion" key={item.label+"-"+i} onClick={()=>{setDestination(item.label);setDestinationPoint({lat:item.lat,lng:item.lng});setDestinationSuggestions([]);setSuggestionError("");setPriceAdjustment(0);setRoute(null);setError("");}}><b>{item.name}</b><span>{item.label}</span><small>{item.city}</small></button>)}</div>}{suggestionError && !suggestionLoading && <p className="muted small address-search-help">{suggestionError}</p>}
           {busy && !route && <p className="muted small">📏 Рассчитываем маршрут и цены…</p>}
           {route && <p className="route-result-note">Маршрут {route.distanceKm.toFixed(1)} км · около {route.durationMin} мин. Цены рассчитаны автоматически.</p>}
         </div>
+        {!route && pickup.trim() && destination.trim() && <button type="button" className="button secondary calculate-route-button" disabled={busy} onClick={calculateRouteData}>{busy ? "📏 Рассчитываем маршрут…" : "📍 Рассчитать маршрут и цены"}</button>}
         {route && <div className="field"><label>Выбери класс и цену</label><div className="class-grid class-list">{CLASSES.map(item=>{const estimated=route?.estimated_prices?.[item.id];return <button key={item.id} type="button" className={selectedClass===item.id?"class-option selected":"class-option"} onClick={()=>{setSelectedClass(item.id);setPriceAdjustment(0);}} aria-pressed={selectedClass===item.id} disabled={!estimated}><span className="class-icon">{item.icon}</span><b className="class-name">{item.label}</b><span className="class-price">{estimated?money(selectedClass===item.id&&quote!=null?quote:estimated):"—"}</span></button>})}</div></div>}
         {route && quote != null && <section className="client-price-control" aria-label="Настройка предложенной цены">
           <div className="client-price-heading"><b>Твоя цена</b><span>Изменение по 50 ₸</span></div>
