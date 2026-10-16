@@ -631,16 +631,18 @@ if(a==="driver_skip_order"){
  const locationAge=d.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
  const hasFreshLocation=locationAge>=0&&locationAge<=5*60*1000&&d.current_lat!==null&&d.current_lat!==undefined&&d.current_lng!==null&&d.current_lng!==undefined&&Number.isFinite(Number(d.current_lat))&&Number.isFinite(Number(d.current_lng));
  const ids=new Set((assignedQ.data||[]).map((o:any)=>o.id));
+ const requestedSearchRadiusRaw=Number(p.search_radius_km);
+ const requestedSearchRadiusKm=Number.isFinite(requestedSearchRadiusRaw)&&requestedSearchRadiusRaw>0?Math.min(25,Math.max(3,requestedSearchRadiusRaw)):25;
  const nearbyBroadcasts=(broadcastQ.data||[]).filter((o:any)=>{
   if(!hasFreshLocation)return true;
   const hasPickup=o.pickup_lat!==null&&o.pickup_lat!==undefined&&o.pickup_lng!==null&&o.pickup_lng!==undefined&&Number.isFinite(Number(o.pickup_lat))&&Number.isFinite(Number(o.pickup_lng));
   if(!hasPickup)return false;
-  return km(Number(d.current_lat),Number(d.current_lng),Number(o.pickup_lat),Number(o.pickup_lng))<=25;
+  return km(Number(d.current_lat),Number(d.current_lng),Number(o.pickup_lat),Number(o.pickup_lng))<=requestedSearchRadiusKm;
  });
  const all=[...(assignedQ.data||[]),...nearbyBroadcasts.filter((o:any)=>!ids.has(o.id))].sort((a:any,b:any)=>Date.parse(b.created_at)-Date.parse(a.created_at));
  const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
  const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="skipped").map((x:any)=>x.order_id));
- return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),is_online:d.is_online,search_radius_km:25,gps_fresh:hasFreshLocation});
+ return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),is_online:d.is_online,search_radius_km:requestedSearchRadiusKm,gps_fresh:hasFreshLocation});
 }if(a==="driver_history"){const {data:os,error}=await c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).eq("status","completed").order("completed_at",{ascending:false}).limit(100);if(error)return fail("Не удалось загрузить историю.",500);return reply({ok:true,orders:os||[]})}if(a==="driver_update"){
  const id=String(p.order_id||""),status=String(p.status||"");
  if(!["accepted","arrived","started","completed","cancelled"].includes(status))return fail("Недопустимый статус.");
