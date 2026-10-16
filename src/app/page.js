@@ -327,7 +327,20 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <div className="driver-financial-bottom"><strong>{Number(walletInfo?.wallet_balance??driver.wallet_balance??0).toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸</strong><button type="button" className="driver-topup-button" aria-label="Открыть кошелёк и пополнение" onClick={()=>{setTab("wallet");refreshWallet()}}>+</button></div>
   <button type="button" className="driver-topup-link" onClick={()=>{setTab("wallet");refreshWallet()}}>Пополнить счёт</button>
  </article>
-</section></div>{tab==="orders"&&visibleOrders.length===0?<div className="driver-no-orders-message">Новых заказов пока нет</div>:(tab==="orders"||tab==="active")&&<section className="panel">
+</section></div>{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
+  <div className="driver-radar-status"><span className="driver-radar-status-dot"></span>{driver.is_online&&gpsFresh?"ПОИСК ЗАКАЗОВ":driver.is_online?"ОЖИДАЕМ ГЕОЛОКАЦИЮ":"НЕ В СЕТИ"}</div>
+  <div className="driver-radar-visual" role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
+   <div className="driver-radar-ring driver-radar-ring-outer"></div><div className="driver-radar-ring driver-radar-ring-middle"></div><div className="driver-radar-ring driver-radar-ring-inner"></div>
+   <div className="driver-radar-cross driver-radar-cross-x"></div><div className="driver-radar-cross driver-radar-cross-y"></div>
+   <div className="driver-radar-sweep"></div>
+   <i className="driver-radar-point driver-radar-point-a"></i><i className="driver-radar-point driver-radar-point-b"></i><i className="driver-radar-point driver-radar-point-c"></i><i className="driver-radar-point driver-radar-point-d"></i><i className="driver-radar-point driver-radar-point-e"></i>
+   <div className="driver-radar-center"><span>🚕</span></div>
+  </div>
+  <h2>{driver.is_online&&gpsFresh?"Ищем заказы рядом":driver.is_online?"Определяем местоположение":"Новых заказов пока нет"}</h2>
+  <p>{driver.is_online&&gpsFresh?"Сканируем новые заявки поблизости. Как только появится подходящий заказ, он отобразится в ленте.":driver.is_online?"Разреши доступ к геолокации и подожди обновления местоположения.":"Выйди на линию, чтобы начать поиск заказов."}</p>
+  <div className="driver-radar-range"><span>Радиус уведомлений</span><b>до {Number(filterPickupDistance).toLocaleString("ru-RU")} км</b></div>
+  <div className="driver-radar-bottom"><span></span><small>{driver.is_online&&gpsFresh?"Поиск активен":driver.is_online?"Ожидаем GPS":"Поиск приостановлен"}</small><span></span></div>
+ </div>:(tab==="orders"||tab==="active")&&<section className="panel">
  <div className="section-heading">
   <div><div className="eyebrow">{tab==="active"?"ТЕКУЩИЕ ПОЕЗДКИ":"ВХОДЯЩИЕ ЗАКАЗЫ"}</div><h2>{tab==="active"?"В работе":"Лента заказов"}</h2></div>
   <span className="status">{tab==="active"?active.length+" в работе":newCount+" новых"}</span>
