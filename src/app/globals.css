@@ -895,3 +895,10 @@ html[data-moy-taxi-theme="dark"] .driver-radar-empty{color:#e8f3eb}html[data-moy
 @media(prefers-color-scheme:dark){html[data-moy-taxi-theme="system"] .driver-radar-empty{color:#e8f3eb}html[data-moy-taxi-theme="system"] .driver-radar-status{background:#142b1d;border-color:#26583a;color:#6ee49a}html[data-moy-taxi-theme="system"] .driver-radar-visual{background:radial-gradient(circle at center,#18251c 0%,#15241a 44%,#11291b 72%,#12331f 100%);border-color:#275d3d}html[data-moy-taxi-theme="system"] .driver-radar-range{background:#18211a;border-color:#2d4433}html[data-moy-taxi-theme="system"] .driver-radar-range span,html[data-moy-taxi-theme="system"] .driver-radar-empty>p{color:#a7b9ac}html[data-moy-taxi-theme="system"] .driver-radar-range b{color:#6ee49a}}
 @media(max-width:480px){.driver-radar-empty{min-height:calc(100dvh - 350px);padding:21px 16px 24px}.driver-radar-visual{width:min(66vw,240px);height:min(66vw,240px);margin:21px auto 20px}.driver-radar-empty h2{font-size:21px}.driver-radar-empty>p{font-size:13px}.driver-radar-range{margin-top:19px;padding:13px 14px}}
 @media(prefers-reduced-motion:reduce){.driver-radar-sweep,.driver-radar-point,.driver-radar-bottom>span{animation:none!important}}
+
+
+/* MOY TAXI RADAR CENTER CLEANUP V2 */
+.driver-radar-center{width:13px;height:13px;border:0;border-radius:50%;background:#19c75b;box-shadow:0 0 0 5px #19c75b25,0 0 18px #19c75b80}
+.driver-radar-center span{display:none}
+html[data-moy-taxi-theme="dark"] .driver-radar-center{background:#36e477;box-shadow:0 0 0 5px #36e47728,0 0 18px #36e47780}
+@media(prefers-color-scheme:dark){html[data-moy-taxi-theme="system"] .driver-radar-center{background:#36e477;box-shadow:0 0 0 5px #36e47728,0 0 18px #36e47780}}
