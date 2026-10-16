@@ -639,7 +639,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <header className="driver-order-detail-header"><div><span className="eyebrow">ВХОДЯЩИЙ ЗАКАЗ</span><h2>Заказ</h2></div><button type="button" className="driver-order-detail-close" aria-label="Закрыть заказ" onClick={()=>setSelectedOrderId(null)}>×</button></header>
   <div className="driver-order-detail-map">
    <RouteMap key={String(selectedOrder.id)} pickupPoint={validOrderPoint(selectedOrder.pickup_lat,selectedOrder.pickup_lng)} destinationPoint={validOrderPoint(selectedOrder.destination_lat,selectedOrder.destination_lng)} routeGeometry={detailRouteGeometry}
-    pickupInfo={detailPickupStats?{timeText:detailPickupStats.durationMin>0?Math.round(detailPickupStats.durationMin)+" мин":"",distanceText:detailPickupStats.distanceKm>=0?formatDistance(detailPickupStats.distanceKm):""}:null}
+    pickupInfo={detailPickupStats?{timeText:detailPickupStats.durationMin>0?Math.round(detailPickupStats.durationMin)+" мин":"Рядом",distanceText:detailPickupStats.distanceKm>=0?formatDistance(detailPickupStats.distanceKm):""}:null}
     destinationInfo={{timeText:detailRouteStats?.durationMin>0?Math.round(detailRouteStats.durationMin)+" мин":"",distanceText:formatDistance(detailRouteStats?.distanceKm||selectedOrder.route_distance_km||0)}}/>
    {detailMapLoading&&<div className="driver-order-map-loading">Строим маршрут…</div>}
   </div>
