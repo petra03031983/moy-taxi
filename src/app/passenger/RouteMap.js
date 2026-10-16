@@ -73,8 +73,8 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       const icon = L.divIcon({
         className: "moy-route-marker" + (hasInfo ? " moy-route-marker-labeled" : ""),
         html: labelHtml,
-        iconSize: hasInfo ? [118, 82] : [30, 30],
-        iconAnchor: hasInfo ? [59, 80] : [15, 15]
+        iconSize: hasInfo ? [118, 94] : [30, 30],
+        iconAnchor: hasInfo ? [59, 92] : [15, 15]
       });
       L.marker(latLng, { icon }).bindPopup(title).addTo(group);
     };
@@ -90,7 +90,7 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       }
     }
     if (bounds.length > 1) {
-      map.current.fitBounds(L.latLngBounds(bounds), { padding: (pickupInfo||destinationInfo) ? [92, 72] : [24, 24], maxZoom: 15 });
+      map.current.fitBounds(L.latLngBounds(bounds), { padding: (pickupInfo||destinationInfo) ? [24, 96] : [24, 24], maxZoom: 15 });
     } else if (bounds.length === 1) {
       map.current.setView(bounds[0], 14);
     }
