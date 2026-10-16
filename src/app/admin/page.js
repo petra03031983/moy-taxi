@@ -23,7 +23,10 @@ export default function OwnerAdmin() {
   const [drivers, setDrivers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [commissions, setCommissions] = useState([]);
-  const [percent, setPercent] = useState("5");
+  const [ownerWithdrawals, setOwnerWithdrawals] = useState([]);
+  const [withdrawalAmount, setWithdrawalAmount] = useState("");
+  const [withdrawalNote, setWithdrawalNote] = useState("");
+  const [percent, setPercent = useState("5");
   const [vehicleRates, setVehicleRates] = useState(DEFAULT_RATES);
   const [testMode, setTestMode] = useState(true);
   const [walletAmounts, setWalletAmounts] = useState({});
@@ -47,11 +50,12 @@ export default function OwnerAdmin() {
 
   const loadAll = useCallback(async sessionToken => {
     const payload = { admin_token: sessionToken };
-    const [summary, driverData, orderData, commissionData] = await Promise.all([
+    const [summary, driverData, orderData, commissionData, withdrawalData] = await Promise.all([
       callApi("admin_dashboard", payload),
       callApi("admin_drivers", payload),
       callApi("admin_orders", payload),
-      callApi("admin_commissions", payload)
+      callApi("admin_commissions", payload),
+      callApi("admin_owner_withdrawals", payload)
     ]);
     setStats(summary.stats);
     const loadedPercent = String(summary.stats.commission_percent ?? 5);
@@ -67,6 +71,7 @@ export default function OwnerAdmin() {
     setDrivers(driverData.drivers || []);
     setOrders(orderData.orders || []);
     setCommissions(commissionData.commissions || []);
+    setOwnerWithdrawals(withdrawalData.withdrawals || []);
   }, []);
 
   useEffect(() => {
@@ -254,6 +259,27 @@ export default function OwnerAdmin() {
     } catch (e) { setError(e.message || "Не удалось обновить начисление."); }
   }
 
+  async function recordOwnerWithdrawal(event) {
+    event.preventDefault();
+    const amount = Number(withdrawalAmount);
+    const available = Number(stats?.owner_balance || 0);
+    if (!Number.isFinite(amount) || amount <= 0) { setError("Укажи сумму перевода больше нуля."); return; }
+    if (amount > available) { setError("Сумма превышает доступный баланс владельца: " + currency(available) + "."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await callApi("admin_record_owner_withdrawal", {
+        admin_token: token,
+        amount,
+        note: withdrawalNote.trim() || "Ручной перевод на Kaspi после фактического перевода"
+      });
+      await loadAll(token);
+      setWithdrawalAmount("");
+      setWithdrawalNote("");
+      setNotice("Перевод записан в учёт. Остаток баланса владельца: " + currency(result.withdrawal?.balance_after ?? 0) + ". Деньги не отправлялись приложением — это отметка после твоего ручного перевода на Kaspi.");
+    } catch (e) { setError(e.message || "Не удалось зафиксировать перевод на Kaspi."); }
+    finally { setBusy(false); }
+  }
+
   async function changePassword(event) {
     event.preventDefault(); setError(""); setNotice("");
     if (newPassword.length < 12) { setError("Новый пароль должен содержать минимум 12 символов."); return; }
@@ -269,7 +295,7 @@ export default function OwnerAdmin() {
   async function logout() {
     try { if (token) await callApi("admin_logout", { admin_token: token }); } catch {}
     localStorage.removeItem("moyTaxiAdminSession");
-    setToken(""); setStats(null); setDrivers([]); setOrders([]); setCommissions([]);
+    setToken(""); setStats(null); setDrivers([]); setOrders([]); setCommissions([]); setOwnerWithdrawals([]);
   }
 
   async function installOwnerApp() {
@@ -316,8 +342,10 @@ export default function OwnerAdmin() {
       <div className="metric"><span className="metric-icon">📦</span><strong>{stats.orders}</strong><span>Всего заказов</span></div>
       <div className="metric"><span className="metric-icon">✅</span><strong>{stats.completed_orders}</strong><span>Завершённых поездок</span></div>
       <div className="metric"><span className="metric-icon">💸</span><strong>{currency(stats.commission_due)}</strong><span>Комиссия ожидает получения</span></div>
+      <div className="metric"><span className="metric-icon">📅</span><strong>{currency(stats.owner_today_earnings)}</strong><span>Доход владельца за сегодня</span></div>
+      <div className="metric"><span className="metric-icon">🏦</span><strong>{currency(stats.owner_balance)}</strong><span>Баланс владельца по учёту</span></div>
     </div>
-    <div className="owner-balance panel"><div><span className="muted small">Всего начислено комиссии</span><strong>{currency(stats.commission_total)}</strong></div><div><span className="muted small">Уже отмечено как полученное</span><strong>{currency(stats.commission_paid)}</strong></div></div>
+    <div className="owner-balance panel"><div><span className="muted small">Всего начислено комиссии</span><strong>{currency(stats.commission_total)}</strong></div><div><span className="muted small">Комиссия получена от водителей</span><strong>{currency(stats.commission_paid)}</strong></div><div><span className="muted small">Отмечено переводом на Kaspi</span><strong>{currency(stats.owner_total_withdrawn)}</strong></div><div><span className="muted small">Остаток баланса владельца</span><strong>{currency(stats.owner_balance)}</strong></div></div>
     <nav className="tabbar owner-tabs">{Object.entries(tabLabels).map(([key,label])=><button key={key} className={tab===key?"tab active":"tab"} onClick={()=>setTab(key)}>{label}</button>)}</nav>
 
     {tab === "overview" && <section className="panel">
@@ -397,9 +425,22 @@ export default function OwnerAdmin() {
       {orders.length===0?<p className="muted">Заказов пока нет.</p>:orders.map(o=><article className="order" key={o.id}><div className="order-top"><h3>{o.clients?.name||"Клиент"} → {o.drivers?.name||"Водитель"}</h3><span className="status">{o.status}</span></div><p><b>Телефон клиента:</b> {o.clients?.phone||"—"}</p><p><b>Откуда:</b> {o.pickup_address}</p><p><b>Куда:</b> {o.destination_address}</p><p><b>Класс:</b> {VEHICLE_CLASSES.find(x=>x[0]===o.vehicle_class)?.[1]||"Эконом"}{Number(o.route_distance_km)>0?" · "+Number(o.route_distance_km).toFixed(1)+" км":""}</p><p><b>Оплата:</b> {o.payment_method==="kaspi_gold"?"Kaspi перевод":"Наличные"}</p><p><b>Цена:</b> {currency(o.agreed_price||o.driver_price||o.client_price)}</p><p className="muted small">{dateTime(o.created_at)}</p></article>)}
     </section>}
 
-    {tab === "commissions" && <section className="panel"><div className="section-heading"><div><h2>Начисления платформы</h2><p className="muted">Отметь комиссию полученной после фактического расчёта с водителем.</p></div></div>
-      <div className="owner-balance"><div><span className="muted small">Ожидает</span><strong>{due.length}</strong></div><div><span className="muted small">Получено</span><strong>{paid.length}</strong></div></div>
-      {commissions.length===0?<p className="muted">Начисления появятся после завершения заказов с указанной стоимостью.</p>:commissions.map(item=><article className="order" key={item.id}><div className="order-top"><h3>{item.drivers?.name||"Водитель"}</h3><span className="status">{item.status==="paid"?"Получено":"Ожидает"}</span></div><p><b>Телефон:</b> {item.drivers?.phone||"—"}</p><p><b>Стоимость поездки:</b> {currency(item.fare)}</p><p><b>Комиссия:</b> {item.commission_percent}% · <strong>{currency(item.commission_amount)}</strong></p><p><b>Маршрут:</b> {item.orders?.pickup_address||"—"} → {item.orders?.destination_address||"—"}</p><p className="muted small">Завершена: {dateTime(item.orders?.completed_at||item.created_at)}{item.paid_at?" · Получено: "+dateTime(item.paid_at):""}</p>{item.status==="due"&&<button type="button" className="button primary" onClick={()=>markPaid(item)}>Отметить комиссию полученной</button>}</article>)}
+    {tab === "commissions" && <section className="panel"><div className="section-heading"><div><h2>Начисления платформы</h2><p className="muted">Комиссия поступает в учёт владельца только после фактического удержания с лицевого счёта водителя или после твоего подтверждения расчёта.</p></div></div>
+      <div className="owner-balance"><div><span className="muted small">Ожидает от водителей</span><strong>{currency(stats.commission_due)}</strong></div><div><span className="muted small">Получено от водителей</span><strong>{currency(stats.commission_paid)}</strong></div><div><span className="muted small">Заработано сегодня</span><strong>{currency(stats.owner_today_earnings)}</strong></div><div><span className="muted small">Доступный баланс владельца</span><strong>{currency(stats.owner_balance)}</strong></div></div>
+      <div className="owner-withdrawal-panel">
+        <h3>Перевод владельцу на Kaspi</h3>
+        <p className="muted small">Сначала самостоятельно переведи деньги в Kaspi. Затем зафиксируй здесь сумму — эта кнопка не отправляет деньги и не запускает банковский перевод. В учёте будет уменьшен доступный остаток.</p>
+        <form onSubmit={recordOwnerWithdrawal}>
+          <div className="field"><label htmlFor="ownerWithdrawalAmount">Сумма уже выполненного перевода, ₸</label><input id="ownerWithdrawalAmount" type="number" min="0.01" max={Math.max(0,Number(stats.owner_balance||0))} step="0.01" value={withdrawalAmount} onChange={e=>setWithdrawalAmount(e.target.value)} placeholder="Например, 10000" required /></div>
+          <div className="field"><label htmlFor="ownerWithdrawalNote">Примечание или номер операции (необязательно)</label><input id="ownerWithdrawalNote" value={withdrawalNote} onChange={e=>setWithdrawalNote(e.target.value)} maxLength={300} placeholder="Например, перевод за 16 октября" /></div>
+          <button type="submit" className="button primary" disabled={busy||!withdrawalAmount||Number(withdrawalAmount)<=0||Number(withdrawalAmount)>Number(stats.owner_balance||0)}>Зафиксировать перевод на Kaspi</button>
+        </form>
+      </div>
+      <h3 style={{marginTop:20}}>Последние переводы владельца</h3>
+      {ownerWithdrawals.length===0?<p className="muted">Переводов пока нет.</p>:ownerWithdrawals.map(item=><article className="order" key={item.id}><div className="order-top"><h3>Перевод на Kaspi</h3><strong>−{currency(item.amount)}</strong></div><p>{item.note||"Ручной перевод владельцем"}</p><p className="muted small">{dateTime(item.created_at)}</p></article>)}
+      <div className="divider-owner" />
+      <h3>Комиссии по поездкам</h3>
+      {commissions.length===0?<p className="muted">Начисления появятся после завершения заказов с указанной стоимостью.</p>:commissions.map(item=><article className="order" key={item.id}><div className="order-top"><h3>{item.drivers?.name||"Водитель"}</h3><span className="status">{item.status==="paid"?"Получено":"Ожидает"}</span></div><p><b>Телефон:</b> {item.drivers?.phone||"—"}</p><p><b>Стоимость поездки:</b> {currency(item.fare)}</p><p><b>Комиссия:</b> {item.commission_percent}% · <strong>{currency(item.commission_amount)}</strong></p><p><b>Маршрут:</b> {item.orders?.pickup_address||"—"} → {item.orders?.destination_address||"—"}</p><p className="muted small">Завершена: {dateTime(item.orders?.completed_at||item.created_at)}{item.paid_at?" · Учтено: "+dateTime(item.paid_at):""}</p>{item.status==="due"&&<button type="button" className="button primary" onClick={()=>markPaid(item)}>Отметить комиссию полученной</button>}</article>)}
     </section>}
     <p className="muted small footer-note">Мой Такси · учёт владельца · комиссия по завершённым поездкам</p>
   </main>;
