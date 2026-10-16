@@ -230,8 +230,8 @@ async function adminSession(c:any,p:any){
   if(token.length<20)return {error:"Нужен вход владельца.",status:401};
   const {data,error}=await c.from("platform_settings").select("*").eq("id",true).maybeSingle();
   if(error||!data)return {error:"Настройки кабинета владельца не найдены.",status:500};
-  const exp=data.admin_session_expires_at?Date.parse(data.admin_session_expires_at):0;
-  if(!data.admin_session_token_hash||!equal(await sha256(token),data.admin_session_token_hash)||exp<Date.now())return {error:"Сессия владельца истекла. Войди снова.",status:401};
+  const exp=data.admin_session_expires_at?Date.parse(data.admin_session_expires_at):null;
+  if(!data.admin_session_token_hash||!equal(await sha256(token),data.admin_session_token_hash)||(exp!==null&&exp<Date.now()))return {error:"Сессия владельца истекла. Войди снова.",status:401};
   return {settings:data};
 }
 async function getDgisApiKey(c:any){
@@ -262,7 +262,7 @@ if(a==="admin_login"){
  if(error||!s)return fail("Не удалось загрузить настройки владельца.",500);
  if(!equal(await passwordHash(password,s.owner_password_salt),s.owner_password_hash))return fail("Неверный пароль владельца.",401);
  const token=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");
- const {error:ue}=await c.from("platform_settings").update({admin_session_token_hash:await sha256(token),admin_session_expires_at:new Date(Date.now()+12*60*60*1000).toISOString(),updated_at:new Date().toISOString()}).eq("id",true);
+ const {error:ue}=await c.from("platform_settings").update({admin_session_token_hash:await sha256(token),admin_session_expires_at:null,updated_at:new Date().toISOString()}).eq("id",true);
  if(ue)return fail("Не удалось открыть кабинет владельца.",500);
  return reply({ok:true,admin_token:token,commission_percent:Number(s.commission_percent)});
 }
