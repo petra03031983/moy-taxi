@@ -14,13 +14,14 @@ function twoGisTripRoute(fromLat, fromLng, toLat, toLng, address) {
   return twoGisRoute(toLat, toLng, address);
 }
 function inferVehicleCapabilities(model) {
-  const value = String(model || "").toLocaleLowerCase("ru-RU").replace(/[ё]/g, "е").replace(/[^a-zа-я0-9+ ]/g, " ");
-  const comfort = /\b(camry|sonata|k5|optima|accord|passat|superb|teana|mazda\s*6|mazda6|kia\s*k7|azera|avalon|crown|es|gs|e\s*class|е\s*класс|бизнес)\b/.test(value);
-  const seats6 = /\b(sienna|alphard|vellfire|estima|noah|voxy|esquire|serena|elgrand|odyssey|carnival|sedona|staria|multivan|caravelle|transporter|hiace|starex|h1|sprinter|transit|ducato|раф|гран\s*старекс|минивэн|минивен)\b/.test(value);
+  const value = String(model || "").toLocaleLowerCase("ru-RU").replace(/[ё]/g, "е").replace(/[^a-zа-я0-9+ ]/g, " ").trim();
+  const has = (...names) => names.some(name => value.includes(name));
+  const comfort = has("camry","камри","sonata","соната","k5","optima","оптима","accord","аккорд","passat","пассат","superb","суперб","teana","тиана","mazda 6","mazda6","kia k7","cadenza","azera","grandeur","avalon","crown","mark x","markx","lexus es","es 300","es 350","lexus gs","genesis","bmw 5","5 series","e class","e-класс","мерседес е","audi a6","a6");
+  const seats6 = has("sienna","alphard","vellfire","estima","noah","voxy","esquire","serena","elgrand","odyssey","carnival","sedona","staria","multivan","caravelle","transporter","hiace","starex","grand starex","h1","sprinter","transit","ducato","raf","раф","гран старекс","минивэн","минивен","pacifica","vito","viano","v-class","v class","tourneo","шаттл");
   return { economy: true, comfort, seats6, primary: seats6 ? "minivan" : comfort ? "comfort" : "economy" };
 }
 function isCourierOrder(order) {
-  return Boolean(order && (order.is_delivery || order.order_type === "delivery" || order.service_type === "delivery" || order.kind === "courier"));
+  return Boolean(order && (order.is_delivery || order.order_type === "delivery" || order.order_type === "parcel" || order.service_type === "delivery" || order.service_type === "courier" || order.kind === "courier" || order.courier_type));
 }
 const VEHICLE_CLASSES=[["economy","Эконом"],["comfort","Комфорт"],["comfort_plus","Комфорт+"],["business","Бизнес"],["minivan","Минивэн"],["premium","Премиум"]];
 const emptyForm={name:"",phone:"",password:"",car_model:"",car_plate:"",car_color:"",vehicle_class:"economy",photo_url:""};
@@ -252,7 +253,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const gpsFresh=Boolean(driver.location_updated_at&&Date.now()-Date.parse(driver.location_updated_at)<=5*60*1000&&driver.current_lat!=null&&driver.current_lng!=null);
  const vehicleCapabilities=inferVehicleCapabilities(driver?.car_model||"");
  const orderClassAllowed=(o)=>{const cls=o?.vehicle_class||"economy";if(cls==="minivan")return tariffModes.seats6&&vehicleCapabilities.seats6;if(["comfort","comfort_plus","business","premium"].includes(cls))return tariffModes.comfort&&vehicleCapabilities.comfort;return tariffModes.economy};
- const filteredOrders=orders.filter(o=>(!filterMinPrice||Number(o.agreed_price||o.client_price||o.driver_price||0)>=Number(filterMinPrice))&&(!filterMaxDistance||o.distance_km==null||Number(o.distance_km)<=Number(filterMaxDistance))&&(filterVehicleClass==="all"||o.vehicle_class===filterVehicleClass)&&(filterTripType==="all"||o.trip_type===filterTripType)&&(isCourierOrder(o)?tariffModes.parcels:orderClassAllowed(o)));
+ const filteredOrders=orders.filter(o=>(!filterMinPrice||Number(o.agreed_price||o.client_price||o.driver_price||0)>=Number(filterMinPrice))&&(!filterMaxDistance||o.distance_km==null||Number(o.distance_km)<=Number(filterMaxDistance))&&(filterVehicleClass==="all"||o.vehicle_class===filterVehicleClass)&&(filterTripType==="all"||o.trip_type===filterTripType)&&(o.status!=="new"||(isCourierOrder(o)?tariffModes.parcels:orderClassAllowed(o))));
  const visibleOrders=tab==="active"?filteredOrders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):filteredOrders;
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
  const openDriverSettings=()=>{setTab("settings");setDriverMenuOpen(false)};
