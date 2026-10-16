@@ -4,7 +4,7 @@ const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status
 async function sha256(v:string){return hex(await crypto.subtle.digest("SHA-256",enc.encode(v)))}async function passwordHash(p:string,s:string){const k=await crypto.subtle.importKey("raw",enc.encode(p),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",salt:fromHex(s),iterations:120000,hash:"SHA-256"},k,256))}function equal(a:string,b:string){if(a.length!==b.length)return false;let d=0;for(let i=0;i<a.length;i++)d|=a.charCodeAt(i)^b.charCodeAt(i);return d===0}function phone(v:unknown){let d=String(v||"").replace(/\D/g,"");if(d.length===11&&d.startsWith("8"))d="7"+d.slice(1);return d.length>=10&&d.length<=15?"+"+d:""}
 const VEHICLE_CLASSES=["economy","comfort","comfort_plus","business","minivan","premium"];
 function vehicleClass(v:unknown){const x=String(v||"economy");return VEHICLE_CLASSES.includes(x)?x:"economy"}
-function pub(d:any){return {id:d.id,public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),photo_url:d.photo_url||"",wallet_balance:Number(d.wallet_balance||0),is_online:Boolean(d.is_online),current_lat:d.current_lat??null,current_lng:d.current_lng??null,location_updated_at:d.location_updated_at||null,documents_verified:Boolean(d.documents_verified)}}
+function pub(d:any){return {id:d.id,account_number:d.account_number||null,public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),photo_url:d.photo_url||"",wallet_balance:Number(d.wallet_balance||0),is_online:Boolean(d.is_online),current_lat:d.current_lat??null,current_lng:d.current_lng??null,location_updated_at:d.location_updated_at||null,documents_verified:Boolean(d.documents_verified)}}
 async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!u||!k)throw new Error("Server configuration is incomplete");return createClient(u,k,{auth:{persistSession:false,autoRefreshToken:false}})}
 async function sess(c:any,p:any){const id=String(p.driver_id||""),t=String(p.session_token||"");if(!id||t.length<20)return {error:"Сессия истекла. Войди снова.",status:401};const {data,error}=await c.from("drivers").select("*").eq("id",id).maybeSingle();if(error||!data)return {error:"Не удалось проверить вход. Войди снова.",status:401};const exp=data.session_expires_at?Date.parse(data.session_expires_at):0;if(!data.session_token_hash||!equal(await sha256(t),data.session_token_hash)||exp<Date.now())return {error:"Сессия истекла. Войди снова.",status:401};return {driver:data}}
 async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");const h=await sha256(t),exp=new Date(Date.now()+30*86400000).toISOString();const {error}=await c.from("drivers").update({session_token_hash:h,session_expires_at:exp,updated_at:new Date().toISOString()}).eq("id",id);if(error)throw error;return t}
@@ -253,6 +253,13 @@ function pointFrom2gis(item:any){
 }
 
 function amount(v:any){const n=Number(v);return Number.isFinite(n)&&n>0?n:0}
+function almatyDayKey(value:unknown){
+ const date=value instanceof Date?value:new Date(String(value||""));
+ if(!Number.isFinite(date.getTime()))return "";
+ const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Almaty",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date);
+ const get=(type:string)=>parts.find(part=>part.type===type)?.value||"";
+ return get("year")+"-"+get("month")+"-"+get("day");
+}
 
 Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});if(req.method!=="POST")return fail("Method not allowed",405);try{const c=await db(),p=await req.json(),a=String(p.action||"");
 
@@ -358,25 +365,31 @@ if(a.startsWith("admin_")){
   return reply({ok:true,topup:result});
  }
  if(a==="admin_dashboard"){
-  const [driversQ,onlineQ,ordersQ,doneQ,clientsQ,clientsRowsQ,commissionsQ]=await Promise.all([
+  const [driversQ,onlineQ,ordersQ,doneQ,clientsQ,clientsRowsQ,commissionsQ,withdrawalsQ]=await Promise.all([
    c.from("drivers").select("id",{count:"exact",head:true}),
    c.from("drivers").select("id",{count:"exact",head:true}).eq("is_online",true),
    c.from("orders").select("id",{count:"exact",head:true}),
    c.from("orders").select("id",{count:"exact",head:true}).eq("status","completed"),
    c.from("clients").select("id",{count:"exact",head:true}),
    c.from("clients").select("phone").limit(10000),
-   c.from("platform_commissions").select("commission_amount,status").limit(10000)
+   c.from("platform_commissions").select("commission_amount,status,created_at,paid_at").limit(10000),
+   c.from("owner_withdrawals").select("amount").limit(10000)
   ]);
-  if(driversQ.error||onlineQ.error||ordersQ.error||doneQ.error||clientsQ.error||commissionsQ.error)return fail("Не удалось загрузить статистику.",500);
+  if(driversQ.error||onlineQ.error||ordersQ.error||doneQ.error||clientsQ.error||commissionsQ.error||withdrawalsQ.error)return fail("Не удалось загрузить статистику.",500);
   const commissionRows=commissionsQ.data||[];
   const totalCommission=commissionRows.reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
   const dueCommission=commissionRows.filter((row:any)=>row.status==="due").reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
-  const paidCommission=commissionRows.filter((row:any)=>row.status==="paid").reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
+  const paidRows=commissionRows.filter((row:any)=>row.status==="paid");
+  const paidCommission=paidRows.reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
+  const totalWithdrawn=(withdrawalsQ.data||[]).reduce((sum:any,row:any)=>sum+Number(row.amount||0),0);
+  const todayKey=almatyDayKey(new Date());
+  const ownerTodayEarnings=paidRows.filter((row:any)=>almatyDayKey(row.paid_at||row.created_at)===todayKey).reduce((sum:any,row:any)=>sum+Number(row.commission_amount||0),0);
+  const ownerBalance=Math.round((paidCommission-totalWithdrawn)*100)/100;
   const uniqueClients=new Set((clientsRowsQ.data||[]).map((x:any)=>String(x.phone||"").trim()).filter(Boolean)).size;
-  return reply({ok:true,stats:{drivers:driversQ.count||0,online_drivers:onlineQ.count||0,orders:ordersQ.count||0,completed_orders:doneQ.count||0,client_order_records:clientsQ.count||0,unique_clients:uniqueClients,commission_total:totalCommission,commission_due:dueCommission,commission_paid:paidCommission,commission_percent:Number(settings.commission_percent),vehicle_rates:settings.vehicle_rates||{},test_mode:settings.test_mode!==false,dgis_api_configured:Boolean(settings.dgis_api_key||Deno.env.get("DGIS_API_KEY"))}});
+  return reply({ok:true,stats:{drivers:driversQ.count||0,online_drivers:onlineQ.count||0,orders:ordersQ.count||0,completed_orders:doneQ.count||0,client_order_records:clientsQ.count||0,unique_clients:uniqueClients,commission_total:totalCommission,commission_due:dueCommission,commission_paid:paidCommission,owner_balance:ownerBalance,owner_today_earnings:ownerTodayEarnings,owner_total_withdrawn:totalWithdrawn,commission_percent:Number(settings.commission_percent),vehicle_rates:settings.vehicle_rates||{},test_mode:settings.test_mode!==false,dgis_api_configured:Boolean(settings.dgis_api_key||Deno.env.get("DGIS_API_KEY"))}});
  }
  if(a==="admin_drivers"){
-  const {data,error}=await c.from("drivers").select("id,public_code,name,phone,is_online,car_model,car_plate,car_color,vehicle_class,wallet_balance,created_at").order("created_at",{ascending:false}).limit(500);
+  const {data,error}=await c.from("drivers").select("id,account_number,public_code,name,phone,is_online,car_model,car_plate,car_color,vehicle_class,wallet_balance,created_at").order("created_at",{ascending:false}).limit(500);
   if(error)return fail("Не удалось загрузить список водителей.",500);return reply({ok:true,drivers:data||[]});
  }
  if(a==="admin_orders"){
@@ -393,6 +406,18 @@ if(a.startsWith("admin_")){
   if(ce||!current)return fail("Начисление не найдено.",404);if(current.status==="paid")return fail("Это начисление уже отмечено как полученное.");
   const {data,error}=await c.from("platform_commissions").update({status:"paid",paid_at:new Date().toISOString(),paid_note:note||null}).eq("id",id).select("*").single();
   if(error)return fail("Не удалось отметить получение комиссии.",500);return reply({ok:true,commission:data});
+ }
+ if(a==="admin_owner_withdrawals"){
+  const {data,error}=await c.from("owner_withdrawals").select("id,amount,method,note,created_at").order("created_at",{ascending:false}).limit(100);
+  if(error)return fail("Не удалось загрузить историю переводов владельца.",500);
+  return reply({ok:true,withdrawals:data||[]});
+ }
+ if(a==="admin_record_owner_withdrawal"){
+  const amountToWithdraw=Number(p.amount),note=String(p.note||"").trim().slice(0,300);
+  if(!Number.isFinite(amountToWithdraw)||amountToWithdraw<=0||amountToWithdraw>1000000000)return fail("Укажи сумму перевода больше нуля.");
+  const {data:result,error}=await c.rpc("record_owner_withdrawal",{p_amount:amountToWithdraw,p_note:note||"Ручной перевод на Kaspi владельцем"});
+  if(error||!result)return fail(error?.message||"Не удалось зафиксировать перевод на Kaspi.",400);
+  return reply({ok:true,withdrawal:result});
  }
  return fail("Неизвестное действие кабинета владельца.",400);
 }
@@ -591,11 +616,15 @@ if(a==="driver_wallet"){
 if(a==="driver_offer_price"){
  if(!d.is_online)return fail("Сначала выйди на линию, чтобы отвечать на заказы.");
  const id=String(p.order_id||""),price=Math.round(Number(p.price));
- if(!id||!Number.isFinite(price)||price<100||price>1000000)return fail("Укажи корректную цену от 100 до 1 000 000 ₸.");
+ if(!id||!Number.isFinite(price)||price<100||price>1000000)return fail("Укажи корректную цену.");
  const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,vehicle_class,client_price").eq("id",id).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
  if(o.status!=="new"||(o.driver_id&&o.driver_id!==d.id))return fail("Этот заказ уже недоступен.");
  if(!o.driver_id&&vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Этот заказ для другого класса автомобиля.");
+ const base=amount(o.client_price);
+ const maxOffer=base>0?Math.floor(base*1.3/50)*50:0;
+ if(base>0&&price<base)return fail("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");
+ if(base>0&&price>maxOffer)return fail("Максимальная цена предложения — "+maxOffer.toLocaleString("ru-RU")+" ₸ (не более 30% выше цены пассажира).");
  const {data:existing}=await c.from("order_offers").select("id,status").eq("order_id",id).eq("driver_id",d.id).maybeSingle();
  if(existing?.status==="skipped")return fail("Ты скрыл этот заказ у себя. Он недоступен для повторного отклика.");
  const {data:offer,error:offerError}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price,status:"pending",responded_at:null,updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"}).select("*").single();
