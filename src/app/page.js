@@ -68,7 +68,7 @@ function formatDistance(value){
  return km<1?Math.round(km*1000)+" м":km.toLocaleString("ru-RU",{maximumFractionDigits:1})+" км";
 }
 export default function Home(){
- const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[settingsTab,setSettingsTab]=useState("orders"),[darkMode,setDarkMode]=useState("system"),[feedSounds,setFeedSounds]=useState(false),[orderChain,setOrderChain]=useState(false),[quickSwitch,setQuickSwitch]=useState(false),[navigatorApp,setNavigatorApp]=useState("2gis"),[filterMinPrice,setFilterMinPrice]=useState(""),[filterMaxDistance,setFilterMaxDistance]=useState(""),[filterVehicleClass,setFilterVehicleClass]=useState("all"),[filterTripType,setFilterTripType]=useState("all"),[filterPickupDistance,setFilterPickupDistance]=useState(3),[filterMinPricePerKm,setFilterMinPricePerKm]=useState(500),[filterMinOrderPrice,setFilterMinOrderPrice]=useState(3000),[settingsLoaded,setSettingsLoaded]=useState(false),[tariffModes,setTariffModes]=useState({economy:true,noBargaining:true,comfort:false,seats6:false,parcels:true}),[vehicleEditOpen,setVehicleEditOpen]=useState(false),[vehicleDraft,setVehicleDraft]=useState({car_model:"",car_plate:""}),[vehicleSaving,setVehicleSaving]=useState(false),[academyCompleted,setAcademyCompleted]=useState([]),[safetyChecks,setSafetyChecks]=useState({vehicle:false,seatbelt:false,phone:false}),[supportMessage,setSupportMessage]=useState("");
+ const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[settingsTab,setSettingsTab]=useState("orders"),[darkMode,setDarkMode]=useState("system"),[feedSounds,setFeedSounds]=useState(false),[orderChain,setOrderChain]=useState(false),[quickSwitch,setQuickSwitch]=useState(false),[navigatorApp,setNavigatorApp]=useState("2gis"),[filterMinPrice,setFilterMinPrice]=useState(""),[filterMaxDistance,setFilterMaxDistance]=useState(""),[filterVehicleClass,setFilterVehicleClass]=useState("all"),[filterTripType,setFilterTripType]=useState("all"),[filterPickupDistance,setFilterPickupDistance]=useState(3),[scanRadiusKm,setScanRadiusKm]=useState(3),[filterMinPricePerKm,setFilterMinPricePerKm]=useState(500),[filterMinOrderPrice,setFilterMinOrderPrice]=useState(3000),[settingsLoaded,setSettingsLoaded]=useState(false),[tariffModes,setTariffModes]=useState({economy:true,noBargaining:true,comfort:false,seats6:false,parcels:true}),[vehicleEditOpen,setVehicleEditOpen]=useState(false),[vehicleDraft,setVehicleDraft]=useState({car_model:"",car_plate:""}),[vehicleSaving,setVehicleSaving]=useState(false),[academyCompleted,setAcademyCompleted]=useState([]),[safetyChecks,setSafetyChecks]=useState({vehicle:false,seatbelt:false,phone:false}),[supportMessage,setSupportMessage]=useState("");
  const previousIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
  useEffect(()=>{setOrigin(window.location.origin);setNotificationPermission("Notification"in window?Notification.permission:"unsupported");if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});const bip=e=>{e.preventDefault();setInstallPrompt(e)};window.addEventListener("beforeinstallprompt",bip);const saved=localStorage.getItem("moyTaxiSession");if(saved){try{const s=cleanSession(JSON.parse(saved));if(s){setSession(s);callApi("driver_me",s).then(d=>setDriver(d.driver)).catch(()=>{localStorage.removeItem("moyTaxiSession");setSession(null)})}}catch{localStorage.removeItem("moyTaxiSession")}}const unlock=()=>{try{const C=window.AudioContext||window.webkitAudioContext;if(C&&!audioRef.current)audioRef.current=new C();audioRef.current?.resume()}catch{}};window.addEventListener("pointerdown",unlock,{once:true});return()=>{window.removeEventListener("beforeinstallprompt",bip);window.removeEventListener("pointerdown",unlock)}},[]);
  useEffect(()=>{if(!session){setWalletInfo(null);return}let alive=true;const loadWallet=()=>Promise.all([callApi("driver_wallet",session),callApi("driver_me",session)]).then(([data,me])=>{if(alive){setWalletInfo(data);setDriver(old=>old?{...old,...me.driver}:me.driver)}}).catch(()=>{});loadWallet();const timer=setInterval(loadWallet,15000);return()=>{alive=false;clearInterval(timer)}},[session?.driver_id,session?.session_token]);
@@ -112,7 +112,7 @@ export default function Home(){
   };
   const load=async()=>{
    try{
-    const d=await callApi("driver_list",session);if(!alive)return;
+    const d=await callApi("driver_list",{...session,search_radius_km:scanRadiusKm});if(!alive)return;
     const next=sortOrdersNewestFirst(d.orders||[]);
     const ids=new Set(next.map(o=>o.id));
     const fresh=next.filter(o=>o.status==="new"&&!previousIds.current.has(o.id));
@@ -137,8 +137,15 @@ export default function Home(){
   };
   load();const t=setInterval(load,3000);
   return()=>{alive=false;clearInterval(t)};
- },[session?.driver_id,session?.session_token,feedSounds,filterPickupDistance,filterMinPricePerKm,filterMinOrderPrice]);
+ },[session?.driver_id,session?.session_token,feedSounds,filterPickupDistance,filterMinPricePerKm,filterMinOrderPrice,scanRadiusKm]);
  useEffect(()=>{if(!session||!driver?.is_online||!("geolocation"in navigator))return;const send=p=>callApi("driver_location",{...session,lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}).catch(()=>{});const locate=()=>navigator.geolocation.getCurrentPosition(send,()=>{},{enableHighAccuracy:true,maximumAge:15000,timeout:15000});locate();watchRef.current=navigator.geolocation.watchPosition(send,()=>{},{enableHighAccuracy:true,maximumAge:15000,timeout:15000});const refreshTimer=setInterval(locate,60000);return()=>{clearInterval(refreshTimer);if(watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current)}},[session?.driver_id,session?.session_token,driver?.is_online]);
+ useEffect(()=>{
+  const locationFresh=Boolean(driver?.location_updated_at&&Date.now()-Date.parse(driver.location_updated_at)<=5*60*1000&&driver.current_lat!=null&&driver.current_lng!=null);
+  if(!driver?.is_online||!locationFresh){setScanRadiusKm(3);return}
+  setScanRadiusKm(3);
+  const radiusTimer=setInterval(()=>setScanRadiusKm(current=>current>=25?25:Math.min(25,current+1)),5000);
+  return()=>clearInterval(radiusTimer);
+ },[driver?.is_online,Boolean(driver?.location_updated_at&&Date.now()-Date.parse(driver.location_updated_at)<=5*60*1000&&driver.current_lat!=null&&driver.current_lng!=null)]);
  useEffect(()=>{
   try{
    const raw=localStorage.getItem("moyTaxiDriverSettings");
@@ -334,11 +341,11 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
    <div className="driver-radar-cross driver-radar-cross-x"></div><div className="driver-radar-cross driver-radar-cross-y"></div>
    <div className="driver-radar-sweep"></div>
    <i className="driver-radar-point driver-radar-point-a"></i><i className="driver-radar-point driver-radar-point-b"></i><i className="driver-radar-point driver-radar-point-c"></i><i className="driver-radar-point driver-radar-point-d"></i><i className="driver-radar-point driver-radar-point-e"></i>
-   <div className="driver-radar-center"><span>🚕</span></div>
+   <div className="driver-radar-center" aria-hidden="true"><span></span></div>
   </div>
   <h2>{driver.is_online&&gpsFresh?"Ищем заказы рядом":driver.is_online?"Определяем местоположение":"Новых заказов пока нет"}</h2>
   <p>{driver.is_online&&gpsFresh?"Сканируем новые заявки поблизости. Как только появится подходящий заказ, он отобразится в ленте.":driver.is_online?"Разреши доступ к геолокации и подожди обновления местоположения.":"Выйди на линию, чтобы начать поиск заказов."}</p>
-  <div className="driver-radar-range"><span>Радиус уведомлений</span><b>до {Number(filterPickupDistance).toLocaleString("ru-RU")} км</b></div>
+  <div className="driver-radar-range"><span>Радиус поиска</span><b>до {scanRadiusKm} км</b></div>
   <div className="driver-radar-bottom"><span></span><small>{driver.is_online&&gpsFresh?"Поиск активен":driver.is_online?"Ожидаем GPS":"Поиск приостановлен"}</small><span></span></div>
  </div>:(tab==="orders"||tab==="active")&&<section className="panel">
  <div className="section-heading">
