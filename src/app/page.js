@@ -45,8 +45,7 @@ function formatDistance(value){
  return km<1?Math.round(km*1000)+" м":km.toLocaleString("ru-RU",{maximumFractionDigits:1})+" км";
 }
 export default function Home(){
- const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[welcomeLang,setWelcomeLang]=useState("ru");
-
+ const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false);
  const previousIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
  useEffect(()=>{setOrigin(window.location.origin);setNotificationPermission("Notification"in window?Notification.permission:"unsupported");if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});const bip=e=>{e.preventDefault();setInstallPrompt(e)};window.addEventListener("beforeinstallprompt",bip);const saved=localStorage.getItem("moyTaxiSession");if(saved){try{const s=cleanSession(JSON.parse(saved));if(s){setSession(s);callApi("driver_me",s).then(d=>setDriver(d.driver)).catch(()=>{localStorage.removeItem("moyTaxiSession");setSession(null)})}}catch{localStorage.removeItem("moyTaxiSession")}}const unlock=()=>{try{const C=window.AudioContext||window.webkitAudioContext;if(C&&!audioRef.current)audioRef.current=new C();audioRef.current?.resume()}catch{}};window.addEventListener("pointerdown",unlock,{once:true});return()=>{window.removeEventListener("beforeinstallprompt",bip);window.removeEventListener("pointerdown",unlock)}},[]);
  useEffect(()=>{if(!session){setWalletInfo(null);return}let alive=true;const loadWallet=()=>Promise.all([callApi("driver_wallet",session),callApi("driver_me",session)]).then(([data,me])=>{if(alive){setWalletInfo(data);setDriver(old=>old?{...old,...me.driver}:me.driver)}}).catch(()=>{});loadWallet();const timer=setInterval(loadWallet,15000);return()=>{alive=false;clearInterval(timer)}},[session?.driver_id,session?.session_token]);
@@ -173,62 +172,24 @@ export default function Home(){
    const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
    setNotice(standalone?"Сейчас ты уже в установленном приложении. Чтобы добавить отдельную иконку «Мой Такси», открой основной сайт в Chrome, не через иконку кабинета владельца, затем нажми ⋮ → «Установить приложение» или «Добавить на главный экран».":"Chrome пока не предложил окно установки. Открой основной сайт напрямую в Chrome, затем нажми ⋮ → «Установить приложение» или «Добавить на главный экран».");
   }
- if(entryMode==="choose") return <main className="app welcome-app">
-  <div className="welcome-shell">
-    <header className="welcome-header">
-      <div className="welcome-brand-icon" aria-hidden="true">
-        <svg viewBox="0 0 80 80" role="img">
-          <defs><linearGradient id="welcomeGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff0a1"/><stop offset=".52" stopColor="#ffca37"/><stop offset="1" stopColor="#d98908"/></linearGradient></defs>
-          <path d="M40 4C20 4 6 19 6 38c0 22 34 38 34 38s34-22 34-42C74 16 59 4 40 4Z" fill="url(#welcomeGold)"/>
-          <path d="M40 12c-15 0-26 11-26 25 0 15 18 28 26 34 12-9 26-21 26-35 0-13-11-24-26-24Z" fill="#062b4a"/>
-          <path d="M22 38l5-11h26l6 11 4 4v12H18V42l4-4Z" fill="url(#welcomeGold)"/>
-          <path d="M28 29h24l4 9H24l4-9Z" fill="#06365a"/>
-          <rect x="29" y="43" width="8" height="5" rx="1" fill="#06365a"/><rect x="44" y="43" width="8" height="5" rx="1" fill="#06365a"/>
-          <path d="M29 54h22" stroke="#fff0a1" strokeWidth="3" strokeLinecap="round"/>
-        </svg>
-      </div>
-      <div className="welcome-brand-copy">
-        <div className="welcome-brand-title">{welcomeLang==="kz"?"БІЗДІҢ":"НАШЕ"} <span>ТАКСИ</span></div>
-        <div className="welcome-brand-subtitle">{welcomeLang==="kz"?"ҚАЗАҚСТАННЫҢ ӨЗ ТАКСИ ҚЫЗМЕТІ":"ҚАЗАҚСТАННЫҢ ӨЗ ТАКСИ СЕРВИСІ"}</div>
-        <div className="welcome-brand-rule"><span></span><b>◇</b><span></span></div>
-      </div>
-    </header>
-
-    <section className="welcome-visual" aria-label={welcomeLang==="kz"?"Астана қаласындағы такси":"Такси в Астане"}>
-      <div className="welcome-visual-glow"></div>
-      <img className="welcome-photo-art" src="/welcome-hero.jpg" alt="Белое такси на фоне современной Астаны" />
-      <div className="welcome-city-label"><span>✦</span> ASTANA · QAZAQSTAN</div>
-      <div className="welcome-taxi-brand"><span>✦</span> НАШЕ ТАКСИ</div>
-    </section>
-
-    <div className="welcome-intro">
-      <p>{welcomeLang==="kz"?"Қала ішінде жүру оңай әрі ыңғайлы.":"Поездки по городу — просто и удобно."}</p>
-      <div><span></span><b>{welcomeLang==="kz"?"ӨЗІМІЗДІҢ СЕРВИС":"СВОЙ СЕРВИС"}</b><span></span></div>
+ if(entryMode==="choose") return <main className="app auth-app">
+  <header className="header"><div className="logo">Мой <span>Такси</span></div><div className="small">Единое приложение</div></header>
+  <section className="hero panel role-menu">
+    <div className="hero-icon">🚕</div>
+    <p className="eyebrow">ДОБРО ПОЖАЛОВАТЬ</p>
+    <h1>Как вы хотите пользоваться «Мой Такси»?</h1>
+    <p className="muted">Выберите свою роль. Пассажир заказывает поездку, водитель принимает заказы и управляет поездками.</p>
+    <div className="role-actions">
+      <a className="button primary" href="/passenger"><span>🧍</span><span><b>Я пассажир</b><small>Указать адрес и заказать такси</small></span><span>›</span></a>
+      <button type="button" className="button secondary" onClick={()=>setEntryMode("driver")}><span>🚘</span><span><b>Я водитель</b><small>Войти или зарегистрироваться</small></span><span>›</span></button>
     </div>
-    <button type="button" className="welcome-cta" onClick={()=>document.getElementById("welcome-roles")?.scrollIntoView({behavior:"smooth",block:"center"})}>
-      {welcomeLang==="kz"?"Сапарды бастау":"Начать поездку"} <span aria-hidden="true">➜</span>
+    <button type="button" className="button install" onClick={install}>
+      <span style={{fontSize:24}}>📲</span>
+      <span><b>Установить «Мой Такси»</b><small>Отдельная иконка для пассажира и водителя</small></span>
     </button>
-    <section className="welcome-roles" id="welcome-roles" aria-label={welcomeLang==="kz"?"Рөлді таңдаңыз":"Выберите режим"}>
-      <a className="welcome-role-card" href="/passenger">
-        <span className="welcome-role-icon passenger-icon" aria-hidden="true">♙</span>
-        <span className="welcome-role-copy"><b>{welcomeLang==="kz"?"ЖОЛАУШЫ":"ПАССАЖИР"}</b><small>{welcomeLang==="kz"?"Такси шақыру":"Заказать такси"}</small></span>
-        <span className="welcome-role-arrow" aria-hidden="true">›</span>
-      </a>
-      <button type="button" className="welcome-role-card" onClick={()=>setEntryMode("driver")}>
-        <span className="welcome-role-icon driver-icon" aria-hidden="true">🚕</span>
-        <span className="welcome-role-copy"><b>{welcomeLang==="kz"?"ЖҮРГІЗУШІ":"ВОДИТЕЛЬ"}</b><small>{welcomeLang==="kz"?"Тапсырыс қабылдау":"Принимать заказы"}</small></span>
-        <span className="welcome-role-arrow" aria-hidden="true">›</span>
-      </button>
-    </section>
-    <footer className="welcome-footer">
-      <div className="welcome-language-picker" role="group" aria-label="Язык">
-        <button type="button" className={welcomeLang==="kz"?"active":""} aria-pressed={welcomeLang==="kz"} onClick={()=>setWelcomeLang("kz")}><span className="welcome-kz-dot">KZ</span> Қазақша</button>
-        <button type="button" className={welcomeLang==="ru"?"active":""} aria-pressed={welcomeLang==="ru"} onClick={()=>setWelcomeLang("ru")}><span className="welcome-globe">◎</span> Русский</button>
-      </div>
-      <small>{welcomeLang==="kz"?"Бір қосымша · екі режим":"Одно приложение · два режима"}</small>
-    </footer>
     {notice && <div className="success" role="status">{notice}</div>}
-  </div>
+    <p className="muted small role-test-note">Мой Такси сейчас работает в тестовом режиме.</p>
+  </section>
 </main>;
 if(!session||!driver) return <main className="app auth-app"><header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Панель водителя</span></header><section className="hero panel"><div className="hero-icon">🚕</div><p className="eyebrow">ЛИЧНЫЙ СЕРВИС</p><h1>{authMode==="register"?"Регистрация водителя":"Вход водителя"}</h1><p className="muted">Один аккаунт — твой QR-код и твои клиенты.</p></section>{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}<section className="panel auth-panel"><div className="switcher"><button className={authMode==="login"?"switch active":"switch"} onClick={()=>setAuthMode("login")}>Войти</button><button className={authMode==="register"?"switch active":"switch"} onClick={()=>setAuthMode("register")}>Регистрация</button></div><form onSubmit={auth}>{authMode==="register"&&<div className="field"><label>Имя</label><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Имя водителя"/></div>}<div className="field"><label>Номер телефона</label><input required type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+7 777 000 00 00"/></div><div className="field"><label>Пароль</label><input required type="password" minLength={8} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Не менее 8 символов"/></div>{authMode==="register"&&<><div className="field"><label>Автомобиль</label><input value={form.car_model} onChange={e=>setForm({...form,car_model:e.target.value})} placeholder="Toyota Camry"/></div><div className="field"><label>Госномер</label><input value={form.car_plate} onChange={e=>setForm({...form,car_plate:e.target.value})} placeholder="123 ABC 01"/></div><div className="field"><label>Цвет машины</label><input value={form.car_color} onChange={e=>setForm({...form,car_color:e.target.value})} placeholder="Белый"/></div><div className="field"><label>Класс автомобиля</label><select value={form.vehicle_class||"economy"} onChange={e=>setForm({...form,vehicle_class:e.target.value})}><option value="economy">Эконом</option><option value="comfort">Комфорт</option><option value="comfort_plus">Комфорт+</option><option value="business">Бизнес</option><option value="minivan">Минивэн</option><option value="premium">Премиум</option></select><p className="muted small">Выбери класс по требованиям платформы. Позже добавим проверку категории по марке, модели и документам.</p></div></>}<button className="button primary" disabled={busy}>{busy?"Подожди…":authMode==="register"?"Создать аккаунт":"Войти"}</button></form></section></main>;
  const link=origin+"/c/"+driver.public_code,qr="https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data="+encodeURIComponent(link),newCount=orders.filter(o=>o.status==="new").length,active=orders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status));
