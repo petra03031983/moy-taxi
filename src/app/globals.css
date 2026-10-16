@@ -1081,3 +1081,68 @@ html[data-moy-taxi-theme="dark"] .driver-radar-range-top span{color:#90efaf}
  .driver-radar-empty.is-locating .driver-radar-visual,
  .driver-radar-empty.is-searching .driver-radar-visual{max-height:min(72vw,520px)}
 }
+
+/* MOY TAXI RADAR SOFT RINGS DARK GREEN SWEEP V7 */
+.driver-radar-visual{
+ border:0;
+ background:radial-gradient(circle at center,#fff 0%,#fff 54%,#fcfff5 78%,#f8fdec 100%);
+ box-shadow:0 0 38px #84bb3512,inset 0 0 54px #9ccf4610;
+}
+.driver-radar-ring{
+ border:1px solid #8caf3a2b;
+ box-shadow:none;
+}
+.driver-radar-ring-outer{width:94%}
+.driver-radar-ring-middle{width:68%}
+.driver-radar-ring-inner{width:38%}
+.driver-radar-cross{background:#8caf3a17}
+.driver-radar-sweep{
+ background:conic-gradient(from 0deg,
+  transparent 0deg,
+  transparent 246deg,
+  #477d2810 270deg,
+  #276b3724 315deg,
+  #174f2e38 349deg,
+  #123d2528 353deg,
+  #174f2e12 358deg,
+  transparent 360deg);
+ filter:none;
+}
+.driver-radar-center{
+ background:#176b3b;
+ border:0;
+ box-shadow:0 0 0 7px #176b3b13,0 0 22px #176b3b2c;
+}
+.driver-radar-point{
+ background:#23894a;
+ border-color:#fff;
+ box-shadow:0 0 0 3px #7dbb4724,0 0 10px #21854625;
+}
+html[data-moy-taxi-theme="dark"] .driver-radar-visual{
+ background:radial-gradient(circle at center,#17251a 0%,#152019 58%,#121d15 100%);
+ box-shadow:0 0 38px #0c2b1640,inset 0 0 54px #1e643019;
+}
+html[data-moy-taxi-theme="dark"] .driver-radar-ring{border-color:#6e9d5632;box-shadow:none}
+html[data-moy-taxi-theme="dark"] .driver-radar-cross{background:#6e9d5618}
+html[data-moy-taxi-theme="dark"] .driver-radar-sweep{
+ background:conic-gradient(from 0deg,transparent 0deg,transparent 246deg,#4f9a6010 270deg,#23724230 315deg,#17633655 349deg,#14552b45 353deg,#17633614 358deg,transparent 360deg);
+}
+html[data-moy-taxi-theme="dark"] .driver-radar-center{
+ background:#1e7540;
+ box-shadow:0 0 0 7px #31b55b18,0 0 22px #29a85335;
+}
+@media(prefers-color-scheme:dark){
+ html[data-moy-taxi-theme="system"] .driver-radar-visual{
+  background:radial-gradient(circle at center,#17251a 0%,#152019 58%,#121d15 100%);
+  box-shadow:0 0 38px #0c2b1640,inset 0 0 54px #1e643019;
+ }
+ html[data-moy-taxi-theme="system"] .driver-radar-ring{border-color:#6e9d5632;box-shadow:none}
+ html[data-moy-taxi-theme="system"] .driver-radar-cross{background:#6e9d5618}
+ html[data-moy-taxi-theme="system"] .driver-radar-sweep{
+  background:conic-gradient(from 0deg,transparent 0deg,transparent 246deg,#4f9a6010 270deg,#23724230 315deg,#17633655 349deg,#14552b45 353deg,#17633614 358deg,transparent 360deg);
+ }
+ html[data-moy-taxi-theme="system"] .driver-radar-center{
+  background:#1e7540;
+  box-shadow:0 0 0 7px #31b55b18,0 0 22px #29a85335;
+ }
+}
