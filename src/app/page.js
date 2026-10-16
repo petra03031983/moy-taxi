@@ -300,13 +300,11 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <div className="driver-financial-bottom"><strong>{Number(walletInfo?.wallet_balance??driver.wallet_balance??0).toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸</strong><button type="button" className="driver-topup-button" aria-label="Открыть кошелёк и пополнение" onClick={()=>{setTab("wallet");refreshWallet()}}>+</button></div>
   <button type="button" className="driver-topup-link" onClick={()=>{setTab("wallet");refreshWallet()}}>Пополнить счёт</button>
  </article>
-</section></div>{(tab==="orders"||tab==="active")&&<section className="panel">
+</section></div>{tab==="orders"&&visibleOrders.length===0?<div className="driver-no-orders-message">Новых заказов пока нет</div>:(tab==="orders"||tab==="active")&&<section className="panel">
  <div className="section-heading">
   <div><div className="eyebrow">{tab==="active"?"ТЕКУЩИЕ ПОЕЗДКИ":"ВХОДЯЩИЕ ЗАКАЗЫ"}</div><h2>{tab==="active"?"В работе":"Лента заказов"}</h2></div>
   <span className="status">{tab==="active"?active.length+" в работе":newCount+" новых"}</span>
  </div>
- {tab==="orders"&&notificationPermission!=="granted"&&notificationPermission!=="unsupported"&&<button className="button secondary feed-notifications-button" type="button" onClick={notify}>🔔 Включить уведомления</button>}
- <p className="muted small feed-sort-note">{tab==="active"?"Здесь только принятые заказы и текущие поездки.":"Новые заказы появляются сверху. Старые остаются ниже."}</p>
  <div className="driver-order-feed">
  {visibleOrders.length===0?<div className="empty-state"><div className="empty-icon">🚕</div><h3>Заказов пока нет</h3><p className="muted">Когда клиент закажет поездку, здесь появится компактная карточка и прозвучит сигнал нового заказа.</p></div>:sortOrdersNewestFirst(visibleOrders).map(o=>{
   const customerName=o.clients?.name||"Клиент";
