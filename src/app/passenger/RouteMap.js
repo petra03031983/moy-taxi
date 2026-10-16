@@ -90,7 +90,7 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       }
     }
     if (bounds.length > 1) {
-      map.current.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 15 });
+      map.current.fitBounds(L.latLngBounds(bounds), { padding: (pickupInfo||destinationInfo) ? [92, 72] : [24, 24], maxZoom: 15 });
     } else if (bounds.length === 1) {
       map.current.setView(bounds[0], 14);
     }
