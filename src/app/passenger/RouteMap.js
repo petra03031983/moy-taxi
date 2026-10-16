@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry }) {
+export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null }) {
   const element = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
@@ -61,20 +61,25 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry 
     const group = layers.current;
     group.clearLayers();
     const bounds = [];
-    const marker = (point, letter, title, color) => {
+    const escapeHtml = value => String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    const marker = (point, letter, title, color, info) => {
       if (!point || !Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lng))) return;
       const latLng = [Number(point.lat), Number(point.lng)];
       bounds.push(latLng);
+      const hasInfo = Boolean(info && (info.timeText || info.distanceText));
+      const labelHtml = hasInfo
+        ? '<div class="moy-route-pin"><div class="moy-route-eta-label"><b>' + escapeHtml(info.timeText || "В пути") + '</b><span>' + escapeHtml(info.distanceText || "") + '</span></div><span class="moy-route-marker-dot" style="background:' + color + '">' + letter + '</span></div>'
+        : '<span style="background:' + color + '">' + letter + '</span>';
       const icon = L.divIcon({
-        className: "moy-route-marker",
-        html: '<span style="background:' + color + '">' + letter + '</span>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 15]
+        className: "moy-route-marker" + (hasInfo ? " moy-route-marker-labeled" : ""),
+        html: labelHtml,
+        iconSize: hasInfo ? [118, 82] : [30, 30],
+        iconAnchor: hasInfo ? [59, 80] : [15, 15]
       });
       L.marker(latLng, { icon }).bindPopup(title).addTo(group);
     };
-    marker(pickupPoint, "A", "Откуда забрать", "#146b4b");
-    marker(destinationPoint, "B", "Куда ехать", "#d94841");
+    marker(pickupPoint, "A", "Откуда забрать", "#367cf5", pickupInfo);
+    marker(destinationPoint, "B", "Куда ехать", "#299958", destinationInfo);
     if (Array.isArray(routeGeometry) && routeGeometry.length > 1) {
       const line = routeGeometry
         .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
