@@ -514,9 +514,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
     {o.price_status==="accepted"&&Number(o.agreed_price)>0&&<p className="feed-order-note success">✅ Согласовано: <b>{Number(o.agreed_price).toLocaleString("ru-RU")} ₸</b></p>}
     {o.price_status==="driver_offered"&&<p className="feed-order-note success">Твоя цена: <b>{Number(o.driver_price).toLocaleString("ru-RU")} ₸</b> · ждём ответа клиента.</p>}
     {o.price_status==="declined"&&<p className="feed-order-note muted">Клиент отклонил цену. Можно предложить другую.</p>}
-    {o.status==="new"&&<p className="feed-order-open-hint">Нажми на заказ, чтобы открыть карту, посмотреть маршрут и выбрать действие <span aria-hidden="true">→</span></p>}
     <div className="order-actions actions feed-order-actions">
-     {o.status==="new"&&<span className="feed-order-open-cta">Открыть заказ <span aria-hidden="true">↗</span></span>}
      {o.status==="accepted"&&<><a className="button secondary" href={navigationRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут в 2GIS</a><button type="button" className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
      {o.status==="arrived"&&<div className="success feed-order-note"><b>Ты на месте.</b><p className="small" style={{margin:"5px 0 0"}}>Ждём, пока пассажир нажмёт «Я выхожу».</p></div>}
      {o.status==="client_ready"&&<a className="button primary" href={navigationTripRoute(o.pickup_lat,o.pickup_lng,o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer" onClick={()=>updateOrder(o.id,"started")}>▶️ Начать поездку A → B</a>}
