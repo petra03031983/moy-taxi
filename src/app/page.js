@@ -336,7 +336,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  </article>
 </section></div>{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
   <div className="driver-radar-status"><span className="driver-radar-status-dot"></span>{driver.is_online&&gpsFresh?"ПОИСК ЗАКАЗОВ":driver.is_online?"ОЖИДАЕМ ГЕОЛОКАЦИЮ":"НЕ В СЕТИ"}</div>
-  <div className="driver-radar-visual" role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
+  <div className="driver-radar-visual" style={{"--radar-grow": `${Math.max(0, Math.min(22, Number(scanRadiusKm) - 3)) * (520 / 22)}px`}} role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
    <div className="driver-radar-ring driver-radar-ring-outer"></div><div className="driver-radar-ring driver-radar-ring-middle"></div><div className="driver-radar-ring driver-radar-ring-inner"></div>
    <div className="driver-radar-cross driver-radar-cross-x"></div><div className="driver-radar-cross driver-radar-cross-y"></div>
    <div className="driver-radar-sweep"></div>
