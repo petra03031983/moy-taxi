@@ -2027,3 +2027,47 @@ html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-invite-link{backg
  .client-app .pickup-address-actions{gap:7px}
  .client-app .pickup-address-hint{font-size:11px}
 }
+
+/* MOY TAXI DRIVER REFRESH BUTTON V1 */
+.driver-menu-item.driver-menu-refresh{
+ margin:5px 0;
+ border:1px solid #d5e9da;
+ background:linear-gradient(120deg,#eef8f1,#f8fcf9);
+ color:#176b4b;
+}
+.driver-menu-item.driver-menu-refresh:active,
+.driver-menu-item.driver-menu-refresh:focus-visible{
+ background:#e1f2e6;
+}
+.driver-menu-refresh-icon{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ width:25px;
+ height:25px;
+ border-radius:8px;
+ background:#dcefe2;
+ color:#176b4b;
+ font-size:21px;
+ line-height:1;
+}
+.driver-menu-item.driver-menu-refresh>b{
+ color:#28764d;
+ font-size:18px;
+}
+.driver-menu-item.driver-menu-refresh:disabled{opacity:.7}
+html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-menu-item.driver-menu-refresh,
+html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-item.driver-menu-refresh{
+ border-color:#405b47;
+ background:linear-gradient(120deg,#2a3e30,#303b32);
+ color:#bde8c7;
+}
+html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-menu-refresh-icon,
+html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-refresh-icon{
+ background:#3b5b43;
+ color:#c2edcc;
+}
+@media(prefers-color-scheme:dark){
+ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-item.driver-menu-refresh{border-color:#405b47;background:linear-gradient(120deg,#2a3e30,#303b32);color:#bde8c7}
+ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-refresh-icon{background:#3b5b43;color:#c2edcc}
+}
