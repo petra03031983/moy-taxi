@@ -26,7 +26,7 @@ export default function OwnerAdmin() {
   const [ownerWithdrawals, setOwnerWithdrawals] = useState([]);
   const [withdrawalAmount, setWithdrawalAmount] = useState("");
   const [withdrawalNote, setWithdrawalNote] = useState("");
-  const [percent, setPercent = useState("5");
+  const [percent, setPercent] = useState("5");
   const [vehicleRates, setVehicleRates] = useState(DEFAULT_RATES);
   const [testMode, setTestMode] = useState(true);
   const [walletAmounts, setWalletAmounts] = useState({});
