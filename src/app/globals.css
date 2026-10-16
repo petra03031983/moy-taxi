@@ -990,3 +990,45 @@ html[data-moy-taxi-theme="dark"] .driver-radar-range-top span{color:#90efaf}
  }
  .driver-radar-range-top{margin-top:9px;padding:8px 12px}
 }
+
+/* MOY TAXI RADAR VERTICAL FIT V5 */
+@media(max-width:600px){
+ .driver-radar-empty{
+  padding-top:10px;
+  padding-bottom:12px;
+  min-height:0;
+ }
+ .driver-radar-status{
+  padding:7px 12px;
+ }
+ .driver-radar-range-top{
+  margin-top:5px;
+  padding:6px 11px;
+ }
+ .driver-radar-range-top span{font-size:10px}
+ .driver-radar-range-top b{font-size:14px}
+ .driver-radar-visual{
+  width:min(78vw,600px);
+  height:auto;
+  aspect-ratio:1 / 1;
+  margin:8px auto 11px;
+ }
+ .driver-radar-empty h2{
+  font-size:21px;
+  line-height:1.18;
+  margin:0 0 6px;
+ }
+ .driver-radar-empty>p{
+  font-size:13px;
+  line-height:1.4;
+  margin:0 auto;
+  max-width:370px;
+ }
+ .driver-radar-bottom{margin-top:9px}
+}
+@media(max-height:760px) and (max-width:600px){
+ .driver-radar-empty{padding-top:6px}
+ .driver-radar-visual{width:min(72vw,520px);margin:6px auto 8px}
+ .driver-radar-empty h2{font-size:20px}
+ .driver-radar-bottom{margin-top:6px}
+}
