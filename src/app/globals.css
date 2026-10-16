@@ -1146,3 +1146,58 @@ html[data-moy-taxi-theme="dark"] .driver-radar-center{
   box-shadow:0 0 0 7px #31b55b18,0 0 22px #29a85335;
  }
 }
+
+/* MOY TAXI RADAR REFERENCE MATCH V8 — no circular frame */
+.driver-radar-visual{
+ background:transparent!important;
+ border:0!important;
+ box-shadow:none!important;
+ overflow:visible;
+}
+.driver-radar-ring{
+ border-style:solid;
+ border-width:1px;
+ box-shadow:none!important;
+}
+.driver-radar-ring-outer{
+ width:158%;
+ border-color:#8caf3a18;
+}
+.driver-radar-ring-middle{
+ width:84%;
+ border-color:#8caf3a2e;
+}
+.driver-radar-ring-inner{
+ width:42%;
+ border-color:#8caf3a3b;
+}
+.driver-radar-cross-x{width:84%}
+.driver-radar-cross-y{height:84%}
+.driver-radar-cross{background:#8caf3a18}
+.driver-radar-sweep{
+ inset:-28%;
+ border-radius:50%;
+ background:conic-gradient(from 0deg,
+  transparent 0deg,
+  transparent 246deg,
+  #477d2810 270deg,
+  #276b3720 315deg,
+  #174f2e38 349deg,
+  #123d2530 353deg,
+  #174f2e12 358deg,
+  transparent 360deg);
+}
+.driver-radar-empty.is-offline .driver-radar-visual,
+.driver-radar-empty:not(.is-offline) .driver-radar-visual{
+ border:0!important;
+}
+.driver-radar-empty.is-offline .driver-radar-visual{overflow:hidden}
+html[data-moy-taxi-theme="dark"] .driver-radar-visual,
+html[data-moy-taxi-theme="system"] .driver-radar-visual{
+ background:transparent!important;
+ box-shadow:none!important;
+}
+html[data-moy-taxi-theme="dark"] .driver-radar-ring,
+html[data-moy-taxi-theme="system"] .driver-radar-ring{
+ box-shadow:none!important;
+}
