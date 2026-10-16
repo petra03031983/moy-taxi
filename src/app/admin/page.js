@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { callApi } from "../api";
 
 const currency = value => (Number(value || 0)).toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " ₸";
@@ -34,6 +34,16 @@ export default function OwnerAdmin() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [rateSaveState, setRateSaveState] = useState("saved");
+  const [percentSaveState, setPercentSaveState] = useState("saved");
+  const vehicleRatesRef = useRef(DEFAULT_RATES);
+  const savedVehicleRatesRef = useRef(DEFAULT_RATES);
+  const vehicleRateVersionRef = useRef(0);
+  const vehicleRateQueueRef = useRef(Promise.resolve());
+  const percentRef = useRef("5");
+  const savedPercentRef = useRef("5");
+  const percentVersionRef = useRef(0);
+  const percentQueueRef = useRef(Promise.resolve());
 
   const loadAll = useCallback(async sessionToken => {
     const payload = { admin_token: sessionToken };
@@ -44,8 +54,14 @@ export default function OwnerAdmin() {
       callApi("admin_commissions", payload)
     ]);
     setStats(summary.stats);
-    setPercent(String(summary.stats.commission_percent ?? 5));
-    setVehicleRates(summary.stats.vehicle_rates && Object.keys(summary.stats.vehicle_rates).length ? summary.stats.vehicle_rates : DEFAULT_RATES);
+    const loadedPercent = String(summary.stats.commission_percent ?? 5);
+    percentRef.current = loadedPercent;
+    savedPercentRef.current = loadedPercent;
+    setPercent(loadedPercent);
+    const loadedRates = summary.stats.vehicle_rates && Object.keys(summary.stats.vehicle_rates).length ? summary.stats.vehicle_rates : DEFAULT_RATES;
+    vehicleRatesRef.current = loadedRates;
+    savedVehicleRatesRef.current = loadedRates;
+    setVehicleRates(loadedRates);
     setTestMode(summary.stats.test_mode !== false);
     setDgisApiConfigured(Boolean(summary.stats.dgis_api_configured));
     setDrivers(driverData.drivers || []);
@@ -93,28 +109,85 @@ export default function OwnerAdmin() {
     } finally { setBusy(false); }
   }
 
-  async function savePercent(event) {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
-    try {
-      const result = await callApi("admin_update_commission_percent", {
-        admin_token: token, commission_percent: Number(percent)
-      });
-      setPercent(String(result.commission_percent));
-      await loadAll(token);
-      setNotice("Процент комиссии сохранён. Новый процент применяется к новым завершённым поездкам.");
-    } catch (e) { setError(e.message || "Не удалось сохранить комиссию."); }
-    finally { setBusy(false); }
+  function changeVehicleRate(key, field, direction) {
+    if (!token) return;
+    const currentRates = vehicleRatesRef.current || DEFAULT_RATES;
+    const currentClass = currentRates[key] || DEFAULT_RATES[key];
+    const step = field === "rate_per_km" ? 10 : 50;
+    const min = field === "rate_per_km" ? 1 : 0;
+    const max = field === "rate_per_km" ? 10000 : 1000000;
+    const nextValue = Math.min(max, Math.max(min, Math.round(Number(currentClass[field] || 0) + direction * step)));
+    if (nextValue === Number(currentClass[field] || 0)) return;
+    const nextRates = {
+      ...currentRates,
+      [key]: { ...currentClass, [field]: nextValue }
+    };
+    vehicleRatesRef.current = nextRates;
+    setVehicleRates(nextRates);
+    const version = ++vehicleRateVersionRef.current;
+    setRateSaveState("saving");
+    setError("");
+
+    vehicleRateQueueRef.current = vehicleRateQueueRef.current.catch(() => {}).then(async () => {
+      try {
+        const result = await callApi("admin_update_vehicle_rates", {
+          admin_token: token,
+          vehicle_rates: nextRates
+        });
+        const persistedRates = result.vehicle_rates || nextRates;
+        savedVehicleRatesRef.current = persistedRates;
+        if (version === vehicleRateVersionRef.current) {
+          vehicleRatesRef.current = persistedRates;
+          setVehicleRates(persistedRates);
+          setStats(current => current ? { ...current, vehicle_rates: persistedRates } : current);
+          setRateSaveState("saved");
+        }
+      } catch (e) {
+        if (version === vehicleRateVersionRef.current) {
+          vehicleRatesRef.current = savedVehicleRatesRef.current;
+          setVehicleRates(savedVehicleRatesRef.current);
+          setRateSaveState("error");
+          setError((e.message || "Не удалось сохранить тариф.") + " Значение возвращено к последнему сохранённому.");
+        }
+      }
+    });
   }
 
-  async function saveVehicleRates(event) {
-    event.preventDefault(); setBusy(true); setError(""); setNotice("");
-    try {
-      const result = await callApi("admin_update_vehicle_rates", { admin_token: token, vehicle_rates: vehicleRates });
-      setVehicleRates(result.vehicle_rates);
-      await loadAll(token);
-      setNotice("Тарифы сохранены. Новые расчёты пассажиров будут использовать эти ставки.");
-    } catch (e) { setError(e.message || "Не удалось сохранить тарифы."); }
-    finally { setBusy(false); }
+  function changeCommissionPercent(direction) {
+    if (!token) return;
+    const current = Number(percentRef.current || 0);
+    const nextNumber = Math.min(30, Math.max(0, Math.round((current + direction * 0.5) * 2) / 2));
+    if (nextNumber === current) return;
+    const nextPercent = String(nextNumber);
+    percentRef.current = nextPercent;
+    setPercent(nextPercent);
+    const version = ++percentVersionRef.current;
+    setPercentSaveState("saving");
+    setError("");
+
+    percentQueueRef.current = percentQueueRef.current.catch(() => {}).then(async () => {
+      try {
+        const result = await callApi("admin_update_commission_percent", {
+          admin_token: token,
+          commission_percent: nextNumber
+        });
+        const persistedPercent = String(result.commission_percent ?? nextPercent);
+        savedPercentRef.current = persistedPercent;
+        if (version === percentVersionRef.current) {
+          percentRef.current = persistedPercent;
+          setPercent(persistedPercent);
+          setStats(currentStats => currentStats ? { ...currentStats, commission_percent: Number(persistedPercent) } : currentStats);
+          setPercentSaveState("saved");
+        }
+      } catch (e) {
+        if (version === percentVersionRef.current) {
+          percentRef.current = savedPercentRef.current;
+          setPercent(savedPercentRef.current);
+          setPercentSaveState("error");
+          setError((e.message || "Не удалось сохранить процент комиссии.") + " Значение возвращено к последнему сохранённому.");
+        }
+      }
+    });
   }
 
   async function saveDgisApiKey(event) {
@@ -263,17 +336,53 @@ export default function OwnerAdmin() {
       <div className="divider-owner" />
       <h2>Тарифы по классам автомобилей</h2>
       <p className="muted">Цена рассчитывается по автомобильному маршруту: расстояние × ставка за километр, но не ниже минимального тарифа. Значения ниже пока тестовые — перед запуском скорректируй их под реальную цену в своём городе.</p>
-      <form onSubmit={saveVehicleRates}>
-        {VEHICLE_CLASSES.map(([key,label]) => <article className="order" key={key}>
-          <h3>{label}</h3>
-          <div className="field"><label htmlFor={"rate-"+key}>Цена за километр, ₸</label><input id={"rate-"+key} type="number" min="1" max="10000" step="1" required value={vehicleRates[key]?.rate_per_km ?? ""} onChange={e=>setVehicleRates(prev=>({...prev,[key]:{...prev[key],rate_per_km:e.target.value}}))}/></div>
-          <div className="field"><label htmlFor={"minimum-"+key}>Минимальная стоимость, ₸</label><input id={"minimum-"+key} type="number" min="0" max="1000000" step="50" required value={vehicleRates[key]?.minimum_fare ?? ""} onChange={e=>setVehicleRates(prev=>({...prev,[key]:{...prev[key],minimum_fare:e.target.value}}))}/></div>
+      <div className="owner-rates-list">
+        {VEHICLE_CLASSES.map(([key,label]) => <article className="owner-rate-card" key={key}>
+          <div className="owner-rate-card-heading">
+            <h3>{label}</h3>
+            <span className="owner-rate-auto-tag">Автосохранение</span>
+          </div>
+          <div className="owner-rate-controls">
+            <div className="owner-rate-control">
+              <span className="owner-rate-control-label">Цена за км</span>
+              <div className="owner-stepper">
+                <button type="button" className="owner-stepper-btn" aria-label={"Уменьшить цену за км — "+label} disabled={Number(vehicleRates[key]?.rate_per_km ?? DEFAULT_RATES[key].rate_per_km)<=1} onClick={()=>changeVehicleRate(key,"rate_per_km",-1)}>−</button>
+                <output>{Number(vehicleRates[key]?.rate_per_km ?? DEFAULT_RATES[key].rate_per_km).toLocaleString("ru-RU")} ₸</output>
+                <button type="button" className="owner-stepper-btn" aria-label={"Увеличить цену за км — "+label} disabled={Number(vehicleRates[key]?.rate_per_km ?? DEFAULT_RATES[key].rate_per_km)>=10000} onClick={()=>changeVehicleRate(key,"rate_per_km",1)}>+</button>
+              </div>
+              <span className="owner-rate-step-hint">Шаг 10 ₸</span>
+            </div>
+            <div className="owner-rate-control">
+              <span className="owner-rate-control-label">Минимальная цена</span>
+              <div className="owner-stepper">
+                <button type="button" className="owner-stepper-btn" aria-label={"Уменьшить минимум — "+label} disabled={Number(vehicleRates[key]?.minimum_fare ?? DEFAULT_RATES[key].minimum_fare)<=0} onClick={()=>changeVehicleRate(key,"minimum_fare",-1)}>−</button>
+                <output>{Number(vehicleRates[key]?.minimum_fare ?? DEFAULT_RATES[key].minimum_fare).toLocaleString("ru-RU")} ₸</output>
+                <button type="button" className="owner-stepper-btn" aria-label={"Увеличить минимум — "+label} disabled={Number(vehicleRates[key]?.minimum_fare ?? DEFAULT_RATES[key].minimum_fare)>=1000000} onClick={()=>changeVehicleRate(key,"minimum_fare",1)}>+</button>
+              </div>
+              <span className="owner-rate-step-hint">Шаг 50 ₸</span>
+            </div>
+          </div>
         </article>)}
-        <button className="button primary" disabled={busy}>Сохранить тарифы</button>
-      </form>
+      </div>
+      <p className={"owner-autosave-status "+rateSaveState} aria-live="polite">
+        {rateSaveState==="saving"?"Сохраняем тариф…":rateSaveState==="error"?"Не удалось сохранить тариф":"✓ Тарифы сохраняются автоматически"}
+      </p>
       <div className="divider-owner" />
-      <h2>Процент платформы</h2><p className="muted">Сейчас: {stats.commission_percent}%. Процент фиксируется для каждой поездки в момент завершения; тестовый режим отключает начисление комиссии.</p>
-      <form onSubmit={savePercent}><div className="field"><label htmlFor="commissionPercent">Комиссия с поездки, % (0–30)</label><input id="commissionPercent" type="number" min="0" max="30" step="0.5" required value={percent} onChange={e=>setPercent(e.target.value)} /></div><button className="button primary" disabled={busy}>Сохранить процент</button></form>
+      <h2>Процент платформы</h2><p className="muted">Процент фиксируется для каждой поездки при завершении. Нажми «−» или «+» — новое значение сохранится автоматически. В тестовом режиме начисление комиссии отключено.</p>
+      <div className="owner-commission-adjuster">
+        <div className="owner-commission-copy">
+          <span>Комиссия с поездки</span>
+          <small>Допустимый диапазон: 0–30%</small>
+        </div>
+        <div className="owner-commission-stepper" aria-label="Настройка процента комиссии">
+          <button type="button" className="owner-stepper-btn" aria-label="Уменьшить комиссию на 0,5 процента" disabled={Number(percent)<=0} onClick={()=>changeCommissionPercent(-1)}>−</button>
+          <output>{Number(percent).toLocaleString("ru-RU",{maximumFractionDigits:1})}<span>%</span></output>
+          <button type="button" className="owner-stepper-btn" aria-label="Увеличить комиссию на 0,5 процента" disabled={Number(percent)>=30} onClick={()=>changeCommissionPercent(1)}>+</button>
+        </div>
+      </div>
+      <p className={"owner-autosave-status "+percentSaveState} aria-live="polite">
+        {percentSaveState==="saving"?"Сохраняем процент…":percentSaveState==="error"?"Не удалось сохранить процент":"✓ Процент сохраняется автоматически"}
+      </p>
       <div className="divider-owner" />
       <h2>Сменить пароль кабинета</h2><p className="muted">Используй длинный пароль и не передавай его водителям.</p>
       <form onSubmit={changePassword}><div className="field"><label htmlFor="newAdminPassword">Новый пароль (минимум 12 символов)</label><input id="newAdminPassword" type="password" minLength={12} autoComplete="new-password" required value={newPassword} onChange={e=>setNewPassword(e.target.value)} /></div><button className="button secondary" disabled={busy}>Сменить пароль</button></form>
