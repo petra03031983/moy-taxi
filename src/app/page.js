@@ -336,7 +336,8 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  </article>
 </section></div>{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
   <div className="driver-radar-status"><span className="driver-radar-status-dot"></span>{driver.is_online&&gpsFresh?"ПОИСК ЗАКАЗОВ":driver.is_online?"ОЖИДАЕМ ГЕОЛОКАЦИЮ":"НЕ В СЕТИ"}</div>
-  <div className="driver-radar-visual" style={{"--radar-grow": `${Math.max(0, Math.min(22, Number(scanRadiusKm) - 3)) * (520 / 22)}px`}} role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
+  <div className="driver-radar-range driver-radar-range-top"><span>РАДИУС ПОИСКА</span><b>до {scanRadiusKm} км</b></div>
+  <div className="driver-radar-visual" role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
    <div className="driver-radar-ring driver-radar-ring-outer"></div><div className="driver-radar-ring driver-radar-ring-middle"></div><div className="driver-radar-ring driver-radar-ring-inner"></div>
    <div className="driver-radar-cross driver-radar-cross-x"></div><div className="driver-radar-cross driver-radar-cross-y"></div>
    <div className="driver-radar-sweep"></div>
@@ -345,7 +346,6 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   </div>
   <h2>{driver.is_online&&gpsFresh?"Ищем заказы рядом":driver.is_online?"Определяем местоположение":"Новых заказов пока нет"}</h2>
   <p>{driver.is_online&&gpsFresh?"Сканируем новые заявки поблизости. Как только появится подходящий заказ, он отобразится в ленте.":driver.is_online?"Разреши доступ к геолокации и подожди обновления местоположения.":"Выйди на линию, чтобы начать поиск заказов."}</p>
-  <div className="driver-radar-range"><span>Радиус поиска</span><b>до {scanRadiusKm} км</b></div>
   <div className="driver-radar-bottom"><span></span><small>{driver.is_online&&gpsFresh?"Поиск активен":driver.is_online?"Ожидаем GPS":"Поиск приостановлен"}</small><span></span></div>
  </div>:(tab==="orders"||tab==="active")&&<section className="panel">
  <div className="section-heading">
