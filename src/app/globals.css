@@ -694,3 +694,60 @@ html[data-moy-taxi-theme="dark"] .driver-tariff-guide p{color:#ddeaf1}
  .driver-courier-section h3{font-size:21px}
  .driver-tariff-guide{padding:20px 16px}
 }
+
+/* MOY TAXI ORDER SETTINGS REFERENCE V2 */
+.driver-orders-settings{background:#fff;padding:0 28px 26px;border-radius:0 0 28px 28px;min-height:690px}
+.driver-order-filter-placeholder{display:grid;grid-template-columns:60px minmax(0,1fr) 24px;gap:12px;align-items:center;min-height:93px;border:0!important;padding:0!important;margin:0 -2px}
+.driver-order-filter-placeholder .driver-settings-icon{font-size:31px;font-weight:700;color:#171916}
+.driver-order-filter-placeholder b{font-size:19px;letter-spacing:-.25px}
+.driver-settings-chevron{font-size:32px;line-height:1;color:#777;text-align:right;font-weight:400}
+.driver-settings-dark-block{padding:36px 0 8px}
+.driver-settings-dark-heading{display:flex;align-items:center;gap:17px}
+.driver-settings-dark-heading .driver-settings-icon{font-size:34px;line-height:1;color:#181a17;width:55px;text-align:left}
+.driver-settings-dark-heading b{font-size:20px;letter-spacing:-.2px}
+.driver-orders-settings .driver-settings-choice{display:grid;grid-template-columns:1fr 1fr 1.85fr;gap:13px;margin:22px 0 12px}
+.driver-orders-settings .driver-settings-choice button{padding:18px 9px;border-radius:34px;background:#f2f1ec;color:#171816;font-size:18px;font-weight:800;white-space:nowrap;border:0;min-height:62px}
+.driver-orders-settings .driver-settings-choice button.active{background:#171816;color:#fff}
+.driver-orders-settings .driver-settings-row{grid-template-columns:60px minmax(0,1fr) 92px;gap:12px;min-height:122px;padding:15px 0!important;border:0!important;background:transparent}
+.driver-orders-settings .driver-settings-row .driver-settings-icon{width:55px;text-align:left;font-size:33px;line-height:1;color:#151714}
+.driver-orders-settings .driver-settings-row span:nth-child(2){min-width:0}
+.driver-orders-settings .driver-settings-row b{font-size:18px;line-height:1.3;letter-spacing:-.2px}
+.driver-orders-settings .driver-settings-row small{font-size:15px;line-height:1.35;color:#787975;font-weight:650}
+.driver-orders-settings .driver-settings-toggle{justify-self:end;width:92px;height:58px;border-radius:32px;padding:5px;background:#f2f1ec;border:0;display:flex;align-items:center;cursor:pointer;transition:background .18s}
+.driver-orders-settings .driver-settings-toggle i{display:block;flex:0 0 48px;width:48px;height:48px;background:#fff;border-radius:50%;box-shadow:0 1px 4px #00000012;transition:transform .18s}
+.driver-orders-settings .driver-settings-toggle.on{background:#b7ed0c}
+.driver-orders-settings .driver-settings-toggle.on i{transform:translateX(34px)}
+.driver-orders-settings .driver-setting-sound{min-height:156px;align-items:start;padding-top:20px!important}
+.driver-orders-settings .driver-setting-sound .driver-settings-toggle{margin-top:0}
+.driver-orders-settings .driver-setting-chain{min-height:113px}
+.driver-orders-settings .driver-setting-quick{min-height:94px}
+.driver-orders-settings .driver-setting-label-with-help{display:flex!important;flex-direction:row!important;align-items:center;gap:12px;min-width:0}
+.driver-orders-settings .driver-setting-help{display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;border-radius:50%;background:#777;color:#fff;font-weight:800;font-size:21px;cursor:help}
+.driver-orders-settings .driver-setting-navigator{min-height:106px;cursor:pointer}
+.driver-orders-settings .driver-setting-navigator .driver-settings-icon{font-size:34px}
+.driver-orders-settings .driver-settings-row.driver-order-filter-placeholder{cursor:default}
+.driver-settings-page .driver-orders-settings .driver-settings-link span:nth-child(2){display:block}
+@media(max-width:480px){
+ .driver-orders-settings{padding-left:18px;padding-right:18px}
+ .driver-order-filter-placeholder{grid-template-columns:48px minmax(0,1fr) 20px;gap:8px;min-height:86px}
+ .driver-order-filter-placeholder b{font-size:17px}
+ .driver-settings-dark-block{padding-top:33px}
+ .driver-settings-dark-heading{gap:12px}
+ .driver-settings-dark-heading .driver-settings-icon{width:48px}
+ .driver-settings-dark-heading b{font-size:19px}
+ .driver-orders-settings .driver-settings-choice{grid-template-columns:1fr 1fr 1.8fr;gap:8px;margin-top:19px}
+ .driver-orders-settings .driver-settings-choice button{font-size:15px;min-height:55px;padding:15px 5px}
+ .driver-orders-settings .driver-settings-row{grid-template-columns:48px minmax(0,1fr) 76px;gap:8px;min-height:112px}
+ .driver-orders-settings .driver-settings-row .driver-settings-icon{width:46px;font-size:29px}
+ .driver-orders-settings .driver-settings-row b{font-size:16px}
+ .driver-orders-settings .driver-settings-row small{font-size:13px}
+ .driver-orders-settings .driver-settings-toggle{width:76px;height:48px}
+ .driver-orders-settings .driver-settings-toggle i{flex-basis:38px;width:38px;height:38px}
+ .driver-orders-settings .driver-settings-toggle.on i{transform:translateX(28px)}
+ .driver-orders-settings .driver-setting-sound{min-height:143px}
+ .driver-orders-settings .driver-setting-chain{min-height:98px}
+ .driver-orders-settings .driver-setting-quick{min-height:86px}
+ .driver-orders-settings .driver-setting-navigator{min-height:88px}
+ .driver-orders-settings .driver-setting-label-with-help{gap:8px}
+ .driver-orders-settings .driver-setting-help{flex-basis:29px;width:29px;height:29px;font-size:18px}
+}
