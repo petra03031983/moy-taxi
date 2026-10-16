@@ -1,0 +1,19 @@
+name: Owner finance production build check
+on:
+  push:
+    branches:
+      - owner-finance-build-check
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Build production app
+        run: npm run build
