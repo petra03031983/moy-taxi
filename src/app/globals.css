@@ -2176,3 +2176,23 @@ html[data-moy-taxi-theme="system"] .driver-order-detail-header{border-bottom-col
  .moy-route-marker-labeled .moy-route-eta-label b{font-size:14px}
  .moy-route-marker-labeled .moy-route-eta-label span{font-size:13px}
 }
+
+
+/* MOY TAXI DRIVER INDIVIDUAL ACCOUNT NUMBER V1 */
+.app.driver-dashboard .driver-account-number-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 16px;padding:14px;border:1px solid #dbe9de;border-radius:16px;background:linear-gradient(135deg,#f2faf4,#e8f4eb)}
+.app.driver-dashboard .driver-account-number-card>div{display:flex;flex:1 1 auto;min-width:0;flex-direction:column;gap:5px}
+.app.driver-dashboard .driver-account-number-card span{font-size:12px;font-weight:750;color:#65786a}
+.app.driver-dashboard .driver-account-number-card strong{font-size:23px;line-height:1.15;font-weight:950;letter-spacing:.04em;font-variant-numeric:tabular-nums;color:#176b4b}
+.app.driver-dashboard .driver-account-number-card .button{flex:0 0 auto;min-height:42px;padding:8px 12px;font-size:13px}
+.owner-account-number{font-variant-numeric:tabular-nums;letter-spacing:.035em;color:#176b4b}
+html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-account-number-card,
+html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-card{border-color:#405b47;background:linear-gradient(135deg,#25392c,#29362c)}
+html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-account-number-card span,
+html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-card span{color:#b4c8b8}
+html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-account-number-card strong,
+html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-card strong{color:#bff0cd}
+@media(max-width:390px){
+ .app.driver-dashboard .driver-account-number-card{align-items:flex-start;flex-direction:column;padding:12px}
+ .app.driver-dashboard .driver-account-number-card strong{font-size:21px}
+ .app.driver-dashboard .driver-account-number-card .button{width:100%}
+}
