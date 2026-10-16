@@ -68,7 +68,7 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       bounds.push(latLng);
       const hasInfo = Boolean(info && (info.timeText || info.distanceText));
       const labelHtml = hasInfo
-        ? '<div class="moy-route-pin"><div class="moy-route-eta-label"><b>' + escapeHtml(info.timeText || "В пути") + '</b><span>' + escapeHtml(info.distanceText || "") + '</span></div><span class="moy-route-marker-dot" style="background:' + color + '">' + letter + '</span></div>'
+        ? '<div class="moy-route-pin"><div class="moy-route-eta-label moy-route-eta-label-' + letter.toLowerCase() + '"><b>' + escapeHtml(info.timeText || "В пути") + '</b><span>' + escapeHtml(info.distanceText || "") + '</span></div><span class="moy-route-marker-dot" style="background:' + color + '">' + letter + '</span></div>'
         : '<span style="background:' + color + '">' + letter + '</span>';
       const icon = L.divIcon({
         className: "moy-route-marker" + (hasInfo ? " moy-route-marker-labeled" : ""),
