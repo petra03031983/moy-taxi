@@ -1032,3 +1032,52 @@ html[data-moy-taxi-theme="dark"] .driver-radar-range-top span{color:#90efaf}
  .driver-radar-empty h2{font-size:20px}
  .driver-radar-bottom{margin-top:6px}
 }
+
+/* MOY TAXI RADAR LINE-ON REVEAL V6 */
+@media(max-width:600px){
+ .driver-radar-empty{
+  padding-top:2px;
+  padding-bottom:8px;
+ }
+ .driver-radar-status{margin-top:0}
+ .driver-radar-range-top{margin-top:3px}
+ .driver-radar-visual{
+  width:min(78vw,600px);
+  height:auto;
+  aspect-ratio:1 / 1;
+  max-height:min(78vw,600px);
+  margin:3px auto 4px;
+  opacity:1;
+  transform:scale(1);
+  overflow:hidden;
+  transition:max-height .85s ease,opacity .75s ease,transform .85s ease,margin .65s ease,border-width .65s ease,box-shadow .65s ease;
+ }
+ .driver-radar-empty.is-offline .driver-radar-visual{
+  height:0;
+  max-height:0;
+  aspect-ratio:auto;
+  margin-top:0;
+  margin-bottom:0;
+  border-width:0;
+  opacity:0;
+  transform:scale(.84);
+  box-shadow:none;
+  pointer-events:none;
+ }
+ .driver-radar-empty.is-locating .driver-radar-visual,
+ .driver-radar-empty.is-searching .driver-radar-visual{
+  height:auto;
+  aspect-ratio:1 / 1;
+  max-height:min(78vw,600px);
+  opacity:1;
+  transform:scale(1);
+ }
+ .driver-radar-empty h2{margin-top:0}
+}
+@media(max-height:760px) and (max-width:600px){
+ .driver-radar-empty{padding-top:1px}
+ .driver-radar-visual{width:min(72vw,520px);max-height:min(72vw,520px);margin:2px auto 3px}
+ .driver-radar-empty.is-offline .driver-radar-visual{max-height:0}
+ .driver-radar-empty.is-locating .driver-radar-visual,
+ .driver-radar-empty.is-searching .driver-radar-visual{max-height:min(72vw,520px)}
+}
