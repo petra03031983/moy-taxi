@@ -2071,3 +2071,91 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-refresh-ic
  html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-item.driver-menu-refresh{border-color:#405b47;background:linear-gradient(120deg,#2a3e30,#303b32);color:#bde8c7}
  html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-menu-refresh-icon{background:#3b5b43;color:#c2edcc}
 }
+
+/* MOY TAXI DRIVER ORDER DETAIL + COUNTER PRICE V1 */
+.app.driver-dashboard .feed-order-selectable{cursor:pointer;transition:border-color .16s ease,transform .16s ease}
+.app.driver-dashboard .feed-order-selectable:focus-visible{outline:3px solid #a8e825;outline-offset:3px}
+.app.driver-dashboard .feed-order-selectable:active{transform:scale(.995)}
+.app.driver-dashboard .feed-order-open-hint{margin:12px 0 4px;padding:9px 11px;border-radius:11px;background:rgba(22,111,76,.09);color:#25805a;font-size:12px;font-weight:800;line-height:1.4}
+.app.driver-dashboard .feed-order-open-cta{display:block;width:100%;padding:10px 0 2px;text-align:center;color:#2b845c;font-size:13px;font-weight:850}
+.driver-order-detail-backdrop{position:fixed;inset:0;z-index:10050;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.76);padding:0;overscroll-behavior:contain}
+.driver-order-detail-sheet{width:min(100%,680px);max-height:100dvh;overflow-y:auto;overscroll-behavior:contain;background:#fff;color:#17231b;border-radius:24px 24px 0 0;box-shadow:0 -12px 55px #0007;padding:0 0 max(12px,env(safe-area-inset-bottom))}
+.driver-order-detail-header{position:sticky;top:0;z-index:12;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 18px;background:inherit;border-bottom:1px solid rgba(120,140,126,.18)}
+.driver-order-detail-header .eyebrow{display:block;margin-bottom:2px;font-size:10px;letter-spacing:.1em}
+.driver-order-detail-header h2{margin:0;font-size:23px;line-height:1.15}
+.driver-order-detail-close{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border:0;border-radius:50%;background:#eeeeec;color:inherit;font-size:28px;line-height:1}
+.driver-order-detail-map{position:relative;background:#e6ece7;overflow:hidden}
+.driver-order-detail-map .route-map-panel{margin:0;border:0;border-radius:0;box-shadow:none}
+.driver-order-detail-map .route-map-heading{display:none}
+.driver-order-detail-map .route-map{height:clamp(225px,34dvh,335px);min-height:225px}
+.driver-order-detail-map .route-map-loading{inset:0}
+.driver-order-detail-map .leaflet-tile-pane{filter:brightness(.75) contrast(1.08) saturate(.85)}
+.driver-order-map-chips{position:absolute;left:12px;right:12px;bottom:12px;z-index:500;display:flex;flex-wrap:wrap;gap:6px;pointer-events:none}
+.driver-order-map-chips>span{max-width:100%;padding:7px 10px;border:1px solid #ffffff28;border-radius:11px;background:rgba(23,25,24,.88);color:#f4f6f4;font-size:11px;line-height:1.25;backdrop-filter:blur(8px)}
+.driver-order-map-chips b{font-weight:900;color:#c8fa24}
+.driver-order-map-loading{position:absolute;top:10px;right:10px;z-index:600;padding:7px 10px;border-radius:9px;background:rgba(23,25,24,.88);color:#f6f7f6;font-size:11px;font-weight:800}
+.driver-order-detail-body{padding:16px 18px 8px}
+.driver-order-detail-price-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:0 0 14px}
+.driver-order-detail-price-row>div{display:flex;flex-direction:column;gap:3px}
+.driver-order-detail-price-row .muted{font-size:12px}
+.driver-order-detail-price-row strong{font-size:31px;font-weight:950;line-height:1.05;letter-spacing:-.03em}
+.driver-order-detail-km{flex:0 0 auto;padding:7px 10px;border-radius:999px;background:#eaf4ed;color:#236d49;font-size:12px;font-weight:900}
+.driver-order-detail-address{display:grid;grid-template-columns:34px minmax(0,1fr);align-items:start;gap:10px;margin:13px 0}
+.driver-order-detail-address>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.driver-order-detail-address small{font-size:10px;font-weight:900;letter-spacing:.09em;color:#829087}
+.driver-order-detail-address b{font-size:15px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+.driver-order-detail-dot{display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:50%;color:#fff;font-weight:950;font-size:13px}
+.driver-order-detail-dot.pickup{background:#367cf5}
+.driver-order-detail-dot.destination{background:#299958}
+.driver-order-detail-meta{display:flex;flex-wrap:wrap;gap:7px;margin:15px 0}
+.driver-order-detail-meta span{padding:7px 9px;border-radius:9px;background:#eef1ee;color:#4d5a51;font-size:11px;font-weight:800}
+.driver-order-offer-pending{margin:12px 0;padding:11px 12px;border-radius:12px;background:#eaf6ed;color:#176b4b;font-size:13px;line-height:1.4}
+.driver-order-detail-error{margin:10px 0;padding:10px 12px}
+.driver-order-accept{width:100%;min-height:62px;margin:8px 0 15px;border:0!important;border-radius:15px!important;background:#b8f51b!important;color:#151814!important;font-size:19px!important;font-weight:950!important;box-shadow:0 4px 0 #8dbd11}
+.driver-order-offer-panel{padding:14px;border:1px solid #353936;border-radius:17px;background:#202220}
+.driver-order-offer-panel h3{margin:0 0 5px;color:#f4f6f4;font-size:18px;font-weight:900}
+.driver-order-offer-panel>.muted{margin:0 0 12px;color:#aeb6b0;font-size:12px;line-height:1.4}
+.driver-order-price-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.driver-order-price-option,.driver-order-price-custom{display:flex;align-items:center;justify-content:center;min-width:0;min-height:58px;padding:7px 4px;border:1px solid #414542;border-radius:13px;background:#303230;color:#fff;font-size:15px;font-weight:900;line-height:1.2;font-variant-numeric:tabular-nums;cursor:pointer}
+.driver-order-price-option:disabled,.driver-order-price-custom:disabled{opacity:.42;cursor:not-allowed}
+.driver-order-price-option:not(:disabled):active,.driver-order-price-custom:not(:disabled):active{background:#41483a;transform:scale(.98)}
+.driver-order-price-custom span{font-size:28px;font-weight:650;line-height:1}
+.driver-order-custom-offer{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #404440}
+.driver-order-custom-offer label{color:#e6ebe7;font-size:13px;font-weight:850}
+.driver-order-custom-offer input{width:100%;min-height:52px;border:1px solid #4a504b;border-radius:12px;padding:0 13px;background:#151615;color:#fff;font-size:18px;font-weight:800}
+.driver-order-custom-offer small{color:#bac3bc;font-size:11px}
+.driver-order-custom-offer .button{min-height:48px}
+.driver-order-detail-footer-close{display:block;width:100%;min-height:56px;margin:12px 0 0;padding:12px;border:0;border-radius:14px;background:#303230;color:#fff;font-size:18px;font-weight:900}
+@media(max-width:420px){
+ .driver-order-detail-header{padding:11px 14px}
+ .driver-order-detail-body{padding:13px 13px 6px}
+ .driver-order-detail-price-row strong{font-size:28px}
+ .driver-order-detail-address{grid-template-columns:30px minmax(0,1fr);gap:8px}
+ .driver-order-detail-address b{font-size:14px}
+ .driver-order-detail-dot{width:29px;height:29px}
+ .driver-order-offer-panel{padding:11px}
+ .driver-order-price-options{gap:5px}
+ .driver-order-price-option,.driver-order-price-custom{min-height:55px;font-size:13px;border-radius:11px}
+}
+html[data-moy-taxi-theme="dark"] .driver-order-detail-sheet,
+html[data-moy-taxi-theme="system"] .driver-order-detail-sheet{background:#1b1c1b;color:#f1f4f1}
+html[data-moy-taxi-theme="dark"] .driver-order-detail-close,
+html[data-moy-taxi-theme="system"] .driver-order-detail-close{background:#303331;color:#f1f4f1}
+html[data-moy-taxi-theme="dark"] .driver-order-detail-km,
+html[data-moy-taxi-theme="system"] .driver-order-detail-km{background:#2a3f31;color:#bff0cd}
+html[data-moy-taxi-theme="dark"] .driver-order-detail-meta span,
+html[data-moy-taxi-theme="system"] .driver-order-detail-meta span{background:#303331;color:#d5ddd6}
+html[data-moy-taxi-theme="dark"] .driver-order-detail-header,
+html[data-moy-taxi-theme="system"] .driver-order-detail-header{border-bottom-color:#363936}
+@media(prefers-color-scheme:dark){
+ html[data-moy-taxi-theme="system"] .driver-order-detail-sheet{background:#1b1c1b;color:#f1f4f1}
+ html[data-moy-taxi-theme="system"] .driver-order-detail-close{background:#303331;color:#f1f4f1}
+ html[data-moy-taxi-theme="system"] .driver-order-detail-km{background:#2a3f31;color:#bff0cd}
+ html[data-moy-taxi-theme="system"] .driver-order-detail-meta span{background:#303331;color:#d5ddd6}
+}
+@media(prefers-color-scheme:light){
+ html[data-moy-taxi-theme="system"] .driver-order-detail-sheet{background:#fff;color:#17231b}
+ html[data-moy-taxi-theme="system"] .driver-order-detail-close{background:#eeeeec;color:#17231b}
+ html[data-moy-taxi-theme="system"] .driver-order-detail-km{background:#eaf4ed;color:#236d49}
+ html[data-moy-taxi-theme="system"] .driver-order-detail-meta span{background:#eef1ee;color:#4d5a51}
+}
