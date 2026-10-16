@@ -336,6 +336,34 @@ export default function Home(){
      window.setTimeout(()=>window.location.reload(),350);
    }
   }
+ useEffect(()=>{
+  if(!selectedOrderId){
+   setDetailRouteGeometry([]);setDetailRouteStats(null);setDetailMapLoading(false);setOfferCustomOpen(false);
+   return;
+  }
+  let alive=true;
+  const o=orders.find(item=>String(item.id)===String(selectedOrderId))||null;
+  if(!o||o.status!=="new"){
+   setDetailRouteGeometry([]);setDetailRouteStats(null);setDetailMapLoading(false);setOfferCustomOpen(false);
+   return ()=>{alive=false};
+  }
+  setDetailRouteGeometry(Array.isArray(o.route_geometry)?o.route_geometry:[]);
+  setDetailRouteStats({distanceKm:Number(o.route_distance_km||0),durationMin:Number(o.route_duration_minutes||o.duration_minutes||0)});
+  setDetailMapLoading(true);
+  callApi("calculate_route",{
+   pickup_address:o.pickup_address||"Моё местоположение",
+   destination_address:o.destination_address||"",
+   pickup_lat:o.pickup_lat??null,pickup_lng:o.pickup_lng??null,
+   destination_lat:o.destination_lat??null,destination_lng:o.destination_lng??null
+  }).then(result=>{
+   if(!alive)return;
+   if(Array.isArray(result.route_geometry))setDetailRouteGeometry(result.route_geometry);
+   setDetailRouteStats({distanceKm:Number(result.distance_km||o.route_distance_km||0),durationMin:Number(result.duration_minutes||0)});
+  }).catch(()=>{
+   if(alive)setDetailRouteStats({distanceKm:Number(o.route_distance_km||0),durationMin:Number(o.route_duration_minutes||o.duration_minutes||0)});
+  }).finally(()=>{if(alive)setDetailMapLoading(false)});
+  return()=>{alive=false};
+ },[selectedOrderId,session?.driver_id,session?.session_token]);
  if(!appReady) return <main className="app auth-app" aria-busy="true"></main>;
  if(entryMode==="choose") return <main className="app auth-app">
   <header className="header"><div className="logo">Мой <span>Такси</span></div><div className="small">Единое приложение</div></header>
@@ -382,30 +410,6 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const filteredOrders=orders.filter(o=>(o.status!=="new"||(isCourierOrder(o)?tariffModes.parcels:orderClassAllowed(o))));
  const visibleOrders=tab==="active"?filteredOrders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):filteredOrders;
  const selectedOrder=selectedOrderId?orders.find(o=>String(o.id)===String(selectedOrderId))||null:null;
- useEffect(()=>{
-  if(!selectedOrder||selectedOrder.status!=="new"){
-   setDetailRouteGeometry([]);setDetailRouteStats(null);setDetailMapLoading(false);setOfferCustomOpen(false);
-   return;
-  }
-  let alive=true;
-  const o=selectedOrder;
-  setDetailRouteGeometry(Array.isArray(o.route_geometry)?o.route_geometry:[]);
-  setDetailRouteStats({distanceKm:Number(o.route_distance_km||0),durationMin:Number(o.route_duration_minutes||o.duration_minutes||0)});
-  setDetailMapLoading(true);
-  callApi("calculate_route",{
-   pickup_address:o.pickup_address||"Моё местоположение",
-   destination_address:o.destination_address||"",
-   pickup_lat:o.pickup_lat??null,pickup_lng:o.pickup_lng??null,
-   destination_lat:o.destination_lat??null,destination_lng:o.destination_lng??null
-  }).then(result=>{
-   if(!alive)return;
-   if(Array.isArray(result.route_geometry))setDetailRouteGeometry(result.route_geometry);
-   setDetailRouteStats({distanceKm:Number(result.distance_km||o.route_distance_km||0),durationMin:Number(result.duration_minutes||0)});
-  }).catch(()=>{
-   if(alive)setDetailRouteStats({distanceKm:Number(o.route_distance_km||0),durationMin:Number(o.route_duration_minutes||o.duration_minutes||0)});
-  }).finally(()=>{if(alive)setDetailMapLoading(false)});
-  return()=>{alive=false};
- },[selectedOrderId,session?.driver_id,session?.session_token]);
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
  const openDriverSettings=()=>{setTab("settings");setDriverMenuOpen(false)};
  const openDriverSupport=()=>{setTab("support");setDriverMenuOpen(false)};
