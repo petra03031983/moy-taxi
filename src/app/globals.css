@@ -792,3 +792,8 @@ html[data-moy-taxi-theme="dark"] .driver-order-filter-control input[type=range]{
  html[data-moy-taxi-theme="system"] .driver-order-filter-info{background:#242824;color:#f4f6f4}
  html[data-moy-taxi-theme="system"] .driver-order-filter-control{background:#181b19}
 }
+
+/* MOY TAXI EMPTY ORDER MESSAGE V1 */
+.driver-no-orders-message{width:100%;padding:30px 12px 34px;text-align:center;color:#66726b;font-size:18px;line-height:1.4;font-weight:750;background:transparent}
+html[data-moy-taxi-theme="dark"] .driver-no-orders-message{color:#c1cbc4}
+@media(prefers-color-scheme:dark){html[data-moy-taxi-theme="system"] .driver-no-orders-message{color:#c1cbc4}}
