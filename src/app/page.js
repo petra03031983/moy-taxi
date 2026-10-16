@@ -146,7 +146,7 @@ export default function Home(){
   }
   return navigationRoute(toLat,toLng,address);
  }
- useEffect(()=>{try{document.documentElement.dataset.moyTaxiTheme=darkMode;document.documentElement.style.colorScheme=darkMode==="dark"?"dark":"light"}catch{}},[darkMode]);
+ useEffect(()=>{try{document.documentElement.dataset.moyTaxiTheme=darkMode;document.documentElement.style.colorScheme=darkMode==="system"?"":darkMode==="dark"?"dark":"light"}catch{}},[darkMode]);
  function saveDriverSettings(){try{localStorage.setItem("moyTaxiDriverSettings",JSON.stringify({darkMode,feedSounds,orderChain,quickSwitch,navigatorApp,filterMinPrice,filterMaxDistance,filterVehicleClass,filterTripType,tariffModes}));localStorage.setItem("moyTaxiNavigator",navigatorApp);setNotice("Настройки сохранены.")}catch{setNotice("Настройки применены на этом телефоне.")}}
  async function auth(e){e.preventDefault();setBusy(true);setError("");try{const payload=authMode==="register"?{...form,vehicle_class:inferVehicleCapabilities(form.car_model).primary}:form;const r=await callApi(authMode==="register"?"register_driver":"login_driver",payload),s={driver_id:r.driver.id,session_token:r.session_token};localStorage.setItem("moyTaxiSession",JSON.stringify(s));setSession(s);setDriver(r.driver);setForm(emptyForm);setNotice(authMode==="register"?"Аккаунт создан.":"Вход выполнен.")}catch(e){setError(e.message||"Ошибка")}finally{setBusy(false)}}
  async function refreshHistory(){try{const d=await callApi("driver_history",session);setHistory(d.orders||[])}catch(e){setError(e.message)}}
