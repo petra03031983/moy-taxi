@@ -797,3 +797,77 @@ html[data-moy-taxi-theme="dark"] .driver-order-filter-control input[type=range]{
 .driver-no-orders-message{width:100%;padding:30px 12px 34px;text-align:center;color:#66726b;font-size:18px;line-height:1.4;font-weight:750;background:transparent}
 html[data-moy-taxi-theme="dark"] .driver-no-orders-message{color:#c1cbc4}
 @media(prefers-color-scheme:dark){html[data-moy-taxi-theme="system"] .driver-no-orders-message{color:#c1cbc4}}
+
+
+/* MOY TAXI DRIVER DRAWER MODULES V1 */
+.driver-menu-backdrop{position:fixed;inset:0;z-index:249;width:100%;height:100%;padding:0;margin:0;border:0;border-radius:0;background:rgba(0,0,0,.58);cursor:pointer}
+.driver-menu-panel{position:fixed;left:0;top:0;bottom:0;z-index:250;width:min(82vw,390px);max-height:100dvh;overflow-y:auto;overscroll-behavior:contain;padding:18px 16px 22px;border:0;border-right:1px solid #e3e6e1;border-radius:0 18px 18px 0;background:#fff;box-shadow:8px 0 34px #0002;display:flex;flex-direction:column;align-items:stretch;gap:2px}
+.driver-menu-profile{width:100%;flex:0 0 auto;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer;border-radius:0;padding:12px 0 17px;margin:0 0 5px}
+.driver-menu-profile:active,.driver-menu-profile:focus-visible{background:#f4f5f1}
+.driver-menu-profile .driver-menu-avatar{width:54px;height:54px;flex-basis:54px;border-radius:50%}
+.driver-menu-profile .driver-menu-identity-copy b{font-size:16px}
+.driver-menu-profile .driver-menu-identity-copy span{font-size:12px}
+.driver-menu-profile .driver-menu-identity-copy small{font-size:11px}
+.driver-menu-chevron{font-size:25px!important;color:#252923!important;font-weight:500!important}
+.driver-menu-panel .driver-menu-item{grid-template-columns:30px minmax(0,1fr) auto;min-height:51px;gap:12px;border-radius:0;padding:10px 3px;font-size:16px;font-weight:750;border-bottom:1px solid #f2f2ee}
+.driver-menu-panel .driver-menu-item>span:first-child{font-size:22px;color:#77818a}
+.driver-menu-panel .driver-menu-item>b{font-size:24px}
+.driver-menu-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 7px;border-radius:50px;background:#e9134a;color:#fff;font-size:14px;font-weight:850;font-style:normal}
+.driver-menu-passenger{display:flex;align-items:center;justify-content:center;gap:12px;min-height:58px;margin:17px 0 7px;padding:12px 14px;border:0;border-radius:15px;background:#b9ef10;color:#15190d;text-decoration:none;font-size:17px;font-weight:850;text-align:center}
+.driver-menu-passenger b{font-size:20px}
+.driver-menu-socials{display:flex;align-items:center;justify-content:center;gap:34px;padding:14px 0 2px}
+.driver-menu-socials a,.driver-menu-socials button{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border:0;background:transparent;color:#111;text-decoration:none;font-family:Arial,sans-serif;font-size:35px;font-weight:900;cursor:pointer}
+.driver-menu-socials button{font-size:36px;font-weight:500}
+.driver-menu-page{max-width:100%;padding:20px;border-radius:22px}
+.driver-menu-page h2{margin-bottom:10px}
+.driver-menu-empty{padding:28px 14px;text-align:center;border:1px solid #e8ece8;border-radius:17px;margin:14px 0;background:#fafbf9}
+.driver-menu-empty .empty-icon{font-size:31px}
+.driver-menu-empty h3{margin-bottom:6px}
+.driver-menu-empty p{margin:0}
+.driver-service-orders{display:flex;flex-direction:column;gap:12px;margin:15px 0}
+.driver-service-order{border:1px solid #e3e8e3;border-radius:16px;padding:15px;background:#fff}
+.driver-service-order-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.driver-service-order-top>b{font-size:21px}
+.driver-service-order p{margin:7px 0;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+.driver-service-order .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.driver-service-order .actions .button{font-size:13px;padding:10px}
+.driver-academy-list{display:flex;flex-direction:column;gap:11px;margin:16px 0}
+.driver-academy-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:15px;border:1px solid #e3e8e3;border-radius:16px;background:#fff}
+.driver-academy-card h3{margin:0 0 6px;font-size:16px}
+.driver-academy-card p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+.driver-academy-card .button{width:auto;min-width:96px;padding:10px 12px;font-size:12px}
+.driver-safety-list{display:flex;flex-direction:column;gap:0;margin:15px 0 20px;border:1px solid #e3e8e3;border-radius:16px;background:#fff;overflow:hidden}
+.driver-safety-check{display:flex;align-items:flex-start;gap:12px;padding:16px;border-bottom:1px solid #edf0ed;font-size:15px;line-height:1.4;font-weight:650}
+.driver-safety-check:last-child{border-bottom:0}
+.driver-safety-check input{width:21px;height:21px;flex:0 0 21px;accent-color:var(--green);margin:0}
+.driver-help-item{padding:14px 0;border-bottom:1px solid #e5e9e5}
+.driver-help-item:last-of-type{margin-bottom:18px}
+.driver-help-item summary{cursor:pointer;font-size:15px;line-height:1.4;font-weight:800}
+.driver-help-item p{margin:11px 0 0;color:var(--muted);font-size:14px;line-height:1.5}
+.driver-registration-status{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:16px 0}
+.driver-registration-status>div{display:flex;flex-direction:column;gap:6px;min-width:0;padding:13px;border:1px solid #e3e8e3;border-radius:13px;background:#fff}
+.driver-registration-status span{font-size:12px;color:var(--muted)}
+.driver-registration-status b{font-size:14px;overflow-wrap:anywhere}
+.driver-invite-link{padding:14px;border:1px dashed #aebdb2;border-radius:13px;background:#f5faf6;color:var(--green);font-size:13px;font-weight:750;overflow-wrap:anywhere;margin:14px 0}
+.driver-menu-page .field textarea{min-height:130px;resize:vertical}
+html[data-moy-taxi-theme="dark"] .driver-menu-panel{background:#181b19;color:#f4f6f4;border-color:#333}
+html[data-moy-taxi-theme="dark"] .driver-menu-profile{background:transparent;color:#f4f6f4;border-color:#333}
+html[data-moy-taxi-theme="dark"] .driver-menu-panel .driver-menu-item{color:#f4f6f4;border-color:#2c312d}
+html[data-moy-taxi-theme="dark"] .driver-menu-panel .driver-menu-item>span:first-child{color:#bac4bd}
+html[data-moy-taxi-theme="dark"] .driver-menu-chevron,html[data-moy-taxi-theme="dark"] .driver-menu-socials a,html[data-moy-taxi-theme="dark"] .driver-menu-socials button{color:#f4f6f4!important}
+html[data-moy-taxi-theme="dark"] .driver-menu-page,html[data-moy-taxi-theme="dark"] .driver-service-order,html[data-moy-taxi-theme="dark"] .driver-academy-card,html[data-moy-taxi-theme="dark"] .driver-safety-list,html[data-moy-taxi-theme="dark"] .driver-registration-status>div{background:#181b19;color:#f4f6f4;border-color:#333}
+html[data-moy-taxi-theme="dark"] .driver-menu-empty,html[data-moy-taxi-theme="dark"] .driver-invite-link{background:#202821;color:#f4f6f4;border-color:#38463b}
+html[data-moy-taxi-theme="dark"] .driver-menu-passenger{color:#15190d;background:#b9ef10}
+html[data-moy-taxi-theme="dark"] .driver-help-item,html[data-moy-taxi-theme="dark"] .driver-safety-check{border-color:#333}
+@media(max-width:480px){
+ .driver-menu-panel{width:min(84vw,360px);padding:13px 14px 20px;border-radius:0 16px 16px 0}
+ .driver-menu-profile{padding:10px 0 14px}
+ .driver-menu-panel .driver-menu-item{min-height:48px;font-size:15px;gap:10px}
+ .driver-menu-passenger{min-height:54px;font-size:16px;margin-top:13px}
+ .driver-menu-socials{padding-top:9px}
+ .driver-menu-page{padding:16px}
+ .driver-academy-card{grid-template-columns:1fr}
+ .driver-academy-card .button{width:100%}
+ .driver-registration-status{grid-template-columns:1fr 1fr}
+ .driver-service-order .actions{grid-template-columns:1fr}
+}
