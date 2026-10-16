@@ -1498,3 +1498,435 @@ html[data-moy-taxi-theme="dark"] .app.driver-dashboard .driver-invite-link{backg
  html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-help-item p{color:#c5cec3}
  html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-invite-link{background:#293b2d;color:#b6e8c1;border-color:#526957}
 }
+
+/* MOY TAXI OWNER CABINET POLISH V2 — scoped to the owner dashboard */
+.app.owner-dashboard{
+ max-width:1020px;
+ padding:14px 18px calc(30px + env(safe-area-inset-bottom));
+ color:#17251d;
+}
+.app.owner-dashboard .dashboard-header{
+ position:sticky;
+ top:0;
+ z-index:70;
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:14px;
+ margin:-2px -2px 16px;
+ padding:12px 2px;
+ background:#f3f7f3f2;
+ backdrop-filter:blur(16px);
+ border-bottom:1px solid #e2eae3;
+}
+.app.owner-dashboard .logo{font-size:clamp(24px,3.8vw,30px)}
+.app.owner-dashboard .dashboard-header .muted{margin:3px 0 0;font-size:13px;line-height:1.3}
+.app.owner-dashboard .owner-logout{
+ width:auto;
+ min-width:84px;
+ min-height:42px;
+ padding:10px 16px;
+ border:1px solid #dce9df;
+ border-radius:14px;
+ background:#e4f2e8;
+ color:#176746;
+ font-size:13px;
+}
+.app.owner-dashboard .owner-install-guide{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) minmax(190px,245px);
+ grid-template-areas:"title button" "copy button" "help help";
+ align-items:center;
+ gap:8px 18px;
+ margin:0 0 18px;
+ padding:18px 20px;
+ border:1px solid #d6e4f3;
+ border-radius:22px;
+ background:linear-gradient(130deg,#edf5ff 0%,#fbfdff 75%);
+ box-shadow:0 5px 20px #25476b0a;
+}
+.app.owner-dashboard .owner-install-title{
+ grid-area:title;
+ margin:0;
+ color:#214c72;
+ font-size:15px;
+ line-height:1.3;
+ font-weight:900;
+}
+.app.owner-dashboard .owner-install-guide>p:not(.owner-install-help){
+ grid-area:copy;
+ margin:0;
+ color:#647789;
+ font-size:13px;
+ line-height:1.45;
+}
+.app.owner-dashboard .owner-install-guide>.button{
+ grid-area:button;
+ width:100%;
+ min-height:48px;
+ border:1px solid #dce9fa;
+ border-radius:14px;
+ background:#fff;
+ color:#214c72;
+ font-size:13px;
+ box-shadow:0 3px 10px #1c46630b;
+}
+.app.owner-dashboard .owner-install-help{
+ grid-area:help;
+ margin:3px 0 0;
+ padding-top:9px;
+ border-top:1px solid #dfeaf4;
+ color:#738394;
+ font-size:11px;
+ line-height:1.45;
+}
+.app.owner-dashboard>.section-heading{
+ align-items:center;
+ gap:14px;
+ margin:18px 0 14px!important;
+ padding:4px 0 0;
+}
+.app.owner-dashboard>.section-heading>div{min-width:0}
+.app.owner-dashboard .eyebrow{
+ margin-bottom:5px;
+ color:#267650;
+ font-size:10px;
+ letter-spacing:1.25px;
+}
+.app.owner-dashboard>.section-heading h1{
+ margin:0 0 5px;
+ font-size:clamp(25px,4.5vw,34px);
+ line-height:1.12;
+ letter-spacing:-.8px;
+}
+.app.owner-dashboard>.section-heading .muted{
+ margin:0;
+ font-size:13px;
+ line-height:1.45;
+}
+.app.owner-dashboard>.section-heading .icon-button{
+ width:46px;
+ min-width:46px;
+ height:46px;
+ min-height:46px;
+ border-radius:15px;
+ border:1px solid #dce8de;
+ background:#fff;
+ color:#176b4b;
+ font-size:25px;
+ box-shadow:0 4px 14px #173e2308;
+}
+.app.owner-dashboard .owner-metrics{
+ display:grid!important;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:11px;
+ margin:0 0 12px;
+ padding:0;
+ overflow:visible;
+ scroll-snap-type:none;
+}
+.app.owner-dashboard .owner-metrics .metric{
+ display:flex;
+ flex-direction:column;
+ align-items:flex-start;
+ justify-content:flex-start;
+ gap:8px;
+ min-width:0;
+ min-height:126px;
+ padding:16px;
+ border:1px solid #e3ebe4;
+ border-radius:20px;
+ background:linear-gradient(145deg,#fff 15%,#f8fbf8 100%);
+ box-shadow:0 5px 18px #16392208;
+ scroll-snap-align:none;
+}
+.app.owner-dashboard .owner-metrics .metric-icon{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ width:36px;
+ height:36px;
+ margin-bottom:1px;
+ border-radius:12px;
+ background:#e6f4ea;
+ font-size:19px;
+}
+.app.owner-dashboard .owner-metrics .metric strong{
+ max-width:100%;
+ color:#183c29;
+ font-size:clamp(21px,2.5vw,28px);
+ line-height:1.1;
+ letter-spacing:-.65px;
+ overflow-wrap:anywhere;
+}
+.app.owner-dashboard .owner-metrics .metric span:last-child{
+ color:#758078;
+ font-size:12px;
+ line-height:1.35;
+}
+.app.owner-dashboard .owner-balance{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:0;
+ margin:0 0 16px;
+ padding:0;
+ overflow:hidden;
+ border:1px solid #e0e9e1;
+ border-radius:20px;
+ background:#fff;
+ box-shadow:0 5px 18px #16392207;
+}
+.app.owner-dashboard .owner-balance>div{
+ min-width:0;
+ display:flex;
+ flex-direction:column;
+ gap:8px;
+ padding:17px 18px;
+ background:linear-gradient(140deg,#fff,#f7fbf8);
+}
+.app.owner-dashboard .owner-balance>div+div{border-left:1px solid #e7eee8}
+.app.owner-dashboard .owner-balance .muted{
+ margin:0;
+ color:#7a847d;
+ font-size:12px;
+ line-height:1.4;
+}
+.app.owner-dashboard .owner-balance strong{
+ color:#176b4b;
+ font-size:clamp(19px,3vw,25px);
+ line-height:1.18;
+ letter-spacing:-.4px;
+ overflow-wrap:anywhere;
+}
+.app.owner-dashboard .owner-tabs{
+ position:sticky;
+ top:72px;
+ z-index:60;
+ display:flex;
+ gap:5px;
+ margin:0 0 14px;
+ padding:5px;
+ border:1px solid #e0e9e1;
+ border-radius:17px;
+ background:#e8efeaF5;
+ backdrop-filter:blur(14px);
+ box-shadow:0 5px 18px #193e2508;
+}
+.app.owner-dashboard .owner-tabs .tab{
+ flex:1 1 0;
+ min-width:0;
+ min-height:45px;
+ padding:9px 7px;
+ border-radius:12px;
+ color:#68776d;
+ font-size:13px;
+ font-weight:850;
+ white-space:nowrap;
+}
+.app.owner-dashboard .owner-tabs .tab.active{
+ color:#176b4b;
+ background:#fff;
+ box-shadow:0 3px 10px #1639220b;
+}
+.app.owner-dashboard>section.panel:not(.owner-install-guide){
+ margin:0 0 16px;
+ padding:22px;
+ border:1px solid #e2ebe3;
+ border-radius:23px;
+ background:#fff;
+ box-shadow:0 7px 24px #1c3b2507;
+}
+.app.owner-dashboard>section.panel h2{
+ margin:0 0 13px;
+ color:#1a2d22;
+ font-size:22px;
+ line-height:1.2;
+ letter-spacing:-.45px;
+}
+.app.owner-dashboard>section.panel h3{
+ font-size:16px;
+ line-height:1.3;
+}
+.app.owner-dashboard>section.panel .muted{
+ color:#778179;
+}
+.app.owner-dashboard .success,
+.app.owner-dashboard .error{
+ border-radius:16px;
+ padding:14px 15px;
+ font-size:13px;
+ line-height:1.5;
+}
+.app.owner-dashboard .success{
+ background:#eaf6ee;
+ border-color:#d7eadc;
+ color:#216845;
+}
+.app.owner-dashboard .error{
+ background:#fff0ef;
+ border-color:#f2d8d5;
+ color:#9e4138;
+}
+.app.owner-dashboard .divider-owner{
+ height:1px;
+ margin:22px 0;
+ background:#e5ece6;
+}
+.app.owner-dashboard .field{gap:7px;margin:12px 0 16px}
+.app.owner-dashboard .field label{color:#33433a;font-size:13px;line-height:1.4;font-weight:800}
+.app.owner-dashboard .field input,
+.app.owner-dashboard .field select,
+.app.owner-dashboard .field textarea{
+ width:100%;
+ min-height:52px;
+ padding:13px 15px;
+ border:1px solid #dfe8e1;
+ border-radius:15px;
+ outline:none;
+ background:#f9fbf9;
+ color:#17251d;
+ font-size:16px;
+ box-shadow:inset 0 1px 2px #152d1d05;
+}
+.app.owner-dashboard .field input:focus,
+.app.owner-dashboard .field select:focus,
+.app.owner-dashboard .field textarea:focus{
+ border-color:#87c29b;
+ box-shadow:0 0 0 3px #25835116;
+}
+.app.owner-dashboard .button{
+ min-height:48px;
+ padding:12px 16px;
+ border-radius:14px;
+ font-size:14px;
+ font-weight:850;
+}
+.app.owner-dashboard .button.primary{
+ background:#176b4b;
+ color:#fff;
+ box-shadow:0 4px 12px #176b4b14;
+}
+.app.owner-dashboard .button.secondary{
+ background:#e8f4eb;
+ color:#176344;
+}
+.app.owner-dashboard .button:disabled{opacity:.52;box-shadow:none}
+.app.owner-dashboard .order{
+ margin:10px 0;
+ padding:16px;
+ border:1px solid #e4ece5;
+ border-radius:18px;
+ background:#fbfdfb;
+ box-shadow:none;
+}
+.app.owner-dashboard .order h3{margin:0 0 11px;color:#20372a;font-weight:900}
+.app.owner-dashboard .order p{
+ margin:7px 0;
+ color:#5e6c62;
+ font-size:13px;
+ line-height:1.45;
+ overflow-wrap:anywhere;
+}
+.app.owner-dashboard .order p b{color:#33463a}
+.app.owner-dashboard .order .status{
+ max-width:150px;
+ padding:7px 9px;
+ border:1px solid #dcefe1;
+ border-radius:999px;
+ background:#eaf6ee;
+ color:#246844;
+ font-size:11px;
+ line-height:1.25;
+}
+.app.owner-dashboard .wallet-topup-row{margin:12px 0 8px}
+.app.owner-dashboard .wallet-topup-row input{
+ min-height:45px;
+ border:1px solid #dfe8e1;
+ border-radius:12px;
+ background:#fff;
+ color:#17251d;
+}
+.app.owner-dashboard .owner-dashboard .owner-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.app.owner-dashboard .footer-note{
+ margin:18px 0 0;
+ padding:14px 8px 10px;
+ color:#8a948c;
+ font-size:11px;
+ line-height:1.45;
+}
+@media(max-width:760px){
+ .app.owner-dashboard{
+  padding:8px 12px calc(24px + env(safe-area-inset-bottom));
+ }
+ .app.owner-dashboard .dashboard-header{
+  top:0;
+  margin:-1px 0 13px;
+  padding:10px 0 12px;
+ }
+ .app.owner-dashboard .owner-install-guide{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"title" "copy" "button" "help";
+  gap:8px;
+  margin-bottom:14px;
+  padding:15px;
+  border-radius:18px;
+ }
+ .app.owner-dashboard .owner-install-guide>.button{min-height:44px}
+ .app.owner-dashboard .owner-install-help{padding-top:8px}
+ .app.owner-dashboard>.section-heading{margin:15px 0 12px!important}
+ .app.owner-dashboard>.section-heading h1{font-size:27px}
+ .app.owner-dashboard .owner-metrics{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:8px;
+ }
+ .app.owner-dashboard .owner-metrics .metric{
+  min-height:112px;
+  padding:12px;
+  gap:7px;
+  border-radius:16px;
+ }
+ .app.owner-dashboard .owner-metrics .metric-icon{
+  width:31px;
+  height:31px;
+  border-radius:10px;
+  font-size:17px;
+ }
+ .app.owner-dashboard .owner-metrics .metric strong{font-size:22px}
+ .app.owner-dashboard .owner-metrics .metric span:last-child{font-size:11px}
+ .app.owner-dashboard .owner-balance{border-radius:16px}
+ .app.owner-dashboard .owner-balance>div{padding:13px 12px;gap:7px}
+ .app.owner-dashboard .owner-balance .muted{font-size:11px}
+ .app.owner-dashboard .owner-balance strong{font-size:19px}
+ .app.owner-dashboard .owner-tabs{
+  top:67px;
+  gap:3px;
+  margin-bottom:11px;
+  padding:4px;
+  border-radius:15px;
+ }
+ .app.owner-dashboard .owner-tabs .tab{
+  min-height:42px;
+  padding:8px 4px;
+  font-size:12px;
+  letter-spacing:-.2px;
+ }
+ .app.owner-dashboard>section.panel:not(.owner-install-guide){
+  padding:17px 14px;
+  border-radius:19px;
+ }
+ .app.owner-dashboard>section.panel h2{font-size:20px}
+ .app.owner-dashboard .order{padding:13px;border-radius:15px}
+ .app.owner-dashboard .order-top{gap:8px}
+ .app.owner-dashboard .order-top h3{font-size:14px}
+ .app.owner-dashboard .field input,
+ .app.owner-dashboard .field select,
+ .app.owner-dashboard .field textarea{min-height:49px}
+}
+@media(max-width:370px){
+ .app.owner-dashboard{padding-left:8px;padding-right:8px}
+ .app.owner-dashboard .owner-tabs .tab{font-size:10px;padding-left:2px;padding-right:2px}
+ .app.owner-dashboard .owner-metrics .metric{padding:10px;min-height:106px}
+ .app.owner-dashboard .owner-metrics .metric strong{font-size:20px}
+ .app.owner-dashboard .owner-balance>div{padding:11px 9px}
+ .app.owner-dashboard .owner-balance strong{font-size:17px}
+}
