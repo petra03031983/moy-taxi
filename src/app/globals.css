@@ -113,7 +113,7 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .route-map{height:240px;width:100%;background:#e6ece7;z-index:1}
 .route-map-loading{position:absolute;inset:56px 0 0;display:flex;align-items:center;justify-content:center;background:#e6ece7;color:var(--muted);font-size:14px;pointer-events:none}
 .moy-route-marker{background:transparent;border:0}
-.moy-route-marker span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px #0003;color:white;font-weight:900;font-size:13px}
+.moy-route-marker>span{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px #0003;color:white;font-weight:900;font-size:13px}
 .route-map-panel>.muted{padding:0 14px 10px}
 @media(max-width:600px){.route-map-panel{border-radius:17px}.route-map{height:220px}.route-map-heading{padding:12px 13px}}
 
@@ -2158,4 +2158,19 @@ html[data-moy-taxi-theme="system"] .driver-order-detail-header{border-bottom-col
  html[data-moy-taxi-theme="system"] .driver-order-detail-close{background:#eeeeec;color:#17231b}
  html[data-moy-taxi-theme="system"] .driver-order-detail-km{background:#eaf4ed;color:#236d49}
  html[data-moy-taxi-theme="system"] .driver-order-detail-meta span{background:#eef1ee;color:#4d5a51}
+}
+
+
+/* MOY TAXI ROUTE MAP POINT ETA LABELS V1 */
+.moy-route-marker-labeled{width:118px;height:82px;background:transparent;border:0;overflow:visible}
+.moy-route-marker-labeled .moy-route-pin{display:flex;width:118px;height:82px;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;overflow:visible}
+.moy-route-marker-labeled .moy-route-eta-label{display:flex;flex:0 0 auto;width:94px;min-height:59px;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:6px 4px;border-radius:12px;background:#4385f5;color:#111b2c;box-shadow:0 3px 9px #0006;border:1px solid #ffffff44;text-align:center;white-space:nowrap}
+.moy-route-marker-labeled .moy-route-eta-label b{font-size:15px;font-weight:950;line-height:1.05;color:inherit}
+.moy-route-marker-labeled .moy-route-eta-label span{display:block;width:auto;height:auto;min-height:0;padding:0;border:0;border-radius:0;background:transparent;color:inherit;box-shadow:none;font-size:14px;font-weight:900;line-height:1.05}
+.moy-route-marker-labeled .moy-route-eta-label-b{background:#c4f51b;color:#15210a}
+.moy-route-marker-labeled .moy-route-marker-dot{display:flex;flex:0 0 auto;align-items:center;justify-content:center;width:31px;height:31px;box-sizing:border-box;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px #0007;color:#fff;font-size:14px;font-weight:950;line-height:1}
+@media(max-width:420px){
+ .moy-route-marker-labeled .moy-route-eta-label{width:88px;min-height:55px;padding:5px 3px;border-radius:11px}
+ .moy-route-marker-labeled .moy-route-eta-label b{font-size:14px}
+ .moy-route-marker-labeled .moy-route-eta-label span{font-size:13px}
 }
