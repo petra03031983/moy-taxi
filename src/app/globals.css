@@ -2162,8 +2162,8 @@ html[data-moy-taxi-theme="system"] .driver-order-detail-header{border-bottom-col
 
 
 /* MOY TAXI ROUTE MAP POINT ETA LABELS V1 */
-.moy-route-marker-labeled{width:118px;height:82px;background:transparent;border:0;overflow:visible}
-.moy-route-marker-labeled .moy-route-pin{display:flex;width:118px;height:82px;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;overflow:visible}
+.moy-route-marker-labeled{width:118px;height:94px;background:transparent;border:0;overflow:visible}
+.moy-route-marker-labeled .moy-route-pin{display:flex;width:118px;height:94px;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px;overflow:visible}
 .moy-route-marker-labeled .moy-route-eta-label{display:flex;flex:0 0 auto;width:94px;min-height:59px;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:6px 4px;border-radius:12px;background:#4385f5;color:#111b2c;box-shadow:0 3px 9px #0006;border:1px solid #ffffff44;text-align:center;white-space:nowrap}
 .moy-route-marker-labeled .moy-route-eta-label b{font-size:15px;font-weight:950;line-height:1.05;color:inherit}
 .moy-route-marker-labeled .moy-route-eta-label span{display:block;width:auto;height:auto;min-height:0;padding:0;border:0;border-radius:0;background:transparent;color:inherit;box-shadow:none;font-size:14px;font-weight:900;line-height:1.05}
