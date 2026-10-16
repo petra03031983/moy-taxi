@@ -78,8 +78,8 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       });
       L.marker(latLng, { icon }).bindPopup(title).addTo(group);
     };
-    marker(pickupPoint, "A", "Откуда забрать", "#367cf5", pickupInfo);
-    marker(destinationPoint, "B", "Куда ехать", "#299958", destinationInfo);
+    marker(pickupPoint, "A", "Откуда забрать", pickupInfo ? "#367cf5" : "#146b4b", pickupInfo);
+    marker(destinationPoint, "B", "Куда ехать", destinationInfo ? "#299958" : "#d94841", destinationInfo);
     if (Array.isArray(routeGeometry) && routeGeometry.length > 1) {
       const line = routeGeometry
         .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
@@ -94,7 +94,7 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
     } else if (bounds.length === 1) {
       map.current.setView(bounds[0], 14);
     }
-  }, [ready, pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng, routeGeometry]);
+  }, [ready, pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng, routeGeometry, pickupInfo?.timeText, pickupInfo?.distanceText, destinationInfo?.timeText, destinationInfo?.distanceText]);
 
   return (
     <section className="route-map-panel" aria-label="Карта маршрута">
