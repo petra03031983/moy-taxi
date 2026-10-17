@@ -47,6 +47,7 @@ export default function PassengerPage() {
   const [notice, setNotice] = useState("");
   const routeRequestRef = useRef(false);
   const pickupManuallyChosenRef = useRef(false);
+  const clientAudioRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -129,12 +130,60 @@ export default function PassengerPage() {
   }, [pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng]);
 
   useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (!clientAudioRef.current && C) clientAudioRef.current = new C();
+        if (clientAudioRef.current?.state === "suspended") void clientAudioRef.current.resume();
+      } catch {}
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
+  function playClientTone() {
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!clientAudioRef.current && C) clientAudioRef.current = new C();
+      const context = clientAudioRef.current;
+      if (!context) return;
+      void context.resume();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = context.currentTime;
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.14, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.21);
+    } catch {}
+  }
+
+  useEffect(() => {
     if (!order?.id || !order?.client_token) return;
     let active = true;
+    let previousStatus = order.status || "new";
     const load = async () => {
       try {
         const data = await callApi("order_status", { order_id: order.id, client_token: order.client_token });
         if (!active) return;
+        const incomingStatus = String(data.order?.status || previousStatus);
+        if (previousStatus === "new" && incomingStatus === "accepted") {
+          playClientTone();
+          setNotice("✅ Водитель принял заказ и едет к тебе.");
+        }
+        if (previousStatus !== "cancelled" && incomingStatus === "cancelled") {
+          setNotice("Заказ отменён.");
+        }
+        previousStatus = incomingStatus;
         const updated = { ...order, ...data.order, offers: data.offers || [], rating: data.rating || null };
         setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
       } catch {}
@@ -252,6 +301,7 @@ export default function PassengerPage() {
       const result = await callApi("cancel_order", { order_id: order.id, client_token: order.client_token });
       const updated = { ...order, ...result.order };
       setOrder(updated); localStorage.setItem("moyTaxiGeneralOrder", JSON.stringify(updated));
+      if (updated.status === "cancelled") setNotice("Заказ отменён.");
     } catch (e) { setError(e.message || "Не удалось отменить заказ."); }
     finally { setBusy(false); }
   }
@@ -313,6 +363,7 @@ export default function PassengerPage() {
         {(order.offers||[]).filter(offer=>offer.status==="pending").map(offer=><article className="driver-offer-card" key={offer.id}><div className="order-top"><h3>{offer.drivers?.name||"Водитель"}</h3><span className="status">{CLASSES.find(x=>x.id===offer.drivers?.vehicle_class)?.label||"Водитель"}</span></div><p><b>{money(offer.price)}</b></p><p>{offer.drivers?.car_model||"Автомобиль"}{offer.drivers?.car_color?" · "+offer.drivers.car_color:""}{offer.drivers?.car_plate?" · "+offer.drivers.car_plate:""}</p>{offer.drivers?.phone&&<p><a href={"tel:"+offer.drivers.phone}>{offer.drivers.phone}</a></p>}<div className="actions"><button className="button primary" disabled={busy} onClick={()=>priceAnswer("client_accept_offer",offer.id)}>Принять</button><button className="button danger" disabled={busy} onClick={()=>priceAnswer("client_decline_offer",offer.id)}>Отклонить</button></div></article>)}
         <button className="button danger" disabled={busy} onClick={cancelOrder}>Отменить заказ</button></div>}
       {["accepted","arrived","started"].includes(order.status) && order.pickup_lat != null && order.destination_lat != null && <a className="button secondary" href={routeUrl({lat:order.pickup_lat,lng:order.pickup_lng},{lat:order.destination_lat,lng:order.destination_lng})} target="_blank" rel="noreferrer">🗺️ Открыть маршрут A → B в 2ГИС</a>}
+      {["accepted","arrived","client_ready"].includes(order.status) && <div className="searching-panel"><p>Если планы изменились, можно отменить заказ до начала поездки.</p><button className="button danger" type="button" disabled={busy} onClick={cancelOrder}>Отменить заказ</button></div>}
       {order.status === "completed" && !order.rating?.id && <section className="panel rating-panel"><h2>Как прошла поездка?</h2><p className="muted">Оцени водителя — это поможет улучшать сервис.</p><div className="rating-stars" role="group" aria-label="Оценка от 1 до 5 звёзд">{[1,2,3,4,5].map(star=><button type="button" key={star} className={star<=ratingStars?"rating-star active":"rating-star"} aria-label={star+" из 5"} aria-pressed={ratingStars===star} onClick={()=>setRatingStars(star)}>★</button>)}</div><div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={ratingComment} onChange={e=>setRatingComment(e.target.value)} placeholder="Что понравилось или что улучшить?" /></div><button className="button primary" disabled={savingRating} onClick={submitRating}>{savingRating?"Сохраняем…":"Отправить оценку"}</button></section>}
       {order.status === "completed" && order.rating?.id && <div className="success"><b>Спасибо за оценку!</b><p style={{margin:"5px 0 0"}}>{"★".repeat(order.rating.stars)}{"☆".repeat(5-order.rating.stars)}{order.rating.comment?" · "+order.rating.comment:""}</p></div>}
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
