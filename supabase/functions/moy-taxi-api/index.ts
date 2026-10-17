@@ -6,16 +6,24 @@ const VEHICLE_CLASSES=["economy","comfort","comfort_plus","business","minivan","
 function vehicleClass(v:unknown){const x=String(v||"economy");return VEHICLE_CLASSES.includes(x)?x:"economy"}
 function pub(d:any){return {id:d.id,account_number:d.account_number||null,public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),photo_url:d.photo_url||"",wallet_balance:Number(d.wallet_balance||0),is_online:Boolean(d.is_online),current_lat:d.current_lat??null,current_lng:d.current_lng??null,location_updated_at:d.location_updated_at||null,documents_verified:Boolean(d.documents_verified)}}
 async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!u||!k)throw new Error("Server configuration is incomplete");return createClient(u,k,{auth:{persistSession:false,autoRefreshToken:false}})}
+function normalizeMapCacheText(value:string){return String(value||"").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g," ")}
+function roundedMapPoint(point:any,digits=3){if(!point)return null;const lat=Number(point.lat),lng=Number(point.lng);if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return null;const scale=10**digits;return [Math.round(lat*scale)/scale,Math.round(lng*scale)/scale]}
+function routeCacheInput(a:any,b:any){return {a:roundedMapPoint(a,4),b:roundedMapPoint(b,4)}}
+async function readMapCache(c:any,kind:string,input:any){try{const cacheKey=kind+":"+await sha256(JSON.stringify(input));const {data,error}=await c.from("map_api_cache").select("response").eq("cache_key",cacheKey).gt("expires_at",new Date().toISOString()).maybeSingle();if(error){console.warn("Map cache read failed",kind,error.message);return null}return data?.response??null}catch(e){console.warn("Map cache read failed",kind,String(e));return null}}
+async function writeMapCache(c:any,kind:string,input:any,response:any,ttlMs:number){try{const now=Date.now(),cacheKey=kind+":"+await sha256(JSON.stringify(input));const {error}=await c.from("map_api_cache").upsert({cache_key:cacheKey,cache_kind:kind,response,expires_at:new Date(now+ttlMs).toISOString(),updated_at:new Date(now).toISOString()},{onConflict:"cache_key"});if(error)console.warn("Map cache write failed",kind,error.message)}catch(e){console.warn("Map cache write failed",kind,String(e))}}
+function validMapPoint(point:any){const lat=Number(point?.lat),lng=Number(point?.lng);return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180?{lat,lng}:null}
 async function sess(c:any,p:any){const id=String(p.driver_id||""),t=String(p.session_token||"");if(!id||t.length<20)return {error:"Сессия истекла. Войди снова.",status:401};const {data,error}=await c.from("drivers").select("*").eq("id",id).maybeSingle();if(error||!data)return {error:"Не удалось проверить вход. Войди снова.",status:401};const exp=data.session_expires_at?Date.parse(data.session_expires_at):0;if(!data.session_token_hash||!equal(await sha256(t),data.session_token_hash)||exp<Date.now())return {error:"Сессия истекла. Войди снова.",status:401};return {driver:data}}
 async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");const h=await sha256(t),exp=new Date(Date.now()+30*86400000).toISOString();const {error}=await c.from("drivers").update({session_token_hash:h,session_expires_at:exp,updated_at:new Date().toISOString()}).eq("id",id);if(error)throw error;return t}
 function km(a:number,b:number,c:number,d:number){const R=6371,r=(x:number)=>x*Math.PI/180,da=r(c-a),db=r(d-b),x=Math.sin(da/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(db/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
-async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null,key:string){
+async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|null,key:string,c?:any){
  const clean=String(address||"").trim();
  if(!clean)throw new Error("Введи конечный адрес.");
  if(/^(мо[её]\s+)?местоположение$/i.test(clean)){
   if(nearPoint)return nearPoint;
   throw new Error("Не удалось получить GPS клиента.");
  }
+ const cacheInput={query:normalizeMapCacheText(clean),near:roundedMapPoint(nearPoint,3)};
+ if(c){const cached=validMapPoint(await readMapCache(c,"geocode",cacheInput));if(cached)return cached}
  const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
  const queries:string[]=[];
  if(!hasCity&&nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73)queries.push(clean+", Астана, Казахстан");
@@ -34,7 +42,9 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
    const points=items.map((item:any)=>pointFrom2gis(item)).filter((point:any)=>point!==null);
    if(points.length){
     if(nearPoint)points.sort((a:any,b:any)=>km(nearPoint.lat,nearPoint.lng,a.lat,a.lng)-km(nearPoint.lat,nearPoint.lng,b.lat,b.lng));
-    return points[0];
+    const selected=points[0];
+    if(c)await writeMapCache(c,"geocode",cacheInput,selected,30*24*60*60*1000);
+    return selected;
    }
   }catch(e){
    if(e instanceof Error&&e.message.includes("2ГИС отклонил ключ"))throw e;
@@ -43,7 +53,9 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
  }
  throw new Error("2ГИС не нашёл этот адрес. Добавь город или выбери точный вариант из подсказок.");
 }
-async function reverseGeocodePoint2gis(point:{lat:number,lng:number},key:string){
+async function reverseGeocodePoint2gis(point:{lat:number,lng:number},key:string,c?:any){
+ const cacheInput={point:roundedMapPoint(point,4)};
+ if(c){const cached=await readMapCache(c,"reverse_geocode",cacheInput);if(cached&&cached.label)return cached}
  try{
   const params=new URLSearchParams({lon:String(point.lng),lat:String(point.lat),fields:"items.full_address_name,items.address,items.adm_div",locale:"ru_KZ",key});
   const response=await fetch("https://catalog.api.2gis.com/3.0/items/geocode?"+params.toString(),{headers:{"Accept":"application/json"}});
@@ -53,7 +65,9 @@ async function reverseGeocodePoint2gis(point:{lat:number,lng:number},key:string)
   const label=String(item.full_address_name||(typeof item.address==="string"?item.address:"")||item.address?.full_address_name||item.address?.name||item.address_name||item.name||"");
   const divisions=(item.adm_div||[]).map((x:any)=>x.name||x.caption).filter(Boolean);
   const city=divisions.find((v:string)=>/астана|алматы|тал[аә]пкер|город/i.test(v))||divisions[0]||"Казахстан";
-  return label?{label,city}:null;
+  const result=label?{label,city}:null;
+  if(c&&result)await writeMapCache(c,"reverse_geocode",cacheInput,result,7*24*60*60*1000);
+  return result;
  }catch(e){console.error("2GIS reverse geocoder fallback failed",String(e));return null}
 }
 
@@ -101,6 +115,40 @@ async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number},
  if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адрес.");
  return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.total_duration||0)/60)),geometry:get2gisRouteGeometry(route)};
 }
+async function osrmRoadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number}){
+ const url="https://router.project-osrm.org/route/v1/driving/"+a.lng+","+a.lat+";"+b.lng+","+b.lat+"?overview=full&geometries=geojson&steps=false";
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+ try{
+  const response=await fetch(url,{headers:{"Accept":"application/json"},signal:controller.signal});
+  if(!response.ok)throw new Error("Резервный сервис маршрутов вернул HTTP "+response.status+".");
+  const data=await response.json(),route=data?.routes?.[0];
+  const distanceMeters=Number(route?.distance),durationSeconds=Number(route?.duration);
+  if(data?.code!=="Ok"||!Number.isFinite(distanceMeters)||distanceMeters<=0)throw new Error("Резервный сервис не нашёл автомобильный маршрут.");
+  const distanceKm=distanceMeters/1000;
+  if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адрес.");
+  const raw=route?.geometry?.coordinates;
+  const geometry=Array.isArray(raw)?raw.filter((pair:any)=>Array.isArray(pair)&&Number.isFinite(Number(pair[0]))&&Number.isFinite(Number(pair[1]))).map((pair:any)=>[Number(pair[0]),Number(pair[1])]):[];
+  return {distanceKm,durationMin:Math.max(1,Math.ceil((Number.isFinite(durationSeconds)?durationSeconds:0)/60)),geometry,provider:"osrm_fallback"};
+ }finally{clearTimeout(timer)}
+}
+async function resilientRoadDistance(c:any,a:{lat:number,lng:number},b:{lat:number,lng:number},key:string){
+ const input=routeCacheInput(a,b);
+ const cached=await readMapCache(c,"route",input);
+ if(cached&&Number(cached.distanceKm)>0&&Number(cached.distanceKm)<=2000&&Array.isArray(cached.geometry))return {...cached,cached:true};
+ try{
+  const primary=await roadDistance(a,b,key);
+  const result={...primary,provider:"2gis"};
+  await writeMapCache(c,"route",input,result,20*60*1000);
+  return result;
+ }catch(e){
+  console.warn("2GIS routing unavailable; using OSRM fallback",String(e));
+  const fallback=await osrmRoadDistance(a,b);
+  const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС временно не построил маршрут. Расстояние и цена рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
+  await writeMapCache(c,"route",input,result,6*60*60*1000);
+  return result;
+ }
+}
+
 function quoteFor(rates:any,distanceKm:number){
  const quotes:any={};
  for(const cls of VEHICLE_CLASSES){const row=(rates||{})[cls];const rate=Number(row?.rate_per_km||0),minimum=Number(row?.minimum_fare||0);if(rate>0)quotes[cls]=Math.max(minimum,Math.ceil(distanceKm*rate/10)*10)}
@@ -123,17 +171,16 @@ async function suggestionDistances(rows:any[],nearPoint:{lat:number,lng:number}|
   return valid.map((item:any,index:number)=>({...item,distance_km:Number.isFinite(distances[index])?Number((distances[index]/1000).toFixed(1)):null}));
  }catch(e){console.error("Suggestion route distances unavailable",String(e));return rows}
 }
-async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null,key:string){
+async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|null,key:string,c?:any){
  const clean=String(query||"").trim();
  if(clean.length<2)return [];
+ const cacheInput={query:normalizeMapCacheText(clean),near:roundedMapPoint(nearPoint,3)};
+ if(c){const cached=await readMapCache(c,"suggest",cacheInput);if(Array.isArray(cached))return cached}
  const nearAstana=Boolean(nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73);
  const hasCity=/(астан|алмат|тал[аә]пкер|костанай|караганда|шымкент|павлодар|кокшетау|темиртау|уральск|актоб|атырау|семей|петропавл|казахстан|қазақстан|kazakhstan)/i.test(clean);
- const addressLike=/(улица|ул\\.?|проспект|пр-т|переулок|мкр|микрорайон|дом|д\\.?|степ|street|st\\.?|avenue|ave\\.?|\\d)/i.test(clean);
- const modes=addressLike?["address","route_endpoint","object"]:["route_endpoint","object","address"];
- const queries=[clean];
- if(nearAstana&&!hasCity)queries.push(clean+", Астана, Казахстан");
- if(!/казахстан|қазақстан|kazakhstan/i.test(clean)&&!hasCity)queries.push(clean+", Казахстан");
- const uniqueQueries=[...new Set(queries)];
+ const addressLike=/(улица|ул\.?|проспект|пр-т|переулок|мкр|микрорайон|дом|д\.?|степ|street|st\.?|avenue|ave\.?|\d)/i.test(clean);
+ const modes=addressLike?["address","route_endpoint"]:["route_endpoint","object"];
+ const uniqueQueries=[clean];
  const errors:string[]=[];
  for(const q of uniqueQueries){
   for(const mode of modes){
@@ -182,7 +229,7 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
      const city=divisions.find((value:string)=>/астана|алматы|тал[аә]пкер|город/i.test(value))||divisions[0]||"Казахстан";
      let resolvedPoint=point;
      if(!resolvedPoint&&rows.length<3&&mode!=="object"){
-      try{resolvedPoint=await geocodePoint(label,nearPoint,key)}catch{}
+try{resolvedPoint=await geocodePoint(label,nearPoint,key,c)}catch{}
      }
      if(!resolvedPoint)continue;
      rows.push({name,label,city,lat:resolvedPoint.lat,lng:resolvedPoint.lng,provider:"2gis",suggest_type:mode});
@@ -192,10 +239,11 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
       all.findIndex((other:any)=>other.label===item.label&&other.lat===item.lat&&other.lng===item.lng)===index
      );
      const withDistance=await suggestionDistances(deduped.slice(0,8),nearPoint);
+      if(c)await writeMapCache(c,"suggest",cacheInput,withDistance,12*60*60*1000);
      return withDistance;
     }
    }catch(e){
-    if(e instanceof Error&&e.message.includes("2ГИС отклонил"))throw e;
+if(e instanceof Error&&e.message.includes("2ГИС отклонил")){if(c)await writeMapCache(c,"suggest",cacheInput,[],60*1000);throw e;}
     if((e as any)?.name!=="AbortError")console.error("2GIS suggestion mode failed",q,mode,String(e));
    }finally{clearTimeout(timer)}
   }
@@ -203,15 +251,18 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
  if(errors.length)console.error("2GIS suggestion providers returned errors",errors.slice(0,10));
  // Final fallback: even if Suggest returns no coordinate-bearing item, resolve the typed address through the official 2GIS Geocoder.
  try{
-  const point=await geocodePoint(clean,nearPoint,key);
-  const canonical=await reverseGeocodePoint2gis(point,key);
+const point=await geocodePoint(clean,nearPoint,key,c);
+const canonical=await reverseGeocodePoint2gis(point,key,c);
   const label=canonical?.label||(nearAstana&&!hasCity?clean+", Астана, Казахстан":clean);
   const city=canonical?.city||(nearAstana?"Астана":"Казахстан");
-  return [{name:label.split(",")[0]||clean,label,city,lat:point.lat,lng:point.lng,provider:"2gis",suggest_type:"geocoder"}];
+   const fallback=[{name:label.split(",")[0]||clean,label,city,lat:point.lat,lng:point.lng,provider:"2gis",suggest_type:"geocoder"}];
+   if(c)await writeMapCache(c,"suggest",cacheInput,fallback,12*60*60*1000);
+   return fallback;
  }catch(e){
   if(e instanceof Error&&e.message.includes("2ГИС отклонил ключ"))throw e;
   console.error("2GIS fallback geocoding failed",clean,String(e));
  }
+  if(c)await writeMapCache(c,"suggest",cacheInput,[],60*1000);
  return [];
 }
 
@@ -308,16 +359,16 @@ if(a.startsWith("admin_")){
   }catch(e){checks.suggest={ok:false,detail:"нет ответа ("+(e instanceof Error?e.message:"ошибка сети")+")"}}
   let fromPoint:any=null,toPoint:any=null;
   try{
-   fromPoint=await geocodePoint("Астана",null,key);
+fromPoint=await geocodePoint("Астана",null,key,c);
    checks.geocoder={ok:true,detail:"работает"};
   }catch(e){
    checks.geocoder={ok:false,detail:e instanceof Error?e.message:"ошибка геокодера"};
   }
   if(fromPoint){
    try{
-    toPoint=await geocodePoint("Байтерек, Астана",fromPoint,key);
+geocodePoint("Байтерек, Астана",fromPoint,key,c)
     if(km(fromPoint.lat,fromPoint.lng,toPoint.lat,toPoint.lng)<0.15){
-     toPoint=await geocodePoint("Хан Шатыр, Астана",fromPoint,key);
+geocodePoint("Хан Шатыр, Астана",fromPoint,key,c)
     }
     const route=await roadDistance(fromPoint,toPoint,key);
     checks.routing={ok:true,detail:"работает ("+route.distanceKm.toFixed(1)+" км, около "+route.durationMin+" мин.)"};
@@ -432,13 +483,16 @@ if(a==="address_suggest"){
  const nearPoint=Number.isFinite(nearLat)&&Number.isFinite(nearLng)&&nearLat>=-90&&nearLat<=90&&nearLng>=-180&&nearLng<=180?{lat:nearLat,lng:nearLng}:null;
  try{
   const key=await getDgisApiKey(c);
-  const suggestions=await suggestAddresses(query,nearPoint,key);
+const suggestions=await suggestAddresses(query,nearPoint,key,c);
   return reply({ok:true,suggestions,provider:"2gis"});
  }catch(e){return fail(e instanceof Error?e.message:"Поиск адресов через 2ГИС не удался.",422)}
 }
 if(a==="address_reverse"){
  const lat=Number(p.lat),lng=Number(p.lng);
  if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return fail("Некорректные координаты GPS.");
+  const cacheInput={point:roundedMapPoint({lat,lng},4)};
+  const cached=await readMapCache(c,"reverse_geocode",cacheInput);
+  if(cached&&cached.label)return reply({ok:true,...cached,provider:"2gis",cached:true});
  try{
   const key=await getDgisApiKey(c);
   const params=new URLSearchParams({lon:String(lng),lat:String(lat),fields:"items.full_address_name,items.address,items.adm_div",locale:"ru_KZ",key});
@@ -446,7 +500,9 @@ if(a==="address_reverse"){
   if(!response.ok)return fail("2ГИС не смог определить адрес по GPS.",422);
   const data=await response.json(),item=data?.result?.items?.[0];
   const label=String(item?.full_address_name||(typeof item?.address==="string"?item.address:"")||item?.address?.full_address_name||item?.address?.name||item?.address_name||item?.name||"Моё местоположение");
-  return reply({ok:true,label,city:(item?.adm_div||[]).map((x:any)=>x.name).find((x:string)=>Boolean(x))||"Казахстан",provider:"2gis"});
+  const responseData={label,city:(item?.adm_div||[]).map((x:any)=>x.name).find((x:string)=>Boolean(x))||"Казахстан"};
+  await writeMapCache(c,"reverse_geocode",cacheInput,responseData,7*24*60*60*1000);
+  return reply({ok:true,...responseData,provider:"2gis"});
  }catch(e){return fail(e instanceof Error?e.message:"Не удалось определить адрес через 2ГИС.",422)}
 }
 if(a==="public_tariffs"){
@@ -465,14 +521,14 @@ if(a==="calculate_route"){
  if((Number.isFinite(lat)&&(!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180))||(!Number.isFinite(lat)&&Number.isFinite(lng)))return fail("Некорректные координаты подачи.");
  try{
   const key=await getDgisApiKey(c);
-  const pickupPoint=Number.isFinite(lat)?{lat,lng}:await geocodePoint(pickupAddress,null,key);
-  const destinationPoint=Number.isFinite(destLat)?{lat:destLat,lng:destLng}:await geocodePoint(destinationAddress,pickupPoint,key);
-  const route=await roadDistance(pickupPoint,destinationPoint,key);
+const pickupPoint=Number.isFinite(lat)?{lat,lng}:await geocodePoint(pickupAddress,null,key,c);
+const destinationPoint=Number.isFinite(destLat)?{lat:destLat,lng:destLng}:await geocodePoint(destinationAddress,pickupPoint,key,c);
+const route=await resilientRoadDistance(c,pickupPoint,destinationPoint,key);
   const {data:settingsRow,error}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
   if(error||!settingsRow)return fail("Не удалось загрузить тарифы.",500);
   const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
   const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
-  return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,route_geometry:route.geometry,route_provider:"2gis",estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
+route_provider:route.provider||"2gis",route_notice:route.route_notice||"",estimated_prices:
  }catch(e){return fail(e instanceof Error?e.message:"Не удалось рассчитать маршрут.",422)}
 }
 if(a==="create_order"){
@@ -486,14 +542,16 @@ if(a==="create_order"){
   if(![lat,lng,destLat,destLng,distance].every(Number.isFinite)||lat < -90||lat>90||lng < -180||lng>180||destLat < -90||destLat>90||destLng < -180||destLng>180||distance<=0||distance>2000)return fail("Не удалось определить автомобильный маршрут. Проверь адреса и попробуй ещё раз.");
   const {data:settingsRow,error:se}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
   if(se||!settingsRow)return fail("Не удалось загрузить тариф.",500);
-  const routeResponse=await fetch("https://router.project-osrm.org/route/v1/driving/"+lng+","+lat+";"+destLng+","+destLat+"?overview=false&steps=false");
-  if(!routeResponse.ok)return fail("Сервис расчёта дорожного маршрута временно недоступен.",503);
-  const routeData=await routeResponse.json();
-  const roadMeters=routeData?.routes?.[0]?.distance;
-  if(routeData?.code!=="Ok"||!Number.isFinite(roadMeters)||roadMeters<=0)return fail("Не удалось найти автомобильный маршрут между адресами.",422);
-  const serverDistance=roadMeters/1000;
-  if(serverDistance>2000)return fail("Маршрут получился слишком длинным. Проверь адреса.",422);
-  finalDistance=serverDistance;
+   let verifiedRoute:any=await readMapCache(c,"route",routeCacheInput({lat,lng},{lat:destLat,lng:destLng}));
+   if(!verifiedRoute||!Number.isFinite(Number(verifiedRoute.distanceKm))||Number(verifiedRoute.distanceKm)<=0){
+    try{
+     verifiedRoute=await osrmRoadDistance({lat,lng},{lat:destLat,lng:destLng});
+     await writeMapCache(c,"route",routeCacheInput({lat,lng},{lat:destLat,lng:destLng}),verifiedRoute,6*60*60*1000);
+    }catch(routeError){return fail(routeError instanceof Error?routeError.message:"Резервный сервис расчёта маршрута временно недоступен.",503)}
+   }
+   const serverDistance=Number(verifiedRoute.distanceKm);
+   if(!Number.isFinite(serverDistance)||serverDistance<=0||serverDistance>2000)return fail("Не удалось проверить автомобильный маршрут между адресами.",422);
+   finalDistance=serverDistance;
   const rateRow=(settingsRow.vehicle_rates||{})[cls];const rate=Number(rateRow?.rate_per_km||0),minimum=Number(rateRow?.minimum_fare||0);
   if(rate<1)return fail("Для этого класса пока не настроен тариф.");
   price=Math.max(minimum,Math.ceil(serverDistance*rate/10)*10);
