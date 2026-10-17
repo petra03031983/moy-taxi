@@ -9,8 +9,9 @@ async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABAS
 function normalizeMapCacheText(value:string){return String(value||"").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g," ")}
 function roundedMapPoint(point:any,digits=3){if(!point)return null;const lat=Number(point.lat),lng=Number(point.lng);if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return null;const scale=10**digits;return [Math.round(lat*scale)/scale,Math.round(lng*scale)/scale]}
 function routeCacheInput(a:any,b:any){return {a:roundedMapPoint(a,4),b:roundedMapPoint(b,4)}}
+let mapApiCacheLastCleanup=0;
 async function readMapCache(c:any,kind:string,input:any){try{const cacheKey=kind+":"+await sha256(JSON.stringify(input));const {data,error}=await c.from("map_api_cache").select("response").eq("cache_key",cacheKey).gt("expires_at",new Date().toISOString()).maybeSingle();if(error){console.warn("Map cache read failed",kind,error.message);return null}return data?.response??null}catch(e){console.warn("Map cache read failed",kind,String(e));return null}}
-async function writeMapCache(c:any,kind:string,input:any,response:any,ttlMs:number){try{const now=Date.now(),cacheKey=kind+":"+await sha256(JSON.stringify(input));const {error}=await c.from("map_api_cache").upsert({cache_key:cacheKey,cache_kind:kind,response,expires_at:new Date(now+ttlMs).toISOString(),updated_at:new Date(now).toISOString()},{onConflict:"cache_key"});if(error)console.warn("Map cache write failed",kind,error.message)}catch(e){console.warn("Map cache write failed",kind,String(e))}}
+async function writeMapCache(c:any,kind:string,input:any,response:any,ttlMs:number){try{const now=Date.now(),cacheKey=kind+":"+await sha256(JSON.stringify(input));const {error}=await c.from("map_api_cache").upsert({cache_key:cacheKey,cache_kind:kind,response,expires_at:new Date(now+ttlMs).toISOString(),updated_at:new Date(now).toISOString()},{onConflict:"cache_key"});if(error){console.warn("Map cache write failed",kind,error.message);return}if(now-mapApiCacheLastCleanup>60*60*1000){mapApiCacheLastCleanup=now;const {error:cleanupError}=await c.from("map_api_cache").delete().lt("expires_at",new Date(now).toISOString());if(cleanupError)console.warn("Map cache cleanup failed",cleanupError.message)}}catch(e){console.warn("Map cache write failed",kind,String(e))}}
 function validMapPoint(point:any){const lat=Number(point?.lat),lng=Number(point?.lng);return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180?{lat,lng}:null}
 async function sess(c:any,p:any){const id=String(p.driver_id||""),t=String(p.session_token||"");if(!id||t.length<20)return {error:"Сессия истекла. Войди снова.",status:401};const {data,error}=await c.from("drivers").select("*").eq("id",id).maybeSingle();if(error||!data)return {error:"Не удалось проверить вход. Войди снова.",status:401};const exp=data.session_expires_at?Date.parse(data.session_expires_at):0;if(!data.session_token_hash||!equal(await sha256(t),data.session_token_hash)||exp<Date.now())return {error:"Сессия истекла. Войди снова.",status:401};return {driver:data}}
 async function newSession(c:any,id:string){const t=crypto.randomUUID()+crypto.randomUUID().replace(/-/g,"");const h=await sha256(t),exp=new Date(Date.now()+30*86400000).toISOString();const {error}=await c.from("drivers").update({session_token_hash:h,session_expires_at:exp,updated_at:new Date().toISOString()}).eq("id",id);if(error)throw error;return t}
@@ -28,7 +29,7 @@ async function geocodePoint(address:string,nearPoint:{lat:number,lng:number}|nul
  const queries:string[]=[];
  if(!hasCity&&nearPoint&&nearPoint.lat>50&&nearPoint.lat<52&&nearPoint.lng>69&&nearPoint.lng<73)queries.push(clean+", Астана, Казахстан");
  queries.push(clean);
- if(!/казахстан|қазақстан|kazakhstan/i.test(clean))queries.push(clean+", Казахстан");
+ if(queries.length===1&&!/казахстан|қазақстан|kazakhstan/i.test(clean))queries.push(clean+", Казахстан");
  for(const query of [...new Set(queries)]){
   const params=new URLSearchParams({q:query,fields:"items.point,items.full_address_name,items.address,items.geometry.centroid",locale:"ru_KZ",key});
   if(nearPoint)params.set("sort_point",nearPoint.lng+","+nearPoint.lat);
@@ -138,13 +139,13 @@ async function resilientRoadDistance(c:any,a:{lat:number,lng:number},b:{lat:numb
  try{
   const primary=await roadDistance(a,b,key);
   const result={...primary,provider:"2gis"};
-  await writeMapCache(c,"route",input,result,20*60*1000);
+  await writeMapCache(c,"route",input,result,5*60*1000);
   return result;
  }catch(e){
   console.warn("2GIS routing unavailable; using OSRM fallback",String(e));
   const fallback=await osrmRoadDistance(a,b);
   const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС временно не построил маршрут. Расстояние и цена рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
-  await writeMapCache(c,"route",input,result,6*60*60*1000);
+  await writeMapCache(c,"route",input,result,60*60*1000);
   return result;
  }
 }
@@ -228,7 +229,7 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
      const divisions=(item.adm_div||[]).map((division:any)=>division.name||division.caption).filter(Boolean);
      const city=divisions.find((value:string)=>/астана|алматы|тал[аә]пкер|город/i.test(value))||divisions[0]||"Казахстан";
      let resolvedPoint=point;
-     if(!resolvedPoint&&rows.length<3&&mode!=="object"){
+     if(!resolvedPoint&&rows.length<1&&mode!=="object"){
        try{resolvedPoint=await geocodePoint(label,nearPoint,key,c)}catch{}
      }
      if(!resolvedPoint)continue;
@@ -557,7 +558,7 @@ if(a==="create_order"){
    if(!verifiedRoute||!Number.isFinite(Number(verifiedRoute.distanceKm))||Number(verifiedRoute.distanceKm)<=0){
     try{
      verifiedRoute=await osrmRoadDistance({lat,lng},{lat:destLat,lng:destLng});
-     await writeMapCache(c,"route",routeCacheInput({lat,lng},{lat:destLat,lng:destLng}),verifiedRoute,6*60*60*1000);
+     await writeMapCache(c,"route",routeCacheInput({lat,lng},{lat:destLat,lng:destLng}),verifiedRoute,60*60*1000);
     }catch(routeError){return fail(routeError instanceof Error?routeError.message:"Резервный сервис расчёта маршрута временно недоступен.",503)}
    }
    const serverDistance=Number(verifiedRoute.distanceKm);
