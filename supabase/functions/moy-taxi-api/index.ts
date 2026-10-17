@@ -583,11 +583,11 @@ if(a==="cancel_order"){
  if(oe||!o)return fail("Заказ не найден.",404);
  if(!["new","accepted","arrived","client_ready"].includes(o.status))return fail(o.status==="started"?"Поездка уже началась. Отменить её в приложении нельзя.":"Этот заказ уже завершён или недоступен.");
  const cancelledAt=new Date().toISOString();
- const {data:u,error}=await c.from("orders").update({status:"cancelled",cancelled_at:cancelledAt}).eq("id",id).eq("client_token",token).eq("status",o.status).select("id,status,driver_id,cancelled_at").maybeSingle();
+ const {data:u,error}=await c.from("orders").update({status:"cancelled",cancelled_at:cancelledAt,cancellation_reason:"client_cancelled"}).eq("id",id).eq("client_token",token).eq("status",o.status).select("id,status,driver_id,cancelled_at,cancellation_reason").maybeSingle();
  if(error||!u)return fail("Не удалось отменить заказ. Обнови статус и попробуй ещё раз.",409);
  return reply({ok:true,order:u})
 }
-if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","driver_toggle_online","driver_update_profile","driver_logout","driver_location","driver_offer_price","driver_accept_broadcast","driver_skip_order"].includes(a)){const s=await sess(c,p);if(!s.driver)return fail(s.error||"Нужен вход.",s.status||401);const d=s.driver;if(a==="driver_me"){
+if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","driver_toggle_online","driver_update_profile","driver_logout","driver_location","driver_offer_price","driver_accept_broadcast","driver_skip_order","driver_cancel_no_show"].includes(a)){const s=await sess(c,p);if(!s.driver)return fail(s.error||"Нужен вход.",s.status||401);const d=s.driver;if(a==="driver_me"){
  const {data:ratingRows}=await c.from("driver_ratings").select("stars").eq("driver_id",d.id).limit(10000);
  const scores=(ratingRows||[]).map((x:any)=>Number(x.stars)).filter((x:number)=>x>=1&&x<=5);
  return reply({ok:true,driver:{...pub(d),rating_average:scores.length?Number((scores.reduce((a:number,b:number)=>a+b,0)/scores.length).toFixed(2)):null,rating_count:scores.length}});
@@ -665,7 +665,7 @@ if(a==="driver_skip_order"){
  const [assignedQ,broadcastQ,cancelledQ]=await Promise.all([
   c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).in("status",["new","accepted","arrived","client_ready","started"]).order("created_at",{ascending:false}),
   c.from("orders").select("*,clients(name,phone)").is("driver_id",null).eq("status","new").order("created_at",{ascending:false}).limit(100),
-  c.from("orders").select("id,status,driver_id,cancelled_at,created_at").eq("driver_id",d.id).eq("status","cancelled").gte("cancelled_at",cancellationCutoff).order("cancelled_at",{ascending:false}).limit(20)
+  c.from("orders").select("id,status,driver_id,cancelled_at,cancellation_reason,created_at").eq("driver_id",d.id).eq("status","cancelled").eq("cancellation_reason","client_cancelled").gte("cancelled_at",cancellationCutoff).order("cancelled_at",{ascending:false}).limit(20)
  ]);
  if(assignedQ.error||broadcastQ.error||cancelledQ.error)return fail("Не удалось загрузить заказы.",500);
  const locationAge=d.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
@@ -683,9 +683,25 @@ if(a==="driver_skip_order"){
  const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
  const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="skipped").map((x:any)=>x.order_id));
  return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),recently_cancelled:cancelledQ.data||[],is_online:d.is_online,search_radius_km:requestedSearchRadiusKm,gps_fresh:hasFreshLocation});
-}if(a==="driver_history"){const {data:os,error}=await c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).eq("status","completed").order("completed_at",{ascending:false}).limit(100);if(error)return fail("Не удалось загрузить историю.",500);return reply({ok:true,orders:os||[]})}if(a==="driver_update"){
+}if(a==="driver_history"){const {data:os,error}=await c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).eq("status","completed").order("completed_at",{ascending:false}).limit(100);if(error)return fail("Не удалось загрузить историю.",500);return reply({ok:true,orders:os||[]})}
+if(a==="driver_cancel_no_show"){
+ const id=String(p.order_id||"");
+ if(!id)return fail("Не указан заказ.");
+ const {data:o,error:oe}=await c.from("orders").select("id,status,arrived_at,driver_id").eq("id",id).eq("driver_id",d.id).maybeSingle();
+ if(oe||!o)return fail("Заказ не найден.",404);
+ if(!["arrived","client_ready"].includes(o.status))return fail("Отменить по причине «пассажир не вышел» можно только после прибытия.");
+ const arrivalTime=Date.parse(o.arrived_at||"");
+ if(!Number.isFinite(arrivalTime))return fail("Время прибытия не найдено. Обнови заказ или обратись в поддержку.",409);
+ const remainingMs=10*60*1000-(Date.now()-arrivalTime);
+ if(remainingMs>0)return fail("10 минут ожидания ещё не прошло. Осталось примерно "+Math.ceil(remainingMs/1000)+" секунд.",409);
+ const cancelledAt=new Date().toISOString();
+ const {data:u,error}=await c.from("orders").update({status:"cancelled",cancelled_at:cancelledAt,cancellation_reason:"driver_no_show"}).eq("id",id).eq("driver_id",d.id).in("status",["arrived","client_ready"]).eq("arrived_at",o.arrived_at).select("id,status,cancelled_at,cancellation_reason").maybeSingle();
+ if(error||!u)return fail("Не удалось отменить заказ. Возможно, его статус уже изменился.",409);
+ return reply({ok:true,order:u});
+}
+if(a==="driver_update"){
  const id=String(p.order_id||""),status=String(p.status||"");
- if(!["accepted","arrived","started","completed","cancelled"].includes(status))return fail("Недопустимый статус.");
+ if(!["accepted","arrived","started","completed"].includes(status))return fail("Недопустимый статус. Для отмены используй специальную кнопку ожидания.");
  const {data:o}=await c.from("orders").select("*").eq("id",id).eq("driver_id",d.id).maybeSingle();
  if(!o)return fail("Заказ не найден.",404);
  if(status==="completed"){
@@ -705,6 +721,7 @@ if(a==="driver_skip_order"){
  if(status==="started"&&o.status!=="client_ready")return fail("Дождись, пока пассажир нажмёт «Я выхожу».");
  if(status==="cancelled"&&["completed","cancelled"].includes(o.status))return fail("Этот заказ уже закрыт.");
  const patch:any={status};
+ if(status==="arrived")patch.arrived_at=new Date().toISOString();
  if(status==="accepted"){
   patch.accepted_at=new Date().toISOString();
   if(o.price_status!=="accepted"){
