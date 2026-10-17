@@ -504,7 +504,7 @@ if(a==="create_order"){
   const {data:direct,error:de}=await c.from("drivers").select("id,is_online,vehicle_class,current_lat,current_lng").eq("public_code",code).maybeSingle();
   if(de||!direct)return fail("Водитель не найден.",404);
   if(!direct.is_online)return fail("Водитель сейчас не на линии.",409);
-  d=direct;cls=vehicleClass(d.vehicle_class);
+  d=direct;cls=vehicleClass(p.vehicle_class||d.vehicle_class);
  }
  const {data:clRow,error:ce}=await c.from("clients").insert({name,phone:ph}).select("id").single();
  if(ce||!clRow)return fail("Не удалось сохранить клиента.",500);
