@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const ASTANA = { lat: 51.1694, lon: 71.4491 };
 const MAX_LOCAL_KM = 125;
@@ -230,6 +231,23 @@ export async function GET(request) {
   const merged = new Map();
   const known = knownLocalResult(intent.type, origin);
   merge(merged, known);
+
+  // Exact local place/address aliases should work immediately, even when external geocoders are unavailable.
+  if (known && intent.type !== "general") {
+    const immediate = [{
+      title: known.title,
+      address: known.address,
+      lat: known.lat,
+      lon: known.lon,
+      distance: known.distance,
+      isAstana: known.isAstana,
+      near: known.near
+    }];
+    cache.set(cacheKey, { at: Date.now(), results: immediate });
+    return Response.json({ results: immediate, query: raw, source: "Local address fallback" }, {
+      headers: { "Cache-Control": "private, max-age=30" }
+    });
+  }
 
   let providerCount = 0;
   const queries = buildPhotonQueries(raw, intent);
