@@ -90,7 +90,7 @@ export default function PassengerPage() {
 
   useEffect(() => {
     const clean = destination.trim();
-    if (clean.length < 2 || destinationPoint) {
+    if (clean.length < 3 || destinationPoint) {
       setDestinationSuggestions([]);
       setSuggestionError("");
       setSuggestionLoading(false);
@@ -234,7 +234,7 @@ export default function PassengerPage() {
       setTripType(Number(result.distance_km) >= 35 ? "intercity" : "city");
       if (Array.isArray(result.online_classes)) setOnlineClasses(result.online_classes);
       setPickup(current => current || "Моё местоположение");
-      setNotice("");
+      setNotice(result.route_notice || "");
     } catch (e) {
       setRoute(null);
       setError(e.message || "Не получилось найти этот адрес. Выбери точный адрес в подсказках ниже.");
@@ -346,7 +346,7 @@ export default function PassengerPage() {
     <header className="header"><a href="/" className="logo" style={{ textDecoration: "none", color: "inherit" }}>Мой <span>Такси</span></a><a href="/" className="small">На главную</a></header>
     <section className="panel hero"><div className="hero-icon">🚕</div><div className="eyebrow">ЗАКАЗ ТАКСИ</div><h1>Куда едем?</h1><p className="muted">Укажи, откуда забрать пассажира, и куда ехать. Можно выбрать любой адрес или использовать своё местоположение.</p></section>
     {error && <div className="error" role="alert">{error}</div>}
-    {notice && <div className="success" role="status">{notice}</div>}
+    {notice && <div className={notice.startsWith("2ГИС временно") ? "error" : "success"} role="status">{notice}</div>}
     {(destinationPoint || order?.destination_lat != null) && <RouteMap pickupPoint={pickupPoint || (order?.pickup_lat != null ? {lat:order.pickup_lat,lng:order.pickup_lng} : null)} destinationPoint={destinationPoint || (order?.destination_lat != null ? {lat:order.destination_lat,lng:order.destination_lng} : null)} routeGeometry={route?.geometry} />}
     {!showBooking ? <section className="panel">
       <div className="eyebrow">ВАША ПОЕЗДКА</div><h2>{order.status === "new" ? "Заказ отправлен" : order.status === "accepted" ? "Водитель едет к вам" : order.status === "arrived" ? "Водитель на месте" : order.status === "started" ? "Поездка началась" : statusLabel(order.status)}</h2>
