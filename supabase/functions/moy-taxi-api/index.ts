@@ -93,6 +93,12 @@ function get2gisRouteGeometry(route:any){
  add(route?.end_pedestrian_path?.geometry?.selection||"");
  return points;
 }
+function routingProviderFailure(message:string,cooldownMs:number){
+ const error=new Error(message) as Error & {routeProviderFailure:boolean;routeCircuitTtlMs:number};
+ error.routeProviderFailure=true;
+ error.routeCircuitTtlMs=cooldownMs;
+ return error;
+}
 async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number},key:string){
  const url="https://routing.api.2gis.com/routing/7.0.0/global?key="+encodeURIComponent(key);
  let response:Response;
@@ -101,15 +107,30 @@ async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number},
    points:[{type:"stop",lon:a.lng,lat:a.lat,start:true},{type:"stop",lon:b.lng,lat:b.lat}],
    transport:"driving",output:"detailed",locale:"ru",route_mode:"fastest",traffic_mode:"jam"
   })});
- }catch{throw new Error("Сервис маршрутов 2ГИС временно недоступен. Попробуй ещё раз.")}
+ }catch{
+  throw routingProviderFailure("Сервис маршрутов 2ГИС временно недоступен. Попробуй ещё раз.",5*60*1000);
+ }
  if(!response.ok){
   const body=await response.text().catch(()=> "");
   console.error("2GIS Routing API error",response.status,body.slice(0,500));
-  throw new Error(response.status===401||response.status===403?"2ГИС отклонил API-ключ или у ключа нет доступа к Routing API. Проверь права ключа в кабинете 2ГИС.":"2ГИС не смог построить маршрут. Попробуй уточнить адрес.");
+  const limitFailure=response.status===429||/quota|limit|exceed|too many|rate.?limit/i.test(body);
+  const authFailure=response.status===401||response.status===403;
+  if(limitFailure||authFailure||response.status===408||response.status>=500){
+   const cooldownMs=limitFailure?12*60*60*1000:authFailure?60*60*1000:5*60*1000;
+   throw routingProviderFailure(
+    authFailure?"2ГИС отклонил API-ключ или у ключа нет доступа к Routing API. Проверь права ключа в кабинете 2ГИС.":"2ГИС Routing API временно ограничил или не обслуживает запросы.",
+    cooldownMs
+   );
+  }
+  throw new Error("2ГИС не смог построить маршрут. Попробуй уточнить адрес.");
  }
  const data=await response.json(),route=data?.result?.[0];
  if(data?.status!=="OK"||!Number.isFinite(Number(route?.total_distance))||Number(route.total_distance)<=0){
-  console.error("2GIS route not found",data?.status,data?.message);
+  const errorText=String(data?.message||data?.error||"");
+  console.error("2GIS route not found",data?.status,errorText);
+  if(/quota|limit|exceed|too many|rate.?limit/i.test(errorText)){
+   throw routingProviderFailure("2ГИС Routing API сообщил об ограничении запросов.",12*60*60*1000);
+  }
   throw new Error("2ГИС не нашёл автомобильный маршрут между этими точками. Проверь адрес назначения.");
  }
  const distanceKm=Number(route.total_distance)/1000;
@@ -136,12 +157,28 @@ async function resilientRoadDistance(c:any,a:{lat:number,lng:number},b:{lat:numb
  const input=routeCacheInput(a,b);
  const cached=await readMapCache(c,"route",input);
  if(cached&&Number(cached.distanceKm)>0&&Number(cached.distanceKm)<=2000&&Array.isArray(cached.geometry))return {...cached,cached:true};
+
+ // Store the circuit-breaker state in the existing shared cache so separate Edge Function instances respect it.
+ const circuitInput={provider:"2gis-routing"};
+ const circuit=await readMapCache(c,"routing_circuit",circuitInput);
+ if(Number(circuit?.open_until)>Date.now()){
+  const fallback=await osrmRoadDistance(a,b);
+  const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС Routing API временно пропускается после ошибки или ограничения запросов. Расстояние и цена рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
+  await writeMapCache(c,"route",input,result,60*60*1000);
+  return result;
+ }
+
  try{
   const primary=await roadDistance(a,b,key);
   const result={...primary,provider:"2gis"};
   await writeMapCache(c,"route",input,result,5*60*1000);
   return result;
  }catch(e){
+  const providerError=e as Error & {routeProviderFailure?:boolean;routeCircuitTtlMs?:number};
+  if(providerError?.routeProviderFailure){
+   const cooldownMs=Math.max(60*1000,Number(providerError.routeCircuitTtlMs)||5*60*1000);
+   await writeMapCache(c,"routing_circuit",circuitInput,{open_until:Date.now()+cooldownMs},cooldownMs);
+  }
   console.warn("2GIS routing unavailable; using OSRM fallback",String(e));
   const fallback=await osrmRoadDistance(a,b);
   const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС временно не построил маршрут. Расстояние и цена рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
