@@ -346,6 +346,7 @@ if(a.startsWith("admin_")){
   const key=String(settings.dgis_api_key||Deno.env.get("DGIS_API_KEY")||"").trim();
   if(!key)return fail("Сначала сохрани API-ключ 2ГИС.");
   const checks:any={suggest:{ok:false,detail:"не проверен"},geocoder:{ok:false,detail:"не проверен"},routing:{ok:false,detail:"не проверен"}};
+  let twoGisRoutingWorks=false;
   try{
    const params=new URLSearchParams({q:"Астана",suggest_type:"object",fields:"items.point,items.full_address_name",locale:"ru_KZ",page_size:"3",key});
    const response=await fetch("https://catalog.api.2gis.com/3.0/suggests?"+params.toString(),{headers:{"Accept":"application/json"}});
@@ -371,9 +372,17 @@ if(a.startsWith("admin_")){
       toPoint=await geocodePoint("Хан Шатыр, Астана",fromPoint,key,c);
     }
     const route=await roadDistance(fromPoint,toPoint,key);
-    checks.routing={ok:true,detail:"работает ("+route.distanceKm.toFixed(1)+" км, около "+route.durationMin+" мин.)"};
+     checks.routing={ok:true,detail:"работает через 2ГИС ("+route.distanceKm.toFixed(1)+" км, около "+route.durationMin+" мин.)"};
+     twoGisRoutingWorks=true;
    }catch(e){
-    checks.routing={ok:false,detail:e instanceof Error?e.message:"ошибка маршрутизации"};
+     const primaryError=e instanceof Error?e.message:"ошибка маршрутизации";
+     try{
+      if(!toPoint)throw new Error(primaryError);
+      const backup=await osrmRoadDistance(fromPoint,toPoint);
+      checks.routing={ok:true,detail:"2ГИС не ответил ("+primaryError+"); резервный маршрут работает ("+backup.distanceKm.toFixed(1)+" км, около "+backup.durationMin+" мин.)"};
+     }catch(backupError){
+      checks.routing={ok:false,detail:primaryError+"; резерв: "+(backupError instanceof Error?backupError.message:"недоступен")};
+     }
    }
   }else{
    checks.routing={ok:false,detail:"не проверен: сначала должен ответить Geocoder API"};
@@ -382,8 +391,10 @@ if(a.startsWith("admin_")){
    "Поиск адресов (Suggest): "+(checks.suggest.ok?"✅ ":"❌ ")+checks.suggest.detail+"\n"+
    "Координаты адресов (Geocoder): "+(checks.geocoder.ok?"✅ ":"❌ ")+checks.geocoder.detail+"\n"+
    "Автомобильный маршрут (Routing): "+(checks.routing.ok?"✅ ":"❌ ")+checks.routing.detail;
-  const allOk=checks.suggest.ok&&checks.geocoder.ok&&checks.routing.ok;
-  return reply({ok:true,configured:true,search_works:checks.suggest.ok,geocoder_works:checks.geocoder.ok,routing_works:checks.routing.ok,checks,message:allOk?message+"\nВсе три сервиса отвечают. Теперь можно проверять цены на странице пассажира.":message+"\nИсправь доступ к сервису, отмеченному крестиком, в кабинете 2ГИС."});
+  const allOk=checks.suggest.ok&&checks.geocoder.ok&&twoGisRoutingWorks;
+  const appRouteOk=checks.suggest.ok&&checks.geocoder.ok&&checks.routing.ok;
+  const finalMessage=allOk?message+"\nВсе сервисы 2ГИС отвечают.":appRouteOk?message+"\nRouting API 2ГИС временно недоступен, но резервный расчёт маршрута работает. Для движения можно открыть навигатор 2ГИС.":message+"\nПроверь сервис, отмеченный крестиком, в кабинете 2ГИС.";
+  return reply({ok:true,configured:true,search_works:checks.suggest.ok,geocoder_works:checks.geocoder.ok,routing_works:appRouteOk,routing_2gis_works:twoGisRoutingWorks,checks,message:finalMessage});
  }
  if(a==="admin_update_commission_percent"){
   const percent=Number(p.commission_percent);if(!Number.isFinite(percent)||percent<0||percent>30)return fail("Комиссия должна быть от 0 до 30 процентов.");
