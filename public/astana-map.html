@@ -17,169 +17,28 @@ function init(){if(!window.L){toast('Карта не загрузилась. П�
 function locate(){if(!navigator.geolocation){userPos=ASTANA;setUser(ASTANA,false);return}navigator.geolocation.getCurrentPosition(p=>{userPos=[p.coords.latitude,p.coords.longitude];setUser(userPos,true)},()=>{if(!userPos){userPos=ASTANA;setUser(ASTANA,false);$('gpsstatus').textContent='GPS недоступен · карта открыта на Астане'}},{enableHighAccuracy:true,timeout:10000,maximumAge:15000})}
 function setUser(pos,real){if(!map)return;if(!userMarker)userMarker=L.circleMarker(pos,{radius:8,color:'#fff',weight:3,fillColor:'#1686ff',fillOpacity:1}).addTo(map).bindTooltip('Моё местоположение');else userMarker.setLatLng(pos);if(!dest)map.setView(pos,14);$('gpsstatus').textContent=real?'GPS определён. Расстояние считается от тебя.':'Показана Астана; разреши доступ к GPS для точного расстояния.'}
 function status(s){$('results').style.display='block';$('results').innerHTML='<div class="message">'+esc(s)+'</div>'}
-function feature(f){const p=f.properties||{},xy=f.geometry&&f.geometry.coordinates;if(!xy||!Number.isFinite(+xy[0])||!Number.isFinite(+xy[1]))return null;const city=p.city||p.town||p.village||p.municipality||p.county||p.state||'',street=p.street||p.name||p.locality||'',num=p.housenumber||'',title=p.name||[street,num].filter(Boolean).join(' ')||p.locality||p.city||p.town||p.village||'';return{title:title||'Найденный адрес',address:[street&&street!==title?street:null,num&&!street?num:null,city,p.state,p.country].filter(Boolean).join(', ')||p.label||'',lat:+xy[1],lon:+xy[0]}}
-const MAP_SEARCH_API='https://qyejqovxwniqlcsspmbc.supabase.co/functions/v1/astana-map-api';
-const ASTANA_SEARCH_BOX='70.15,50.30,72.75,51.75';
-let searchSequence=0;
-function canonical(q){
- let s=String(q||'').toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ').trim();
- if(/^(хоша|хош|коша|кош|косши|кошшы)$/.test(s))return 'косшы';
- if(/^коянда$/.test(s)||/^қоянда$/.test(s))return 'коянды';
- if(/^малиновка$/.test(s))return 'акмол малиновка';
- if(/^лесная поляна/.test(s))return s.replace(/м-н|мкр|микрорайон/g,'').trim();
- return s;
-}
-function isAstana(x){return /астан|astana|нур-султан|nur-sultan/i.test((x.address||'')+' '+(x.title||''))}
-function queryVariants(q){
- const raw=String(q||'').trim(),n=canonical(raw),v=[raw];
- const les=/лесная\s+поляна/i.test(n),num=(/(?:лесная\s+поляна)\s*[,№#]?\s*(?:дом\s*)?(\d+[а-яa-z]?)/i.exec(n)||[])[1];
- if(les){
-   if(num){
-     v.push('Улица Лесная поляна, '+num+', Косшы, Акмолинская область, Казахстан');
-     v.push('Микрорайон Лесная поляна, дом '+num+', Косшы, Акмолинская область, Казахстан');
-     v.push('Лесная поляна '+num+' Косшы');
-   }else v.push('Лесная поляна, Косшы, Акмолинская область, Казахстан');
- }else if(n==='косшы'||n==='хоша'||n==='хош'||n==='коша'||n==='кош'||n==='косши'||n==='кошшы'){
-   v.push('Косшы, Акмолинская область, Казахстан');
- }else if(n==='коянда'||n==='коянды'||n==='қоянды'){
-   v.push('Коянды, Акмолинская область, Казахстан');
- }else if(/малиновка|акмол/.test(n)){
-   v.push('Акмол (Малиновка), Акмолинская область, Казахстан');
-   v.push('Малиновка, Акмолинская область, Казахстан');
- }else if(/талапкер/.test(n)){
-   v.push('Талапкер, Акмолинская область, Казахстан');
- }else if(/^[а-яa-zәіңғүұқөһ\s-]{2,}$/i.test(raw)&&!/(астана|косшы|коянды|малиновка|талапкер|караганда|алматы|шымкент|кокшетау)/i.test(raw)){
-   v.push(raw+', Астана, Казахстан');
- }
- return [...new Set(v.map(x=>x.trim()).filter(Boolean))].slice(0,4);
-}
-function appendCandidate(out,x){
- if(!x||!Number.isFinite(Number(x.lat))||!Number.isFinite(Number(x.lon)))return;
- const lat=Number(x.lat),lon=Number(x.lon);
- if(Math.abs(lat)>90||Math.abs(lon)>180)return;
- x.lat=lat;x.lon=lon;
- x.title=String(x.title||x.primary||x.name||'Найденный адрес');
- x.address=String(x.address||x.secondary||x.label||x.title);
- out.push(x);
-}
-function parsePhoton(f){
- const p=f.properties||{},xy=f.geometry&&f.geometry.coordinates;
- if(!xy)return null;
- const city=p.city||p.town||p.village||p.municipality||p.county||'';
- const roadName=p.street||p.name||p.locality||'';
- const num=p.housenumber||'';
- let title=p.name|| (roadName&&num?roadName+', '+num:roadName)||p.locality||p.city||p.town||p.village||'';
- let address=[roadName&&roadName!==title?roadName:null,num&&!roadName?num:null,p.district,p.suburb,p.neighbourhood,city,p.state,p.postcode,p.country].filter(Boolean).join(', ');
- if(!address)address=String(p.label||title);
- return {title,address,lat:Number(xy[1]),lon:Number(xy[0]),source:'OpenStreetMap'};
-}
-function parseNominatim(f,q){
- const p=f.properties||{},a=p.address||{},xy=f.geometry&&f.geometry.coordinates;
- if(!xy)return null;
- const title=String(p.name||p.namedetails?.name||a.amenity||a.shop||a.tourism||a.building||a.house_name||(a.road&&a.house_number?a.road+', '+a.house_number:null)||a.road||a.neighbourhood||a.suburb||a.city||a.town||a.village||String(p.display_name||q).split(',')[0]);
- return {title,address:String(p.display_name||[a.road,a.house_number,a.neighbourhood,a.city||a.town||a.village,a.state,'Казахстан'].filter(Boolean).join(', ')),lat:Number(xy[1]),lon:Number(xy[0]),source:'OpenStreetMap'};
-}
-function localFallbacks(q,pos){
- const n=canonical(q),items=[];
- function add(match,title,address,lat,lon,kind){
-   if(!match)return;
-   items.push({title,address,lat,lon,source:'Ориентир населённого пункта',kind,distance:km(pos,[lat,lon])});
- }
- const exactHouse=/(?:лесная\s+поляна)\s*[,№#]?\s*(?:дом\s*)?16\b/i.test(n);
- if(/лесная\s+поляна/i.test(n)&&exactHouse){
-   add(true,'Улица Лесная поляна, 16','Микрорайон Лесная поляна, Косшы, Акмолинская область · точка адреса из картографического каталога',51.003308,71.375615,'Адрес');
- }else if(/лесная\s+поляна/i.test(n)&&!/\d/.test(n)){
-   add(true,'Микрорайон Лесная поляна','Косшы, Акмолинская область · ориентир района, не точный дом',51.003308,71.375615,'Микрорайон');
- }
- if(n==='косшы'||n==='хоша'||n==='хош'||n==='коша'||n==='кош'||n==='косши'||n==='кошшы'){
-   add(true,'Косшы','Акмолинская область, Казахстан · ориентир населённого пункта',50.975833,71.353889,'Город');
- }
- if(n==='коянда'||n==='коянды'||n==='қоянды'){
-   add(true,'Коянды','Акмолинская область, Казахстан · ориентир населённого пункта',51.279444,71.645278,'Село');
- }
- if(/^(малиновка|акмол)$/.test(n)){
-   add(true,'Акмол (Малиновка)','Акмолинская область, Казахстан · ориентир населённого пункта',51.068440,70.965240,'Село');
- }
- if(/^талапкер$/.test(n)){
-   add(true,'Талапкер','Акмолинская область, Казахстан · ориентир населённого пункта',51.243889,71.165278,'Село');
- }
- return items;
-}
-async function jsonFetch(url,timeoutMs){
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs||9000);
- try{const r=await fetch(url,{signal:controller.signal,headers:{'Accept':'application/json','Accept-Language':'ru,en'}});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}
- finally{clearTimeout(timer)}
-}
-function rankAndFilter(items,q,pos){
- const n=canonical(q),localIntent=/лесная\s+поляна|косшы|хоша|хош|коша|кош|косши|кошшы|коянда|коянды|малиновка|акмол|талапкер/i.test(q);
- const explicitFar=/алматы|шымкент|караганда|кокшетау|костанай|павлодар|атырау|актобе|уральск|семей|усть-каменогорск|тараз|туркестан|петропавловск|темиртау/i.test(q);
- const targetTokens=n.split(/[,\s]+/).filter(x=>x.length>1&&!['улица','ул','дом','мкр','микрорайон','казахстан','область','город'].includes(x));
- const unique=[];
- for(const x of items){
-   x.distance=km(pos,[x.lat,x.lon]);
-   x.fromAstana=km(ASTANA,[x.lat,x.lon]);
-   if(!explicitFar&&x.fromAstana>102)continue;
-   const key=x.lat.toFixed(4)+','+x.lon.toFixed(4)+'|'+canonical(x.title)+'|'+canonical(x.address);
-   if(unique.some(y=>y._key===key))continue;
-   x._key=key;
-   const text=canonical((x.title||'')+' '+(x.address||''));
-   x.relevance=targetTokens.reduce((s,t)=>s+(text.includes(t)?12:0),0);
-   if(/\d/.test(q)&&new RegExp('(^|\\D)'+q.match(/\d+/)[0]+'(\\D|$)').test(text))x.relevance+=35;
-   if(/лесная\s+поляна/i.test(q)&&/лесная\s+поляна/i.test(text))x.relevance+=45;
-   if(/косшы|хоша|хош|коша|кош/i.test(q)&&/косшы|kosshy/i.test(text))x.relevance+=60;
-   if(/коянда|коянды/i.test(q)&&/коянд/i.test(text))x.relevance+=60;
-   x.cityRank=isAstana(x)?0:1;
-   unique.push(x);
- }
- unique.sort((a,b)=>{
-   if(localIntent||/\d/.test(q))return b.relevance-a.relevance||a.distance-b.distance;
-   return a.cityRank-b.cityRank||b.relevance-a.relevance||a.distance-b.distance;
- });
- return unique.slice(0,35);
-}
-function search(){
- const q=$('query').value.trim();
- if(!q){$('results').style.display='none';return}
- const seq=++searchSequence;status('Ищем адреса в Астане и пригороде…');
- geocode(q).then(items=>{if(seq===searchSequence)render(items)}).catch(e=>{if(seq===searchSequence){console.warn(e);status('Поиск временно не ответил. Повтори попытку через несколько секунд.')}});
-}
-async function geocode(q){
- const pos=userPos||ASTANA,variants=queryVariants(q),out=[],errors=[];
- const apiVariants=variants.slice(0,2);
- const apiResults=await Promise.allSettled(apiVariants.map(async term=>{
-   const url=MAP_SEARCH_API+'?mode=search&q='+encodeURIComponent(term)+'&lat='+encodeURIComponent(pos[0])+'&lon='+encodeURIComponent(pos[1]);
-   const d=await jsonFetch(url,18000);
-   for(const r of d.results||[])appendCandidate(out,{title:r.primary||r.name||r.label,address:r.secondary||r.label||r.primary,lat:r.lat,lon:r.lon,source:r.source||'Серверный поиск',kind:r.kind});
- }));
- for(const r of apiResults)if(r.status==='rejected')errors.push(r.reason);
- const photonVariants=variants.slice(0,3);
- const photonResults=await Promise.allSettled(photonVariants.map(async term=>{
-   const url='https://photon.komoot.io/api/?limit=35&lang=ru&bbox='+ASTANA_SEARCH_BOX+'&lat='+ASTANA[0]+'&lon='+ASTANA[1]+'&q='+encodeURIComponent(term);
-   const d=await jsonFetch(url,9000);
-   for(const f of d.features||[])appendCandidate(out,parsePhoton(f));
- }));
- for(const r of photonResults)if(r.status==='rejected')errors.push(r.reason);
- let nearby=rankAndFilter(out,q,pos);
- if(nearby.length<3&&Date.now()-lastNom>1300){
-   lastNom=Date.now();
-   const raw=String(q||'').trim();
-   const nomQuery=variants.find(x=>/Косшы|Коянды|Малиновка|Акмол|Талапкер|Лесная поляна/i.test(x))||raw+', Астана, Казахстан';
-   try{
-     const url='https://nominatim.openstreetmap.org/search?format=geojson&addressdetails=1&namedetails=1&limit=30&countrycodes=kz&accept-language=ru&viewbox=70.15,51.75,72.75,50.30&bounded=1&q='+encodeURIComponent(nomQuery);
-     const d=await jsonFetch(url,10000);
-     for(const f of d.features||[])appendCandidate(out,parseNominatim(f,nomQuery));
-     nearby=rankAndFilter(out,q,pos);
-   }catch(e){errors.push(e)}
- }
- if(nearby.length===0){
-   for(const x of localFallbacks(q,pos))appendCandidate(out,x);
-   nearby=rankAndFilter(out,q,pos);
- }
- if(nearby.length===0&&errors.length>=apiVariants.length+photonVariants.length){
-   throw Error('Все поисковые источники временно недоступны');
- }
- return nearby;
-}
+function normalizeSearch(s){return String(s||'').toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/қ/g,'к').replace(/ғ/g,'г').replace(/ң/g,'н').replace(/ә/g,'а').replace(/ө/g,'о').replace(/і/g,'и').replace(/[ұү]/g,'у').replace(/хоша|хошшы|кошша|коша|косша|косшы|кошшы/g,'косшы').replace(/коянда|хойанды|коанды/g,'коянды').replace(/\s+/g,' ').trim()}
+function feature(f,q){const p=f.properties||{},xy=f.geometry&&f.geometry.coordinates;if(!xy||!Number.isFinite(+xy[0])||!Number.isFinite(+xy[1]))return null;const city=p.city||p.town||p.village||p.municipality||p.county||p.state||'',street=p.street||p.road||'',num=p.housenumber||p.house_number||'',name=p.name||p.locality||'',qn=normalizeSearch(q),wantsStreet=/лесн(ая|ой)\s+полян/.test(qn),houseWanted=(q.match(/\b\d+[a-zа-я]?\b/i)||[])[0]||'',primary=(wantsStreet&&street&&houseWanted)?street+', '+houseWanted:(street&&num&&(qn.includes(normalizeSearch(street))||qn.includes(normalizeSearch(num)))?street+', '+num:(name||[street,num].filter(Boolean).join(', ')||p.locality||p.suburb||city||'Найденный адрес'));const parts=[p.suburb,p.neighbourhood,p.district,city,p.county,p.state,p.postcode,p.country].filter(Boolean).map(String);const secondary=parts.filter((v,i,a)=>a.findIndex(x=>normalizeSearch(x)===normalizeSearch(v))===i).join(', ');const address=(street&&num)?[street,num,city,p.state,p.country].filter(Boolean).join(', '):(p.label||[street,city,p.state,p.country].filter(Boolean).join(', '));return{title:primary,address:address||secondary||primary,lat:+xy[1],lon:+xy[0],kind:p.osm_value||p.type||p.category||''}}
+function aliasesFor(q){const n=normalizeSearch(q),list=[q];const has=(...terms)=>terms.some(t=>n.includes(normalizeSearch(t)));if(has('лесная поляна')){const num=(q.match(/\b\d+[a-zа-я]?\b/i)||[])[0];list.push(num?'Лесная поляна, '+num+', Косшы, Акмолинская область, Казахстан':'Лесная поляна, Косшы, Акмолинская область, Казахстан','мкр Лесная Поляна, Косшы, Казахстан','Улица Лесная поляна, Косшы, Казахстан')}
+if(has('косшы','хоша','коша','кошша','косша','kosshy','кош'))list.push('Косшы, Акмолинская область, Казахстан','Kosshy, Kazakhstan');
+if(has('коянды','коянда','хойанды','коанды','koyandy'))list.push('Коянды, Акмолинская область, Казахстан','Қоянды, Казахстан','Koyandy, Kazakhstan');
+if(has('малиновка','акмол','malinovka'))list.push('Акмол (Малиновка), Акмолинская область, Казахстан','Малиновка, Акмолинская область, Казахстан');
+if(has('талапкер','talapker'))list.push('Талапкер, Акмолинская область, Казахстан');
+if(has('гульжан','гулжан','gulzhan'))list.push('Гульжан, торговый дом, проспект Абылай хана, 34, Астана','Гульжан, Астана, Казахстан');
+if(has('мега','mega'))list.push('MEGA Silk Way, Кабанбай батыра, 62, Астана','Мега, Астана, Казахстан');
+if(has('аэропорт','airport','терминал'))list.push('Международный аэропорт Астана, Казахстан','Nursultan Nazarbayev International Airport Astana Kazakhstan');
+if(!/астана|astana|косшы|kosshy|коянды|коянда|малиновка|акмол|талапкер|лесная поляна/i.test(q))list.push(q+', Астана, Казахстан');
+return [...new Set(list)].slice(0,5)}
+function anchorResults(q,pos){const n=normalizeSearch(q),r=[];const add=(title,address,lat,lon,terms,kind='Населённый пункт · ориентир')=>{if(terms.some(t=>n.includes(normalizeSearch(t))))r.push({title,address,lat,lon,kind,anchor:true,distance:km(pos,[lat,lon])})};
+if(n.includes('лесная поляна')&&(/\b16\b/.test(n)||n.includes('шестнадцать')))r.push({title:'Улица Лесная поляна, 16',address:'Косшы, Акмолинская область, Казахстан',lat:51.003308,lon:71.375615,kind:'Адрес · ориентир',anchor:true,distance:km(pos,[51.003308,71.375615])});
+add('Косшы','Акмолинская область, Казахстан',50.975833,71.353889,['косшы','хоша','коша','кошша','косша','kosshy','кош']);
+add('Коянды','Акмолинская область, Казахстан',51.275875,71.643096,['коянды','коянда','хойанды','коанды','koyandy']);
+add('Акмол (Малиновка)','Акмолинская область, Казахстан',51.068440,70.965240,['малиновка','акмол','malinovka']);
+add('Талапкер','Акмолинская область, Казахстан',51.243889,71.165278,['талапкер','talapker']);
+return r}
+function sortAndLimit(items,q,pos){const n=normalizeSearch(q),hasLocalAlias=/косшы|хоша|коша|кошша|косша|коянды|коянда|хойанды|коанды|малиновка|талапкер|лесная поляна|kosshy|koyandy/i.test(n),tokens=n.split(' ').filter(t=>t.length>1);const valid=items.filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lon)&&Math.abs(x.lat)<=90&&Math.abs(x.lon)<=180).map(x=>{const label=normalizeSearch((x.title||'')+' '+(x.address||''));x.distance=Number.isFinite(x.distance)?x.distance:km(pos,[x.lat,x.lon]);x.distanceAstana=km(ASTANA,[x.lat,x.lon]);x.inAstana=/астан|astana|нур-султан|nur-sultan/i.test((x.address||'')+' '+(x.title||''));x.local=x.distanceAstana<=110;x.match=tokens.length?tokens.filter(t=>label.includes(t)).length:0;x.exactStreet=/лесн(ая|ой)\s+полян/.test(n)&&/лесн(ая|ой)\s+полян/.test(label)&&(!/\b16\b/.test(n)||/\b16\b/.test(label));return x}).filter(x=>x.local&&(x.match>0||x.anchor||hasLocalAlias));const unique=new Map();for(const x of valid){const k=x.lat.toFixed(5)+','+x.lon.toFixed(5),prev=unique.get(k),quality=y=>(y.exactStreet?100:0)+y.match*10+(y.inAstana?15:0)+(y.anchor?8:0);if(!prev||quality(x)>quality(prev))unique.set(k,x)}return [...unique.values()].sort((a,b)=>{if(a.exactStreet!==b.exactStreet)return a.exactStreet?-1:1;if(hasLocalAlias){if(a.match!==b.match)return b.match-a.match;if(a.anchor!==b.anchor)return a.anchor?-1:1;return a.distance-b.distance}if(a.inAstana!==b.inAstana)return a.inAstana?-1:1;if(a.match!==b.match)return b.match-a.match;return a.distance-b.distance}).slice(0,35)}
+async function geocode(q){const pos=userPos||ASTANA,all=[],variants=aliasesFor(q);let photonSuccess=false;await Promise.allSettled(variants.map(async term=>{try{const url='https://photon.komoot.io/api/?limit=30&lang=ru&lat='+ASTANA[0]+'&lon='+ASTANA[1]+'&q='+encodeURIComponent(term),r=await fetch(url);if(!r.ok)throw Error('Photon '+r.status);const j=await r.json();photonSuccess=true;for(const f of j.features||[]){const x=feature(f,q);if(x)all.push(x)}}catch(e){console.warn('Photon lookup variant failed',term,e)}}));let ranked=sortAndLimit(all,q,pos);const street=/лесн(ая|ой)\s+полян/.test(normalizeSearch(q)),needsNom=ranked.length===0||(street&&!ranked.some(x=>x.exactStreet));if(needsNom&&Date.now()-lastNom>1100){lastNom=Date.now();for(const term of variants.slice(0,3)){try{const url='https://nominatim.openstreetmap.org/search?format=geojson&addressdetails=1&namedetails=1&limit=20&countrycodes=kz&accept-language=ru&q='+encodeURIComponent(term),r=await fetch(url,{headers:{'Accept-Language':'ru'}});if(!r.ok)throw Error('Nominatim '+r.status);const j=await r.json();for(const f of j.features||[]){const p=f.properties||{},a=p.address||{},xy=f.geometry&&f.geometry.coordinates;if(!xy||!Number.isFinite(+xy[0])||!Number.isFinite(+xy[1]))continue;const road=a.road||a.pedestrian||a.residential||'',house=a.house_number||'',city=a.city||a.town||a.village||a.municipality||'',title=(street&&road&&house)?road+', '+house:(p.name||p.namedetails?.name||[road,house].filter(Boolean).join(', ')||a.shop||a.amenity||city||String(p.display_name||q).split(',')[0]),address=[road,house,city,a.state,a.country].filter(Boolean).join(', ')||p.display_name||'';all.push({title,address,lat:+xy[1],lon:+xy[0],kind:p.type||p.class||''})}ranked=sortAndLimit(all,q,pos);if(ranked.length&&(!street||ranked.some(x=>x.exactStreet)))break}catch(e){console.warn('Nominatim fallback failed',term,e)}}}
+for(const x of anchorResults(q,pos)){if(!ranked.some(y=>km([x.lat,x.lon],[y.lat,y.lon])<.15&&normalizeSearch(x.title)===normalizeSearch(y.title)))ranked.push(x)}ranked=sortAndLimit(ranked,q,pos);if(!ranked.length&&!photonSuccess)console.warn('Geocoding sources were unavailable; search stayed within Astana area');return ranked}
 function render(items){
  $('results').style.display='block';
  if(!items.length){$('results').innerHTML='<div class="message">Рядом с Астаной не найдено точного совпадения. Для «Лесная поляна 16» попробуй вариант «Лесная поляна, 16, Косшы».</div>';return}
