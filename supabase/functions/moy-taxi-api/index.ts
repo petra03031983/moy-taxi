@@ -229,7 +229,7 @@ async function suggestAddresses(query:string,nearPoint:{lat:number,lng:number}|n
      const city=divisions.find((value:string)=>/астана|алматы|тал[аә]пкер|город/i.test(value))||divisions[0]||"Казахстан";
      let resolvedPoint=point;
      if(!resolvedPoint&&rows.length<3&&mode!=="object"){
-try{resolvedPoint=await geocodePoint(label,nearPoint,key,c)}catch{}
+       try{resolvedPoint=await geocodePoint(label,nearPoint,key,c)}catch{}
      }
      if(!resolvedPoint)continue;
      rows.push({name,label,city,lat:resolvedPoint.lat,lng:resolvedPoint.lng,provider:"2gis",suggest_type:mode});
@@ -251,8 +251,8 @@ if(e instanceof Error&&e.message.includes("2ГИС отклонил")){if(c)awai
  if(errors.length)console.error("2GIS suggestion providers returned errors",errors.slice(0,10));
  // Final fallback: even if Suggest returns no coordinate-bearing item, resolve the typed address through the official 2GIS Geocoder.
  try{
-const point=await geocodePoint(clean,nearPoint,key,c);
-const canonical=await reverseGeocodePoint2gis(point,key,c);
+   const point=await geocodePoint(clean,nearPoint,key,c);
+   const canonical=await reverseGeocodePoint2gis(point,key,c);
   const label=canonical?.label||(nearAstana&&!hasCity?clean+", Астана, Казахстан":clean);
   const city=canonical?.city||(nearAstana?"Астана":"Казахстан");
    const fallback=[{name:label.split(",")[0]||clean,label,city,lat:point.lat,lng:point.lng,provider:"2gis",suggest_type:"geocoder"}];
@@ -359,16 +359,16 @@ if(a.startsWith("admin_")){
   }catch(e){checks.suggest={ok:false,detail:"нет ответа ("+(e instanceof Error?e.message:"ошибка сети")+")"}}
   let fromPoint:any=null,toPoint:any=null;
   try{
-fromPoint=await geocodePoint("Астана",null,key,c);
+    fromPoint=await geocodePoint("Астана",null,key,c);
    checks.geocoder={ok:true,detail:"работает"};
   }catch(e){
    checks.geocoder={ok:false,detail:e instanceof Error?e.message:"ошибка геокодера"};
   }
   if(fromPoint){
    try{
-geocodePoint("Байтерек, Астана",fromPoint,key,c)
+     toPoint=await geocodePoint("Байтерек, Астана",fromPoint,key,c);
     if(km(fromPoint.lat,fromPoint.lng,toPoint.lat,toPoint.lng)<0.15){
-geocodePoint("Хан Шатыр, Астана",fromPoint,key,c)
+      toPoint=await geocodePoint("Хан Шатыр, Астана",fromPoint,key,c);
     }
     const route=await roadDistance(fromPoint,toPoint,key);
     checks.routing={ok:true,detail:"работает ("+route.distanceKm.toFixed(1)+" км, около "+route.durationMin+" мин.)"};
@@ -528,7 +528,7 @@ const route=await resilientRoadDistance(c,pickupPoint,destinationPoint,key);
   if(error||!settingsRow)return fail("Не удалось загрузить тарифы.",500);
   const {data:onlineRows}=await c.from("drivers").select("vehicle_class").eq("is_online",true).limit(1000);
   const onlineClasses=[...new Set((onlineRows||[]).map((r:any)=>vehicleClass(r.vehicle_class)))];
-route_provider:route.provider||"2gis",route_notice:route.route_notice||"",estimated_prices:
+   return reply({ok:true,pickup_point:pickupPoint,destination_point:destinationPoint,distance_km:Number(route.distanceKm.toFixed(2)),duration_minutes:route.durationMin,route_geometry:route.geometry,route_provider:route.provider||"2gis",route_notice:route.route_notice||"",estimated_prices:quoteFor(settingsRow.vehicle_rates,route.distanceKm),online_classes:onlineClasses,test_mode:settingsRow.test_mode!==false});
  }catch(e){return fail(e instanceof Error?e.message:"Не удалось рассчитать маршрут.",422)}
 }
 if(a==="create_order"){
