@@ -3,6 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { callApi, statusLabel } from "../../api";
 
+const VEHICLE_CLASSES = [
+  { id: "economy", label: "Эконом", icon: "🚕" },
+  { id: "comfort", label: "Комфорт", icon: "🚘" },
+  { id: "comfort_plus", label: "Комфорт+", icon: "✨" },
+  { id: "business", label: "Бизнес", icon: "🖤" },
+  { id: "minivan", label: "Минивэн", icon: "🚐" },
+  { id: "premium", label: "Премиум", icon: "⭐" },
+];
+
 function distanceKm(lat1, lon1, lat2, lon2) {
   if ([lat1, lon1, lat2, lon2].some(v => typeof v !== "number" || !Number.isFinite(v))) return null;
   const R = 6371, rad = v => v * Math.PI / 180;
@@ -27,6 +36,7 @@ export default function ClientOrder() {
   const [locationStatus, setLocationStatus] = useState("locating");
   const [order, setOrder] = useState(null);
   const [price, setPrice] = useState("");
+  const [selectedVehicleClass, setSelectedVehicleClass] = useState("");
   const [ratingStars, setRatingStars] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
   const [savingRating, setSavingRating] = useState(false);
@@ -121,7 +131,10 @@ export default function ClientOrder() {
     const load = async () => {
       try {
         const result = await callApi("availability", { driver_code: driverCode });
-        if (live) setDriver(result.driver);
+        if (live) {
+          setDriver(result.driver);
+          setSelectedVehicleClass(current => current || result.driver?.vehicle_class || "economy");
+        }
       } catch (e) {
         if (live) setError(e.message || "Не удалось загрузить водителя.");
       } finally { if (live) setLoading(false); }
@@ -169,6 +182,7 @@ export default function ClientOrder() {
       const destinationPoint = await geocodeDestination(destination, pickupPoint);
       const result = await callApi("create_order", {
         driver_code: driverCode, name, phone,
+        vehicle_class: selectedVehicleClass || driver?.vehicle_class || "economy",
         pickup_address: pickup, destination_address: destination, comment,
         pickup_lat: pickupPoint?.lat ?? null, pickup_lng: pickupPoint?.lng ?? null,
         destination_lat: destinationPoint.lat, destination_lng: destinationPoint.lng,
@@ -281,6 +295,7 @@ export default function ClientOrder() {
       <p><b>Автомобиль:</b> {driver.car_model || "—"} · {driver.car_color || "цвет не указан"} · {driver.car_plate || "номер не указан"}</p>
       <p><b>📍 Откуда:</b> {order.pickup_address || "—"}</p>
       <p><b>🏁 Куда:</b> {order.destination_address || "—"}</p>
+      <p><b>🚕 Тариф:</b> {VEHICLE_CLASSES.find(item => item.id === order.vehicle_class)?.label || "Эконом"}</p>
       {order.client_price > 0 && <p><b>💰 Цена клиента:</b> {Number(order.client_price).toLocaleString("ru-RU")} ₸</p>}
       {order.price_status === "driver_offered" && order.status === "new" && <div className="price-offer"><h3>Водитель предлагает свою цену</h3><p><b>{Number(order.driver_price).toLocaleString("ru-RU")} ₸</b>{order.client_price > 0 ? ` вместо ${Number(order.client_price).toLocaleString("ru-RU")} ₸` : ""}</p><div className="actions"><button className="button primary" disabled={busy} onClick={() => answerPrice("client_accept_price")}>Согласиться на цену</button><button className="button danger" disabled={busy} onClick={() => answerPrice("client_decline_price")}>Отклонить цену</button></div></div>}
       {order.price_status === "declined" && order.status === "new" && <p className="muted">Вы отклонили последнее предложение водителя. Можно дождаться новой цены.</p>}
@@ -304,6 +319,10 @@ export default function ClientOrder() {
         <div className="field"><label htmlFor="destination-address">Куда ехать</label>
           <input id="destination-address" required maxLength={300} value={destination} onChange={e => setDestination(e.target.value)} placeholder="Адрес, улица и дом или название места" />
           <p className="muted small">Напишите адрес назначения. Отмечать точку на карте не нужно.</p>
+        </div>
+        <div className="field"><label>Тариф поездки</label>
+          <div className="class-grid class-list">{VEHICLE_CLASSES.map(item => <button key={item.id} type="button" className={selectedVehicleClass === item.id ? "class-option selected" : "class-option"} aria-pressed={selectedVehicleClass === item.id} onClick={() => setSelectedVehicleClass(item.id)}><span className="class-icon">{item.icon}</span><b className="class-name">{item.label}</b><span className="class-price">{selectedVehicleClass === item.id ? "Выбран" : "Выбрать"}</span></button>)}</div>
+          <p className="muted small">Выбранный тариф будет указан в карточке заказа у водителя.</p>
         </div>
         <div className="field"><label htmlFor="client-price">Ваша цена, ₸</label><input id="client-price" type="number" min="100" max="1000000" step="50" value={price} onChange={e => setPrice(e.target.value)} placeholder="Например, 2000" /><p className="muted small">Водитель увидит предложение и сможет принять его или предложить другую стоимость.</p></div>
         <div className="field"><label htmlFor="client-comment">Комментарий</label><textarea id="client-comment" maxLength={500} value={comment} onChange={e => setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
