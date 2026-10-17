@@ -577,7 +577,16 @@ if(a==="client_accept_offer"||a==="client_decline_offer"){
  return reply({ok:true,order:enrich(claimed,claimed.drivers),offer:selected});
 }
 if(a==="client_accept_price"||a==="client_decline_price"){const id=String(p.order_id||""),token=String(p.client_token||"");if(!id||!token)return fail("Не хватает номера заказа.");const {data:o,error}=await c.from("orders").select("id,status,price_status,driver_price").eq("id",id).eq("client_token",token).maybeSingle();if(error||!o)return fail("Заказ не найден.",404);if(o.status!=="new"||o.price_status!=="driver_offered"||!Number(o.driver_price))return fail("Предложение цены уже недоступно.");const accept=a==="client_accept_price";const patch=accept?{price_status:"accepted",agreed_price:o.driver_price}:{price_status:"declined"};const {data:u,error:ue}=await c.from("orders").update(patch).eq("id",id).eq("client_token",token).select("*").single();if(ue||!u)return fail("Не удалось сохранить ответ на цену.",500);return reply({ok:true,order:u})}
-if(a==="cancel_order"){const id=String(p.order_id||""),token=String(p.client_token||"");const {data:o}=await c.from("orders").select("id,status").eq("id",id).eq("client_token",token).maybeSingle();if(!o)return fail("Заказ не найден.",404);if(o.status!=="new")return fail("Этот заказ уже принят водителем.");const {data:u,error}=await c.from("orders").update({status:"cancelled"}).eq("id",id).select("id,status").single();if(error)return fail("Не удалось отменить заказ.",500);return reply({ok:true,order:u})}
+if(a==="cancel_order"){
+ const id=String(p.order_id||""),token=String(p.client_token||"");
+ const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id").eq("id",id).eq("client_token",token).maybeSingle();
+ if(oe||!o)return fail("Заказ не найден.",404);
+ if(!["new","accepted","arrived","client_ready"].includes(o.status))return fail(o.status==="started"?"Поездка уже началась. Отменить её в приложении нельзя.":"Этот заказ уже завершён или недоступен.");
+ const cancelledAt=new Date().toISOString();
+ const {data:u,error}=await c.from("orders").update({status:"cancelled",cancelled_at:cancelledAt}).eq("id",id).eq("client_token",token).eq("status",o.status).select("id,status,driver_id,cancelled_at").maybeSingle();
+ if(error||!u)return fail("Не удалось отменить заказ. Обнови статус и попробуй ещё раз.",409);
+ return reply({ok:true,order:u})
+}
 if(["driver_me","driver_wallet","driver_list","driver_history","driver_update","driver_toggle_online","driver_update_profile","driver_logout","driver_location","driver_offer_price","driver_accept_broadcast","driver_skip_order"].includes(a)){const s=await sess(c,p);if(!s.driver)return fail(s.error||"Нужен вход.",s.status||401);const d=s.driver;if(a==="driver_me"){
  const {data:ratingRows}=await c.from("driver_ratings").select("stars").eq("driver_id",d.id).limit(10000);
  const scores=(ratingRows||[]).map((x:any)=>Number(x.stars)).filter((x:number)=>x>=1&&x<=5);
@@ -652,11 +661,13 @@ if(a==="driver_skip_order"){
  if(error)return fail("Не удалось изменить статус.",500);
  return reply({ok:true,is_online:u.is_online,driver:pub(u)});
 }if(a==="driver_update_profile"){const name=String(p.name||"").trim().slice(0,100),car=String(p.car_model||"").trim().slice(0,100),plate=String(p.car_plate||"").trim().slice(0,30),color=String(p.car_color||"").trim().slice(0,40),photo=String(p.photo_url||""),vclass=vehicleClass(p.vehicle_class||d.vehicle_class);if(!name)return fail("Имя не может быть пустым.");if(photo.length>250000)return fail("Фото слишком большое.");const {data:u,error}=await c.from("drivers").update({name,car_model:car||null,car_plate:plate||null,car_color:color||null,vehicle_class:vclass,photo_url:photo||null,updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось обновить профиль.",500);return reply({ok:true,driver:pub(u)})}if(a==="driver_list"){
- const [assignedQ,broadcastQ]=await Promise.all([
+ const cancellationCutoff=new Date(Date.now()-10*60*1000).toISOString();
+ const [assignedQ,broadcastQ,cancelledQ]=await Promise.all([
   c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).in("status",["new","accepted","arrived","client_ready","started"]).order("created_at",{ascending:false}),
-  c.from("orders").select("*,clients(name,phone)").is("driver_id",null).eq("status","new").order("created_at",{ascending:false}).limit(100)
+  c.from("orders").select("*,clients(name,phone)").is("driver_id",null).eq("status","new").order("created_at",{ascending:false}).limit(100),
+  c.from("orders").select("id,status,driver_id,cancelled_at,created_at").eq("driver_id",d.id).eq("status","cancelled").gte("cancelled_at",cancellationCutoff).order("cancelled_at",{ascending:false}).limit(20)
  ]);
- if(assignedQ.error||broadcastQ.error)return fail("Не удалось загрузить заказы.",500);
+ if(assignedQ.error||broadcastQ.error||cancelledQ.error)return fail("Не удалось загрузить заказы.",500);
  const locationAge=d.location_updated_at?Date.now()-Date.parse(d.location_updated_at):Infinity;
  const hasFreshLocation=locationAge>=0&&locationAge<=5*60*1000&&d.current_lat!==null&&d.current_lat!==undefined&&d.current_lng!==null&&d.current_lng!==undefined&&Number.isFinite(Number(d.current_lat))&&Number.isFinite(Number(d.current_lng));
  const ids=new Set((assignedQ.data||[]).map((o:any)=>o.id));
@@ -671,7 +682,7 @@ if(a==="driver_skip_order"){
  const all=[...(assignedQ.data||[]),...nearbyBroadcasts.filter((o:any)=>!ids.has(o.id))].sort((a:any,b:any)=>Date.parse(b.created_at)-Date.parse(a.created_at));
  const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
  const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="skipped").map((x:any)=>x.order_id));
- return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),is_online:d.is_online,search_radius_km:requestedSearchRadiusKm,gps_fresh:hasFreshLocation});
+ return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),recently_cancelled:cancelledQ.data||[],is_online:d.is_online,search_radius_km:requestedSearchRadiusKm,gps_fresh:hasFreshLocation});
 }if(a==="driver_history"){const {data:os,error}=await c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).eq("status","completed").order("completed_at",{ascending:false}).limit(100);if(error)return fail("Не удалось загрузить историю.",500);return reply({ok:true,orders:os||[]})}if(a==="driver_update"){
  const id=String(p.order_id||""),status=String(p.status||"");
  if(!["accepted","arrived","started","completed","cancelled"].includes(status))return fail("Недопустимый статус.");
