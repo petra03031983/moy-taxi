@@ -604,7 +604,7 @@ if(a==="driver_wallet"){
  const {data:o,error:oe}=await c.from("orders").select("*").eq("id",id).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
  if(o.status!=="new"||o.driver_id)return fail("Этот заказ уже принят другим водителем.");
- if(vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Заказ относится к другому классу автомобиля.");
+
  const {data:settingsRow,error:se}=await c.from("platform_settings").select("test_mode,minimum_wallet_balance").eq("id",true).maybeSingle();
  if(se||!settingsRow)return fail("Не удалось проверить настройки кошелька.",500);
  if(settingsRow.test_mode!==true&&Number(d.wallet_balance||0)<Number(settingsRow.minimum_wallet_balance||500))return fail("Недостаточно денег на лицевом счёте. Пополни баланс перед принятием заказов.");
@@ -629,7 +629,7 @@ if(a==="driver_offer_price"){
  const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,vehicle_class,client_price").eq("id",id).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
  if(o.status!=="new"||(o.driver_id&&o.driver_id!==d.id))return fail("Этот заказ уже недоступен.");
- if(!o.driver_id&&vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Этот заказ для другого класса автомобиля.");
+
  const base=amount(o.client_price);
  const maxOffer=base>0?Math.floor(base*1.3/50)*50:0;
  if(base>0&&price<base)return fail("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");
@@ -646,7 +646,7 @@ if(a==="driver_skip_order"){
  const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,vehicle_class,client_price").eq("id",id).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
  if(o.status!=="new"||o.driver_id)return fail("Этот заказ уже недоступен.");
- if(vehicleClass(o.vehicle_class)!==vehicleClass(d.vehicle_class))return fail("Этот заказ для другого класса автомобиля.");
+
  const {error}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price:Math.max(100,Number(o.client_price)||100),status:"skipped",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"});
  if(error)return fail("Не удалось убрать заказ из списка.",500);
  return reply({ok:true});
