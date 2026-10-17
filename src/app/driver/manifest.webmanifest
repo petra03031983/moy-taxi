@@ -1,0 +1,18 @@
+{
+  "id": "/moy-taxi-driver-v4",
+  "name": "Мой Такси — Водитель",
+  "short_name": "Мой Такси Водитель",
+  "description": "Приложение водителя Мой Такси.",
+  "start_url": "/driver",
+  "scope": "/driver",
+  "display": "standalone",
+  "background_color": "#f5f7f5",
+  "theme_color": "#146b4b",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
+  "icons": [
+    {"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},
+    {"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
