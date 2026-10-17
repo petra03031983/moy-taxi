@@ -78,7 +78,7 @@ export default function PassengerPage() {
       callApi("address_suggest", { query: pickup }).then(result => {
         if (active) setPickupSuggestions(result.suggestions || []);
       }).catch(() => { if (active) setPickupSuggestions([]); });
-    }, 450);
+    }, 650);
     return () => { active = false; clearTimeout(timer); };
   }, [pickup, pickupPoint]);
 
@@ -113,7 +113,7 @@ export default function PassengerPage() {
       } finally {
         if (active) setSuggestionLoading(false);
       }
-    }, 450);
+    }, 650);
     return () => { active = false; clearTimeout(timer); };
   }, [destination, destinationPoint, pickupPoint?.lat, pickupPoint?.lng]);
 
