@@ -1,18 +1,16 @@
 {
-  "id": "/moy-taxi-owner-v1",
-  "name": "Мой Такси — Владелец",
-  "short_name": "Мой Такси Владелец",
-  "description": "Кабинет владельца таксопарка Мой Такси.",
+  "id": "/moy-taxi-new-v1",
+  "name": "Moy Taxi NEW",
+  "short_name": "Moy Taxi NEW",
+  "description": "Мой Такси — новая версия.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f7f5",
-  "theme_color": "#146b4b",
+  "background_color": "#f4d21f",
+  "theme_color": "#f4d21f",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [
-    {"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
-    {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},
     {"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
   ]
 }
