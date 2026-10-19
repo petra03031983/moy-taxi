@@ -3,7 +3,7 @@ const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Heade
 const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:corsHeaders});const fail=(m:string,s=400)=>reply({ok:false,error:m},s);const enc=new TextEncoder();const hex=(b:ArrayBuffer|Uint8Array)=>Array.from(b instanceof Uint8Array?b:new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("");const fromHex=(v:string)=>new Uint8Array((v.match(/.{1,2}/g)||[]).map(x=>parseInt(x,16)));
 async function sha256(v:string){return hex(await crypto.subtle.digest("SHA-256",enc.encode(v)))}async function passwordHash(p:string,s:string){const k=await crypto.subtle.importKey("raw",enc.encode(p),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",salt:fromHex(s),iterations:120000,hash:"SHA-256"},k,256))}function equal(a:string,b:string){if(a.length!==b.length)return false;let d=0;for(let i=0;i<a.length;i++)d|=a.charCodeAt(i)^b.charCodeAt(i);return d===0}function phone(v:unknown){let d=String(v||"").replace(/\D/g,"");if(d.length===11&&d.startsWith("8"))d="7"+d.slice(1);return d.length>=10&&d.length<=15?"+"+d:""}
 const VEHICLE_CLASSES=["economy","comfort","comfort_plus","business","minivan","premium"];
-const DRIVER_OFFER_TTL_MS=60*1000;
+const DRIVER_OFFER_TTL_MS=10*1000;
 function vehicleClass(v:unknown){const x=String(v||"economy");return VEHICLE_CLASSES.includes(x)?x:"economy"}
 function pub(d:any){return {id:d.id,account_number:d.account_number||null,public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),photo_url:d.photo_url||"",wallet_balance:Number(d.wallet_balance||0),is_online:Boolean(d.is_online),current_lat:d.current_lat??null,current_lng:d.current_lng??null,location_updated_at:d.location_updated_at||null,documents_verified:Boolean(d.documents_verified)}}
 async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!u||!k)throw new Error("Server configuration is incomplete");return createClient(u,k,{auth:{persistSession:false,autoRefreshToken:false}})}
@@ -634,7 +634,7 @@ if(a==="order_status"){
  const {data:o,error}=await c.from("orders").select("*,drivers(name,phone,car_model,car_plate,car_color,photo_url,is_online,current_lat,current_lng,location_updated_at,documents_verified,vehicle_class)").eq("id",id).eq("client_token",token).maybeSingle();
  if(error||!o)return fail("Заказ не найден.",404);
  const offerCutoff=new Date(Date.now()-DRIVER_OFFER_TTL_MS).toISOString(),offerExpiredAt=new Date().toISOString();
- const {data:expiredOffers,error:expiryError}=await c.from("order_offers").update({status:"skipped",responded_at:offerExpiredAt,updated_at:offerExpiredAt}).eq("order_id",id).eq("status","pending").lt("created_at",offerCutoff).select("id");
+ const {data:expiredOffers,error:expiryError}=await c.from("order_offers").update({status:"declined",responded_at:offerExpiredAt,updated_at:offerExpiredAt}).eq("order_id",id).eq("status","pending").lt("created_at",offerCutoff).select("id");
  if(expiryError)console.warn("Could not expire old offers for order_status",expiryError.message);
  if((expiredOffers||[]).length&&o.status==="new"&&o.price_status==="driver_offered")await c.from("orders").update({price_status:"pending",driver_price:null}).eq("id",id).eq("client_token",token).eq("status","new").eq("price_status","driver_offered");
  const [offersQ,ratingQ]=await Promise.all([
@@ -677,7 +677,7 @@ if(a==="client_accept_offer"||a==="client_decline_offer"){
  if(ofe||!offer)return fail("Предложение водителя не найдено.",404);
  if(offer.status!=="pending")return fail("Это предложение уже недоступно.",409);
  const offerCreatedAt=Date.parse(offer.created_at||"");
- if(Number.isFinite(offerCreatedAt)&&Date.now()-offerCreatedAt>=DRIVER_OFFER_TTL_MS){const expiredAt=new Date().toISOString();await c.from("order_offers").update({status:"skipped",responded_at:expiredAt,updated_at:expiredAt}).eq("id",offerId).eq("status","pending");return fail("Время ответа на предложение истекло. Попроси водителя предложить цену заново.",409);}
+ if(Number.isFinite(offerCreatedAt)&&Date.now()-offerCreatedAt>=DRIVER_OFFER_TTL_MS){const expiredAt=new Date().toISOString();await c.from("order_offers").update({status:"declined",responded_at:expiredAt,updated_at:expiredAt}).eq("id",offerId).eq("status","pending");return fail("Время ответа на предложение истекло. Попроси водителя предложить цену заново.",409);}
  if(a==="client_decline_offer"){
   const {data:declined,error}=await c.from("order_offers").update({status:"declined",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",offerId).eq("status","pending").select("id,status").maybeSingle();
   if(error||!declined)return fail("Не удалось отклонить предложение.",500);
@@ -778,7 +778,7 @@ if(a==="driver_skip_order"){
 }if(a==="driver_update_profile"){const name=String(p.name||"").trim().slice(0,100),car=String(p.car_model||"").trim().slice(0,100),plate=String(p.car_plate||"").trim().slice(0,30),color=String(p.car_color||"").trim().slice(0,40),photo=String(p.photo_url||""),vclass=vehicleClass(p.vehicle_class||d.vehicle_class);if(!name)return fail("Имя не может быть пустым.");if(photo.length>250000)return fail("Фото слишком большое.");const {data:u,error}=await c.from("drivers").update({name,car_model:car||null,car_plate:plate||null,car_color:color||null,vehicle_class:vclass,photo_url:photo||null,updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось обновить профиль.",500);return reply({ok:true,driver:pub(u)})}if(a==="driver_list"){
  const cancellationCutoff=new Date(Date.now()-10*60*1000).toISOString();
  const offerCutoff=new Date(Date.now()-DRIVER_OFFER_TTL_MS).toISOString(),offerExpiredAt=new Date().toISOString();
- const {data:expiredDriverOffers,error:expireDriverOffersError}=await c.from("order_offers").update({status:"skipped",responded_at:offerExpiredAt,updated_at:offerExpiredAt}).eq("driver_id",d.id).eq("status","pending").lt("created_at",offerCutoff).select("order_id");
+ const {data:expiredDriverOffers,error:expireDriverOffersError}=await c.from("order_offers").update({status:"declined",responded_at:offerExpiredAt,updated_at:offerExpiredAt}).eq("driver_id",d.id).eq("status","pending").lt("created_at",offerCutoff).select("order_id");
  if(expireDriverOffersError)console.warn("Could not expire old driver offers",expireDriverOffersError.message);
  const expiredDriverOrderIds=[...new Set((expiredDriverOffers||[]).map((x:any)=>String(x.order_id)).filter(Boolean))];
  if(expiredDriverOrderIds.length)await c.from("orders").update({price_status:"pending",driver_price:null}).in("id",expiredDriverOrderIds).eq("driver_id",d.id).eq("status","new").eq("price_status","driver_offered");
