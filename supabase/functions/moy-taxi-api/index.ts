@@ -632,7 +632,7 @@ if(a==="create_order"){
   price_status:"pending",agreed_price:null
  }).select("*").single();
  if(oe||!o)return fail("Не удалось отправить заказ.",500);
- return reply({ok:true,order:o,assigned_driver:d?pub(d):null,searching:autoPrice,test_mode:serverTestMode});
+ return reply({ok:true,order:o,assigned_driver:d?publicDriver(d):null,searching:autoPrice,test_mode:serverTestMode});
 }
 if(a==="order_status"){
  const id=String(p.order_id||""),token=String(p.client_token||"");
