@@ -380,23 +380,19 @@ export default function Home(){
     setError(wrongClass?"Этот заказ относится к другому классу автомобиля. Его можно увидеть в ленте, но принять нельзя.":"Этот тариф выключен в настройках водителя.");
     return;
   }
-  const mapTab=window.open("about:blank","_blank");
   try{
-    let acceptedOrder=o;
     if(o.driver_id){
       const ok=await updateOrder(o.id,"accepted");
-      if(!ok){mapTab?.close();return}
+      if(!ok)return;
     }else{
-      const result=await callApi("driver_accept_broadcast",{...session,order_id:o.id});
-      acceptedOrder=result.order||o;
+      await callApi("driver_accept_broadcast",{...session,order_id:o.id});
       const list=await callApi("driver_list",session);
       setOrders(sortOrdersNewestFirst(list.orders||[]));
-      setNotice("Заказ принят за "+Number(result.fare||o.client_price||0).toLocaleString("ru-RU")+" ₸. Открываем маршрут к клиенту.");
     }
-    if(mapTab){mapTab.location.href=navigationRoute(acceptedOrder.pickup_lat,acceptedOrder.pickup_lng,acceptedOrder.pickup_address)}
-    else{setNotice("Заказ принят. Нажми «Маршрут к клиенту в 2GIS», чтобы открыть навигатор.")}
+    setTab("orders");
     setSelectedOrderId(null);setOfferCustomOpen(false);
-  }catch(e){mapTab?.close();setError(e.message||"Не удалось принять заказ.")}
+    setNotice("Заказ принят. Маршрут можно открыть отдельно кнопкой в карточке заказа.");
+  }catch(e){setError(e.message||"Не удалось принять заказ.")}
 }
  async function offerPrice(o,overridePrice){if(tariffModes.noBargaining){setError("В настройках включён режим «Без торга». Выключи его, чтобы предложить свою цену.");return}if(!o?.driver_id&&!orderClassAllowed(o)){setError(!isCourierOrder(o)&&String(o?.vehicle_class||"economy")!==String(driver?.vehicle_class||"economy")?"Этот заказ относится к другому классу автомобиля.":"Этот тариф выключен в настройках водителя.");return}const amount=Number(overridePrice??offerPrices[o.id]),base=counterOfferBase(o),cap=maxCounterOffer(o);if(!Number.isFinite(amount)||amount<base){setError("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");return}if(!Number.isInteger(amount)||amount>cap){setError("Максимальная цена — "+cap.toLocaleString("ru-RU")+" ₸ (не более 30% сверху).");return}setError("");try{const sent=await callApi("driver_offer_price",{...session,order_id:o.id,price:amount});const createdAt=sent?.offer?.created_at||new Date().toISOString();setSelectedOrderId(null);setOfferCustomOpen(false);setTab("orders");setOfferWaitOverlay({orderId:String(o.id),price:amount,createdAt,order:o});const d=await callApi("driver_list",session);setOrders(sortOrdersNewestFirst(d.orders||[]));setNotice("");setOfferPrices(prev=>({...prev,[o.id]:""}));}catch(e){setError(e.message||"Не удалось отправить цену.")}}
  async function skipOrder(o){try{await callApi("driver_skip_order",{...session,order_id:o.id});setOrders(prev=>prev.filter(item=>item.id!==o.id));setNotice("Заказ скрыт только у тебя. Пассажир продолжит получать предложения других водителей.")}catch(e){setError(e.message||"Не удалось убрать заказ из списка.")}}
