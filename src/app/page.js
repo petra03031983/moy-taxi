@@ -63,7 +63,7 @@ function orderAge(value){
  if(hours<24)return hours+" ч.";
  return new Date(time).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"});
 }
-const DRIVER_OFFER_TTL_MS=10*1000;
+const DRIVER_OFFER_TTL_MS=15*1000;
 function offerTimeRemaining(offer,now=Date.now()){
  const created=Date.parse(offer?.created_at||"");
  if(!Number.isFinite(created))return 0;
@@ -178,7 +178,10 @@ export default function Home(){
   if(offerWaitOverlay){
    if(offerTimeRemaining({created_at:offerWaitOverlay.createdAt},clockNow)<=0){setOfferWaitOverlay(null);return}
    const current=orders.find(o=>String(o.id)===String(offerWaitOverlay.orderId));
-   const currentOfferCreatedAt=Date.parse(current?.my_offer?.created_at||"");const waitingSince=Date.parse(offerWaitOverlay.createdAt||"");if(current?.my_offer&&current.my_offer.status!=="pending"&&Number.isFinite(currentOfferCreatedAt)&&Number.isFinite(waitingSince)&&currentOfferCreatedAt>=waitingSince){setOfferWaitOverlay(null);return}
+   const currentOfferCreatedAt=Date.parse(current?.my_offer?.created_at||"");
+   const waitingSince=Date.parse(offerWaitOverlay.createdAt||"");
+   if(current&&current.status!=="new"){setOfferWaitOverlay(null);return}
+   if(current?.my_offer&&current.my_offer.status!=="pending"&&Number.isFinite(currentOfferCreatedAt)&&Number.isFinite(waitingSince)&&currentOfferCreatedAt>=waitingSince){setOfferWaitOverlay(null);return}
    return;
   }
   const pending=orders.filter(o=>o?.my_offer?.status==="pending").map(o=>{
@@ -188,7 +191,7 @@ export default function Home(){
   }).filter(x=>x.remaining>0).sort((a,b)=>Date.parse(b.createdAt)-Date.parse(a.createdAt));
   if(pending.length){
    const x=pending[0];
-   setOfferWaitOverlay({orderId:String(x.order.id),price:Number(x.order.my_offer.price||0),createdAt:x.createdAt});
+   setOfferWaitOverlay({orderId:String(x.order.id),price:Number(x.order.my_offer.price||0),createdAt:x.createdAt,order:x.order});
   }
  },[orders,clockNow,offerWaitOverlay?.orderId]);
  useEffect(()=>{
@@ -394,7 +397,7 @@ export default function Home(){
     setSelectedOrderId(null);setOfferCustomOpen(false);
   }catch(e){mapTab?.close();setError(e.message||"Не удалось принять заказ.")}
 }
- async function offerPrice(o,overridePrice){if(!o?.driver_id&&!orderClassAllowed(o)){setError(!isCourierOrder(o)&&String(o?.vehicle_class||"economy")!==String(driver?.vehicle_class||"economy")?"Этот заказ относится к другому классу автомобиля.":"Этот тариф выключен в настройках водителя.");return}const amount=Number(overridePrice??offerPrices[o.id]),base=counterOfferBase(o),cap=maxCounterOffer(o);if(!Number.isFinite(amount)||amount<base){setError("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");return}if(!Number.isInteger(amount)||amount>cap){setError("Максимальная цена — "+cap.toLocaleString("ru-RU")+" ₸ (не более 30% сверху).");return}setError("");try{const sent=await callApi("driver_offer_price",{...session,order_id:o.id,price:amount});const createdAt=sent?.offer?.created_at||new Date().toISOString();setSelectedOrderId(null);setOfferCustomOpen(false);setTab("orders");setOfferWaitOverlay({orderId:String(o.id),price:amount,createdAt});const d=await callApi("driver_list",session);setOrders(sortOrdersNewestFirst(d.orders||[]));setNotice("");setOfferPrices(prev=>({...prev,[o.id]:""}));}catch(e){setError(e.message||"Не удалось отправить цену.")}}
+ async function offerPrice(o,overridePrice){if(!o?.driver_id&&!orderClassAllowed(o)){setError(!isCourierOrder(o)&&String(o?.vehicle_class||"economy")!==String(driver?.vehicle_class||"economy")?"Этот заказ относится к другому классу автомобиля.":"Этот тариф выключен в настройках водителя.");return}const amount=Number(overridePrice??offerPrices[o.id]),base=counterOfferBase(o),cap=maxCounterOffer(o);if(!Number.isFinite(amount)||amount<base){setError("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");return}if(!Number.isInteger(amount)||amount>cap){setError("Максимальная цена — "+cap.toLocaleString("ru-RU")+" ₸ (не более 30% сверху).");return}setError("");try{const sent=await callApi("driver_offer_price",{...session,order_id:o.id,price:amount});const createdAt=sent?.offer?.created_at||new Date().toISOString();setSelectedOrderId(null);setOfferCustomOpen(false);setTab("orders");setOfferWaitOverlay({orderId:String(o.id),price:amount,createdAt,order:o});const d=await callApi("driver_list",session);setOrders(sortOrdersNewestFirst(d.orders||[]));setNotice("");setOfferPrices(prev=>({...prev,[o.id]:""}));}catch(e){setError(e.message||"Не удалось отправить цену.")}}
  async function skipOrder(o){try{await callApi("driver_skip_order",{...session,order_id:o.id});setOrders(prev=>prev.filter(item=>item.id!==o.id));setNotice("Заказ скрыт только у тебя. Пассажир продолжит получать предложения других водителей.")}catch(e){setError(e.message||"Не удалось убрать заказ из списка.")}}
  function beginVehicleEdit(){setVehicleDraft({car_model:driver?.car_model||"",car_plate:driver?.car_plate||""});setVehicleEditOpen(v=>!v)}
  async function saveTariffVehicle(e){
@@ -536,9 +539,6 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const filteredOrders=orders;
  const visibleOrders=tab==="active"?filteredOrders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):filteredOrders;
  const selectedOrder=selectedOrderId?orders.find(o=>String(o.id)===String(selectedOrderId))||null:null;
- const selectedPendingOffer=selectedOrder?.my_offer?.status==="pending"?selectedOrder.my_offer:null;
- const selectedOfferRemaining=offerTimeRemaining(selectedPendingOffer,clockNow);
- const selectedOfferProgress=offerTimePercent(selectedPendingOffer,clockNow);
  const offerWaitCreatedAt=offerWaitOverlay?.createdAt||"";
  const offerWaitClockOffer=offerWaitOverlay?{created_at:offerWaitCreatedAt}:null;
  const offerWaitRemaining=offerTimeRemaining(offerWaitClockOffer,clockNow);
@@ -599,12 +599,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <div className="driver-financial-bottom"><strong>{Number(walletInfo?.wallet_balance??driver.wallet_balance??0).toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸</strong><button type="button" className="driver-topup-button" aria-label="Открыть кошелёк и пополнение" onClick={()=>{setTab("wallet");refreshWallet()}}>+</button></div>
   <button type="button" className="driver-topup-link" onClick={()=>{setTab("wallet");refreshWallet()}}>Пополнить счёт</button>
  </article>
-</section></div>{offerWaitOverlay&&offerWaitRemaining>0&&<section aria-live="polite" aria-label="Предложение цены отправлено" style={{margin:"12px 18px 14px",padding:"12px 16px 14px",borderRadius:18,background:"linear-gradient(145deg,#202820 0%,#101411 100%)",border:"1.5px solid #c6ff00",boxShadow:"0 4px 18px rgba(0,0,0,.18)",color:"#fff",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",alignItems:"center",columnGap:12,rowGap:4}}>
- <div style={{gridColumn:"1 / -1",fontSize:12,fontWeight:900,letterSpacing:"1.25px",color:"#c6ff00"}}>ПРЕДЛАГАЕМ ВАШУ ЦЕНУ</div>
- <div style={{fontSize:"clamp(24px,5.7vw,32px)",fontWeight:900,lineHeight:1.08}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸</div>
- <div style={{fontSize:24,fontWeight:900,fontVariantNumeric:"tabular-nums",background:"#c6ff00",color:"#101411",padding:"5px 9px",borderRadius:9}}>{formatOfferTimeLeft(offerWaitRemaining)}</div>
- <div style={{gridColumn:"1 / -1",fontSize:14,fontWeight:650,color:"#e0e6dc"}}>Дождитесь ответа пассажира</div>
-</section>}{!["orders","active","demand","stats","wallet","settings","order-filter"].includes(tab)&&<div className="driver-subpage-back-row"><button type="button" className="button secondary" style={{margin:"12px 18px 0"}} onClick={()=>{setTab("orders");setDriverMenuOpen(false)}}>‹ Назад в ленту заказов</button></div>}{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
+</section></div>{!["orders","active","demand","stats","wallet","settings","order-filter"].includes(tab)&&<div className="driver-subpage-back-row"><button type="button" className="button secondary" style={{margin:"12px 18px 0"}} onClick={()=>{setTab("orders");setDriverMenuOpen(false)}}>‹ Назад в ленту заказов</button></div>}{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
   <div className="driver-radar-status"><span className="driver-radar-status-dot"></span>{driver.is_online&&gpsFresh?"ПОИСК ЗАКАЗОВ":driver.is_online?"ОЖИДАЕМ ГЕОЛОКАЦИЮ":"НЕ В СЕТИ"}</div>
   <div className="driver-radar-range driver-radar-range-top"><span>РАДИУС ПОИСКА</span><b>до {scanRadiusKm} км</b></div>
   <div className="driver-radar-visual" role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
@@ -781,12 +776,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
    <div className="driver-order-detail-address"><span className="driver-order-detail-dot pickup">A</span><div><small>ОТКУДА</small><b>{selectedOrder.pickup_address||"Адрес подачи не указан"}</b></div></div>
    <div className="driver-order-detail-address"><span className="driver-order-detail-dot destination">B</span><div><small>КУДА</small><b>{selectedOrder.destination_address||"Адрес назначения не указан"}</b></div></div>
    <div className="driver-order-detail-meta"><span>{VEHICLE_CLASSES.find(x=>x[0]===selectedOrder.vehicle_class)?.[1]||"Эконом"} · {selectedOrder.trip_type==="intercity"?"Межгород":"Город"}</span><span>{selectedOrder.payment_method==="kaspi_gold"?"Перевод на Kaspi":"Наличные"}</span></div>
-   {selectedOrder.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(selectedOrder.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём, пока пассажир ответит.
-    <div style={{marginTop:8,fontSize:12}}>
-     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><span>Предложение активно ещё</span><b>{formatOfferTimeLeft(selectedOfferRemaining)}</b></div>
-     <div style={{height:10,width:"100%",borderRadius:99,background:"#28352a",overflow:"hidden",marginTop:8,border:"1px solid #596b50"}}><span style={{display:"block",height:"100%",width:selectedOfferProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 8px rgba(198,255,0,.55)"}} /></div>
-    </div>
-   </div>}
+
    {selectedOrder.price_status==="declined"&&<p className="muted small">Клиент отклонил предыдущую цену. Можно предложить новую.</p>}
    {selectedOrderWrongVehicleClass&&<div className="error driver-order-detail-error">Этот заказ тарифа «{VEHICLE_CLASSES.find(x=>x[0]===selectedOrder.vehicle_class)?.[1]||"другой"}» не подходит классу твоего автомобиля «{VEHICLE_CLASSES.find(x=>x[0]===driver?.vehicle_class)?.[1]||"Эконом"}». Заказ виден в ленте, но принять его нельзя.</div>}
    {selectedOrderTariffDisabled&&<div className="muted small">Этот тариф выключен в твоих настройках. Включи его в разделе «Настройки → Тарифы», чтобы принимать такие заказы.</div>}
@@ -810,6 +800,48 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  <button type="button" className={"driver-nav-item "+(tab==="stats"?"active":"")} onClick={()=>{setTab("stats");setDriverMenuOpen(false)}}><span className="driver-nav-icon">▦</span><span>Статистика</span></button>
  <button type="button" className={"driver-nav-item "+(tab==="wallet"?"active":"")} onClick={()=>{setTab("wallet");setDriverMenuOpen(false);refreshWallet()}}><span className="driver-nav-icon">▱</span><span>Кошелёк</span></button>
 </nav> {quickSwitch&&tab!=="order-filter"&&<button type="button" className="driver-quick-switch" onClick={()=>setTab("orders")} aria-label="Быстрый переход к заказам">↗ Заказы</button>}
-{offerWaitOverlay&&offerWaitRemaining>0&&<div aria-label={"Время на ответ: "+formatOfferTimeLeft(offerWaitRemaining)} style={{position:"fixed",left:0,right:0,bottom:0,height:9,zIndex:2147483647,pointerEvents:"none",background:"#172018",borderTop:"1px solid #52634d",boxShadow:"0 -2px 10px rgba(0,0,0,.25)"}}><span style={{display:"block",height:"100%",width:offerWaitProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 12px rgba(198,255,0,.85)"}} /></div>}
+{offerWaitOverlay&&offerWaitRemaining>0&&(()=>{
+ const waitingOrder=offerWaitOverlay.order||orders.find(x=>String(x.id)===String(offerWaitOverlay.orderId))||{};
+ const waitingName=waitingOrder?.clients?.name||waitingOrder?.client_name||"Пассажир";
+ const waitingFare=Number(waitingOrder.client_price||waitingOrder.agreed_price||waitingOrder.driver_price||0);
+ const km=Number(waitingOrder.route_distance_km);
+ const perKm=Number.isFinite(km)&&km>0&&waitingFare>0?Math.round(waitingFare/km):null;
+ const pickupDistance=waitingOrder.distance_km!=null?formatDistance(waitingOrder.distance_km):"";
+ const payLabel=waitingOrder.payment_method==="kaspi_gold"?"Перевод на Kaspi":"Наличные";
+ const classLabel=VEHICLE_CLASSES.find(x=>x[0]===waitingOrder.vehicle_class)?.[1]||"Эконом";
+ return <>
+  <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:2147483000,pointerEvents:"none",background:"rgba(0,0,0,.68)"}} />
+  <div aria-live="polite" aria-label="Предложение цены отправлено" style={{position:"fixed",left:12,right:12,top:"39%",transform:"translateY(-50%)",zIndex:2147483100,pointerEvents:"none",textAlign:"center",color:"#fff",fontWeight:850,fontSize:"clamp(25px,5.8vw,34px)",lineHeight:1.18,textShadow:"0 2px 10px rgba(0,0,0,.8)"}}>
+   <div>Предлагаем вашу цену</div>
+   <div style={{fontSize:"clamp(31px,7vw,43px)",margin:"10px 0",fontWeight:900}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸.</div>
+   <div>Дождитесь ответа</div>
+  </div>
+  <section aria-label="Выбранный заказ, ожидание ответа" style={{position:"fixed",left:0,right:0,bottom:9,zIndex:2147483600,background:"#1d1d1d",color:"#fff",borderRadius:"26px 26px 0 0",padding:"15px 18px 18px",boxSizing:"border-box",boxShadow:"0 -8px 28px rgba(0,0,0,.42)",maxHeight:"38dvh",overflowY:"auto",display:"grid",gridTemplateColumns:"58px minmax(0,1fr)",columnGap:13,rowGap:8}}>
+   <div style={{width:58,height:58,borderRadius:"50%",background:"#3c3c3c",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:850,color:"#bfe8ff",gridRow:"1 / span 4",alignSelf:"start"}}>{String(waitingName).slice(0,1).toLocaleUpperCase("ru-RU")}</div>
+   <div style={{fontSize:14,fontWeight:750,color:"#e3e3e3",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+    {perKm!==null&&<b>{perKm.toLocaleString("ru-RU")} ₸/км</b>}
+    {pickupDistance&&<span>~{pickupDistance}</span>}
+    <span>{orderAge(waitingOrder.created_at)}</span>
+   </div>
+   <div style={{fontSize:"clamp(25px,5.7vw,32px)",fontWeight:900,lineHeight:1.05}}>{waitingFare.toLocaleString("ru-RU")} ₸ <span style={{fontSize:14,color:"#d9a7ff",fontWeight:750}}>ⓘ Цена пассажира</span></div>
+   <div style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:"clamp(14px,3.8vw,17px)",lineHeight:1.35,fontWeight:700}}>
+    <span style={{background:"#448aff",color:"#fff",borderRadius:999,width:26,height:26,flex:"0 0 26px",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>A</span>
+    <span>{waitingOrder.pickup_address||"Адрес подачи не указан"}</span>
+   </div>
+   <div style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:"clamp(14px,3.8vw,17px)",lineHeight:1.35,fontWeight:700}}>
+    <span style={{background:"#30b96c",color:"#fff",borderRadius:999,width:26,height:26,flex:"0 0 26px",display:"inline-flex",alignItems:"center",justifyContent:"center"}}>B</span>
+    <span>{waitingOrder.destination_address||"Адрес назначения не указан"}</span>
+   </div>
+   <div style={{gridColumn:"2",display:"flex",flexWrap:"wrap",gap:7,marginTop:1}}>
+    <span style={{background:"#343434",borderRadius:999,padding:"6px 9px",fontSize:12,fontWeight:700}}>{classLabel} · {waitingOrder.trip_type==="intercity"?"Межгород":"Город"}</span>
+    <span style={{background:"#343434",borderRadius:999,padding:"6px 9px",fontSize:12,fontWeight:700}}>{payLabel}</span>
+   </div>
+   <div style={{gridColumn:"1 / -1",fontSize:13,fontWeight:700,color:"#dedede",paddingTop:2}}>Предложено тобой: <span style={{color:"#c6ff00",fontSize:15}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸</span> · ждём ответа</div>
+  </section>
+  <div aria-hidden="true" style={{position:"fixed",left:0,right:0,bottom:0,height:9,zIndex:2147483647,pointerEvents:"none",background:"#182018",borderTop:"1px solid #53694b",boxShadow:"0 -2px 10px rgba(0,0,0,.3)"}}>
+   <span style={{display:"block",height:"100%",width:offerWaitProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 12px rgba(198,255,0,.95)"}} />
+  </div>
+ </>;
+})()}
 </main>;
 }
