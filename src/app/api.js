@@ -1,6 +1,6 @@
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://qyejqovxwniqlcsspmbc.supabase.co";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const API_URL = SUPABASE_URL + "/functions/v1/moy-taxi-api";
+const API_URL = SUPABASE_URL + "/functions/v1/moy-taxi-api-feed";
 export async function callApi(action, payload = {}) {
   if (!SUPABASE_ANON_KEY) throw new Error("Не настроен ключ приложения.");
   const response = await fetch(API_URL, {method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:"Bearer "+SUPABASE_ANON_KEY},body:JSON.stringify({action,...payload})});
