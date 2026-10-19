@@ -590,12 +590,12 @@ if(a==="create_order"){
  const optionalNumber=(v:any)=>v===null||v===undefined||v===""?NaN:Number(v);
  const lat=optionalNumber(p.pickup_lat),lng=optionalNumber(p.pickup_lng),destLat=optionalNumber(p.destination_lat),destLng=optionalNumber(p.destination_lng),distance=optionalNumber(p.route_distance_km);
  const tripType=p.trip_type==="intercity"?"intercity":"city";
- let cls=vehicleClass(p.vehicle_class),d:any=null,price=Number(p.client_price),driverDistance=Infinity,finalDistance=distance;
+ let cls=vehicleClass(p.vehicle_class),d:any=null,price=Number(p.client_price),driverDistance=Infinity,finalDistance=distance,serverTestMode=true;
  if(!name||!ph||!pickup||!dest)return fail("Заполни имя, телефон, адрес подачи и адрес назначения.");
  if(code==="AUTO"){
   if(![lat,lng,destLat,destLng,distance].every(Number.isFinite)||lat < -90||lat>90||lng < -180||lng>180||destLat < -90||destLat>90||destLng < -180||destLng>180||distance<=0||distance>2000)return fail("Не удалось определить автомобильный маршрут. Проверь адреса и попробуй ещё раз.");
   const {data:settingsRow,error:se}=await c.from("platform_settings").select("vehicle_rates,test_mode").eq("id",true).maybeSingle();
-  if(se||!settingsRow)return fail("Не удалось загрузить тариф.",500);
+  if(se||!settingsRow)return fail("Не удалось загрузить тариф.",500);serverTestMode=settingsRow.test_mode!==false;
    let verifiedRoute:any=await readMapCache(c,"route",routeCacheInput({lat,lng},{lat:destLat,lng:destLng}));
    if(!verifiedRoute||!Number.isFinite(Number(verifiedRoute.distanceKm))||Number(verifiedRoute.distanceKm)<=0){
     try{
@@ -608,15 +608,16 @@ if(a==="create_order"){
    finalDistance=serverDistance;
   const rateRow=(settingsRow.vehicle_rates||{})[cls];const rate=Number(rateRow?.rate_per_km||0),minimum=Number(rateRow?.minimum_fare||0);
   if(rate<1)return fail("Для этого класса пока не настроен тариф.");
-  price=Math.max(minimum,Math.ceil(serverDistance*rate/10)*10);
+  const calculatedPrice=Math.max(minimum,Math.ceil(serverDistance*rate/10)*10);const requestedPrice=Number(p.client_price);if(!Number.isFinite(requestedPrice)||requestedPrice<50||requestedPrice>1000000)return fail("Цена должна быть от 50 до 1 000 000 ₸.");price=Math.round(requestedPrice);if(!Number.isFinite(calculatedPrice)||calculatedPrice<=0)return fail("Не удалось рассчитать цену заказа.");
   // Accept the request even when no driver is online; it stays in the open-order queue for this class.
   // No driver is assigned yet. Every online driver in the selected class can review the request and send an offer.
   d=null;
  }else{
-  const {data:direct,error:de}=await c.from("drivers").select("id,is_online,vehicle_class,current_lat,current_lng").eq("public_code",code).maybeSingle();
+  const {data:direct,error:de}=await c.from("drivers").select("id,is_online,vehicle_class,current_lat,current_lng,tariff_modes").eq("public_code",code).maybeSingle();
   if(de||!direct)return fail("Водитель не найден.",404);
   if(!direct.is_online)return fail("Водитель сейчас не на линии.",409);
-  d=direct;cls=vehicleClass(p.vehicle_class||d.vehicle_class);
+  d=direct;cls=vehicleClass(p.vehicle_class||d.vehicle_class);if(!driverCanServeOrder(d,{vehicle_class:cls}))return fail("Этот водитель сейчас не принимает выбранный тариф.",409);
+  const {data:modeRow}=await c.from("platform_settings").select("test_mode").eq("id",true).maybeSingle();serverTestMode=modeRow?.test_mode!==false;
  }
  const {data:clRow,error:ce}=await c.from("clients").insert({name,phone:ph}).select("id").single();
  if(ce||!clRow)return fail("Не удалось сохранить клиента.",500);
@@ -631,7 +632,7 @@ if(a==="create_order"){
   price_status:"pending",agreed_price:null
  }).select("*").single();
  if(oe||!o)return fail("Не удалось отправить заказ.",500);
- return reply({ok:true,order:o,assigned_driver:d?pub(d):null,searching:autoPrice,test_mode:true});
+ return reply({ok:true,order:o,assigned_driver:d?pub(d):null,searching:autoPrice,test_mode:serverTestMode});
 }
 if(a==="order_status"){
  const id=String(p.order_id||""),token=String(p.client_token||"");
@@ -749,7 +750,7 @@ if(a==="driver_offer_price"){
  if(o.status!=="new"||(o.driver_id&&o.driver_id!==d.id))return fail("Этот заказ уже недоступен.");
 
  const base=amount(o.client_price);
- const maxOffer=base>0?Math.floor(base*1.3/50)*50:0;
+ const maxOffer=base>0?Math.min(1000000,Math.floor(base*1.3/50)*50):0;
  if(base>0&&price<base)return fail("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");
  if(base>0&&price>maxOffer)return fail("Максимальная цена предложения — "+maxOffer.toLocaleString("ru-RU")+" ₸ (не более 30% выше цены пассажира).");
  const {data:existing}=await c.from("order_offers").select("id,status").eq("order_id",id).eq("driver_id",d.id).maybeSingle();
