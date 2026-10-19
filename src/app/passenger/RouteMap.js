@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null }) {
+export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null, driverPickupOnly = false }) {
   const element = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
@@ -78,8 +78,18 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       });
       L.marker(latLng, { icon }).bindPopup(title).addTo(group);
     };
-    marker(pickupPoint, "A", "Откуда забрать", pickupInfo ? "#367cf5" : "#146b4b", pickupInfo);
-    marker(destinationPoint, "B", "Куда ехать", destinationInfo ? "#299958" : "#d94841", destinationInfo);
+    marker(
+      pickupPoint, "A",
+      driverPickupOnly ? "Местоположение водителя" : "Откуда забрать",
+      pickupInfo || driverPickupOnly ? "#367cf5" : "#146b4b",
+      pickupInfo
+    );
+    marker(
+      destinationPoint, "B",
+      driverPickupOnly ? "Точка подачи клиента" : "Куда ехать",
+      destinationInfo || driverPickupOnly ? "#299958" : "#d94841",
+      destinationInfo
+    );
     if (Array.isArray(routeGeometry) && routeGeometry.length > 1) {
       const line = routeGeometry
         .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
