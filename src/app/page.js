@@ -475,7 +475,8 @@ export default function Home(){
    }).then(result=>{
     if(!alive)return;
     const km=Number(result.distance_km||0);
-    if(km>0)setDetailPickupStats({distanceKm:km,durationMin:0});
+    const minutes=Number(result.duration_minutes||0);
+    setDetailPickupStats({distanceKm:km>0?km:Number(o.distance_km||0),durationMin:minutes>0?minutes:0});
    }).catch(()=>{});
   }
   return()=>{alive=false};
@@ -753,9 +754,10 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  <section className="driver-order-detail-sheet" role="dialog" aria-modal="true" aria-label="Подробности заказа" onClick={e=>e.stopPropagation()}>
   <header className="driver-order-detail-header"><div><span className="eyebrow">ВХОДЯЩИЙ ЗАКАЗ</span><h2>Заказ</h2></div><button type="button" className="driver-order-detail-close" aria-label="Закрыть заказ" onClick={()=>setSelectedOrderId(null)}>×</button></header>
   <div className="driver-order-detail-map">
-   <RouteMap key={String(selectedOrder.id)} pickupPoint={validOrderPoint(selectedOrder.pickup_lat,selectedOrder.pickup_lng)} destinationPoint={validOrderPoint(selectedOrder.destination_lat,selectedOrder.destination_lng)} routeGeometry={[]}
-    pickupInfo={detailPickupStats&&detailPickupStats.distanceKm>=0?{timeText:"До клиента",distanceText:formatDistance(detailPickupStats.distanceKm)}:null}
-    destinationInfo={null}/> 
+   <RouteMap key={String(selectedOrder.id)} pickupPoint={validOrderPoint(driver?.current_lat,driver?.current_lng)} destinationPoint={validOrderPoint(selectedOrder.pickup_lat,selectedOrder.pickup_lng)} routeGeometry={[]}
+    pickupInfo={null}
+    destinationInfo={detailPickupStats&&detailPickupStats.distanceKm>=0?{timeText:detailPickupStats.durationMin>0?Math.round(detailPickupStats.durationMin)+" мин":"",distanceText:formatDistance(detailPickupStats.distanceKm)}:null}
+    driverPickupOnly={true}/> 
   </div>
   <div className="driver-order-detail-body">
    <div className="driver-order-detail-price-row"><div><span className="muted small">Цена пассажира</span><strong>{counterOfferBase(selectedOrder).toLocaleString("ru-RU")} ₸</strong></div><span className="driver-order-detail-km">{Number(selectedOrder.route_distance_km||0).toLocaleString("ru-RU",{maximumFractionDigits:1})} км</span></div>
