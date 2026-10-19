@@ -533,7 +533,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const notificationOrders=orders.filter(o=>o.status==="new");
  const gpsFresh=Boolean(driver.location_updated_at&&Date.now()-Date.parse(driver.location_updated_at)<=5*60*1000&&driver.current_lat!=null&&driver.current_lng!=null);
  const vehicleCapabilities=inferVehicleCapabilities(driver?.car_model||"");
- const orderClassAllowed=(o)=>{if(isCourierOrder(o))return Boolean(tariffModes.parcels);const cls=String(o?.vehicle_class||"economy");if(cls==="economy")return Boolean(tariffModes.economy);if(cls==="minivan")return Boolean(tariffModes.seats6&&vehicleCapabilities.seats6);return Boolean(tariffModes.comfort&&vehicleCapabilities.comfort)};
+ const orderClassAllowed=(o)=>isCourierOrder(o)?Boolean(tariffModes.parcels):true;
  const filteredOrders=orders;
  const visibleOrders=tab==="active"?filteredOrders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):filteredOrders;
  const selectedOrder=selectedOrderId?orders.find(o=>String(o.id)===String(selectedOrderId))||null:null;
@@ -541,8 +541,8 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const offerWaitClockOffer=offerWaitOverlay?{created_at:offerWaitCreatedAt}:null;
  const offerWaitRemaining=offerTimeRemaining(offerWaitClockOffer,clockNow);
  const offerWaitProgress=offerTimePercent(offerWaitClockOffer,clockNow);
- const selectedOrderWrongVehicleClass=Boolean(selectedOrder&&!selectedOrder.driver_id&&((["comfort","comfort_plus","business","premium"].includes(String(selectedOrder.vehicle_class||""))&&!vehicleCapabilities.comfort)||(String(selectedOrder.vehicle_class||"")==="minivan"&&!vehicleCapabilities.seats6)));
- const selectedOrderTariffDisabled=Boolean(selectedOrder&&!selectedOrderWrongVehicleClass&&!orderClassAllowed(selectedOrder));
+ const selectedOrderWrongVehicleClass=false;
+ const selectedOrderTariffDisabled=false;
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
  const openDriverSettings=()=>{setTab("settings");setDriverMenuOpen(false)};
  const openDriverSupport=()=>{setTab("support");setDriverMenuOpen(false)};
