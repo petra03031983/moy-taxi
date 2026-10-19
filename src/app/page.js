@@ -229,14 +229,15 @@ export default function Home(){
   const load=async()=>{
    try{
     const d=await callApi("driver_list",{...session,search_radius_km:scanRadiusKm});if(!alive)return;
-    const next=sortOrdersNewestFirst(d.orders||[]);
+    const cancelled=Array.isArray(d.recently_cancelled)?d.recently_cancelled.filter(o=>o&&o.id):[];
+    const cancelledIds=new Set(cancelled.map(o=>String(o.id)));
+    const activeStatuses=new Set(["new","accepted","arrived","client_ready","started"]);
+    const next=sortOrdersNewestFirst(d.orders||[]).filter(o=>o&&activeStatuses.has(o.status)&&!cancelledIds.has(String(o.id)));
     const ids=new Set(next.map(o=>o.id));
     const fresh=next.filter(o=>o.status==="new"&&!previousIds.current.has(o.id));
      // Focus the main feed when new orders arrive or when an existing order is found after app restore.
      if((firstLoad.current&&next.some(o=>o.status==="new"))||(!firstLoad.current&&fresh.length>0))setTab("orders");
     const notificationFresh=fresh.filter(o=>passesIncomingNotificationFilter(o,filterPickupDistance,filterMinPricePerKm,filterMinOrderPrice));
-    const cancelled=Array.isArray(d.recently_cancelled)?d.recently_cancelled.filter(o=>o&&o.id):[];
-    const cancelledIds=new Set(cancelled.map(o=>String(o.id)));
     const freshCancelled=cancelled.filter(o=>!previousCancelledIds.current.has(String(o.id)));
     if(!firstLoad.current&&fresh.length){
      // Price/distance filters only limit extra popup/browser notifications, not the sound.
