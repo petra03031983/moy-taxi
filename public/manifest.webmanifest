@@ -1,8 +1,8 @@
 {
-  "id": "/moy-taxi-owner-v1",
-  "name": "Мой Такси — Владелец",
-  "short_name": "Мой Такси Владелец",
-  "description": "Кабинет владельца таксопарка Мой Такси.",
+  "id": "/moy-taxi-app-v1",
+  "name": "Мой Такси",
+  "short_name": "Мой Такси",
+  "description": "Заказ такси для пассажиров и работа водителей.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
