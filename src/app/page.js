@@ -461,34 +461,23 @@ export default function Home(){
   }
   const orderPickup=validOrderPoint(o.pickup_lat,o.pickup_lng);
   const driverPoint=validOrderPoint(driver?.current_lat,driver?.current_lng);
-  setDetailRouteGeometry(Array.isArray(o.route_geometry)?o.route_geometry:[]);
-  setDetailRouteStats({distanceKm:Number(o.route_distance_km||0),durationMin:Number(o.route_duration_minutes||o.duration_minutes||0)});
+  // In the driver order card show only distance/time to the passenger, never the passenger's full trip route.
+  setDetailRouteGeometry([]);
+  setDetailRouteStats(null);
   setDetailPickupStats(o.distance_km!=null?{distanceKm:Number(o.distance_km),durationMin:0}:null);
-  setDetailMapLoading(true);
-  const routeToDestination=callApi("calculate_route",{
-   pickup_address:o.pickup_address||"Моё местоположение",
-   destination_address:o.destination_address||"",
-   pickup_lat:o.pickup_lat??null,pickup_lng:o.pickup_lng??null,
-   destination_lat:o.destination_lat??null,destination_lng:o.destination_lng??null
-  }).then(result=>{
-   if(!alive)return;
-   if(Array.isArray(result.route_geometry))setDetailRouteGeometry(result.route_geometry);
-   setDetailRouteStats({distanceKm:Number(result.distance_km||o.route_distance_km||0),durationMin:Number(result.duration_minutes||0)});
-  }).catch(()=>{
-   if(alive)setDetailRouteStats({distanceKm:Number(o.route_distance_km||0),durationMin:Number(o.route_duration_minutes||o.duration_minutes||0)});
-  });
-  const routeToPassenger=(driverPoint&&orderPickup)?callApi("calculate_route",{
-   pickup_address:"Моё местоположение",
-   destination_address:o.pickup_address||"Адрес пассажира",
-   pickup_lat:driverPoint.lat,pickup_lng:driverPoint.lng,
-   destination_lat:orderPickup.lat,destination_lng:orderPickup.lng
-  }).then(result=>{
-   if(!alive)return;
-   setDetailPickupStats({distanceKm:Number(result.distance_km||0),durationMin:Number(result.duration_minutes||0)});
-  }).catch(()=>{
-   if(alive)setDetailPickupStats(o.distance_km!=null?{distanceKm:Number(o.distance_km),durationMin:0}:null);
-  }):Promise.resolve();
-  Promise.all([routeToDestination,routeToPassenger]).finally(()=>{if(alive)setDetailMapLoading(false)});
+  setDetailMapLoading(false);
+  if(driverPoint&&orderPickup){
+   callApi("calculate_route",{
+    pickup_address:"Моё местоположение",
+    destination_address:o.pickup_address||"Адрес пассажира",
+    pickup_lat:driverPoint.lat,pickup_lng:driverPoint.lng,
+    destination_lat:orderPickup.lat,destination_lng:orderPickup.lng
+   }).then(result=>{
+    if(!alive)return;
+    const km=Number(result.distance_km||0);
+    if(km>0)setDetailPickupStats({distanceKm:km,durationMin:0});
+   }).catch(()=>{});
+  }
   return()=>{alive=false};
  },[selectedOrderId,session?.driver_id,session?.session_token,driver?.current_lat,driver?.current_lng]);
  if(!appReady) return <main className="app auth-app" aria-busy="true"></main>;
@@ -764,10 +753,9 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  <section className="driver-order-detail-sheet" role="dialog" aria-modal="true" aria-label="Подробности заказа" onClick={e=>e.stopPropagation()}>
   <header className="driver-order-detail-header"><div><span className="eyebrow">ВХОДЯЩИЙ ЗАКАЗ</span><h2>Заказ</h2></div><button type="button" className="driver-order-detail-close" aria-label="Закрыть заказ" onClick={()=>setSelectedOrderId(null)}>×</button></header>
   <div className="driver-order-detail-map">
-   <RouteMap key={String(selectedOrder.id)} pickupPoint={validOrderPoint(selectedOrder.pickup_lat,selectedOrder.pickup_lng)} destinationPoint={validOrderPoint(selectedOrder.destination_lat,selectedOrder.destination_lng)} routeGeometry={detailRouteGeometry}
-    pickupInfo={detailPickupStats?{timeText:detailPickupStats.durationMin>0?Math.round(detailPickupStats.durationMin)+" мин":"Рядом",distanceText:detailPickupStats.distanceKm>=0?formatDistance(detailPickupStats.distanceKm):""}:null}
-    destinationInfo={{timeText:detailRouteStats?.durationMin>0?Math.round(detailRouteStats.durationMin)+" мин":"",distanceText:formatDistance(detailRouteStats?.distanceKm||selectedOrder.route_distance_km||0)}}/>
-   {detailMapLoading&&<div className="driver-order-map-loading">Строим маршрут…</div>}
+   <RouteMap key={String(selectedOrder.id)} pickupPoint={validOrderPoint(selectedOrder.pickup_lat,selectedOrder.pickup_lng)} destinationPoint={validOrderPoint(selectedOrder.destination_lat,selectedOrder.destination_lng)} routeGeometry={[]}
+    pickupInfo={detailPickupStats&&detailPickupStats.distanceKm>=0?{timeText:"До клиента",distanceText:formatDistance(detailPickupStats.distanceKm)}:null}
+    destinationInfo={null}/> 
   </div>
   <div className="driver-order-detail-body">
    <div className="driver-order-detail-price-row"><div><span className="muted small">Цена пассажира</span><strong>{counterOfferBase(selectedOrder).toLocaleString("ru-RU")} ₸</strong></div><span className="driver-order-detail-km">{Number(selectedOrder.route_distance_km||0).toLocaleString("ru-RU",{maximumFractionDigits:1})} км</span></div>
