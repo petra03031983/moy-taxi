@@ -63,7 +63,7 @@ function orderAge(value){
  if(hours<24)return hours+" ч.";
  return new Date(time).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"});
 }
-const DRIVER_OFFER_TTL_MS=60*1000;
+const DRIVER_OFFER_TTL_MS=10*1000;
 function offerTimeRemaining(offer,now=Date.now()){
  const created=Date.parse(offer?.created_at||"");
  if(!Number.isFinite(created))return 0;
@@ -178,7 +178,7 @@ export default function Home(){
   if(offerWaitOverlay){
    if(offerTimeRemaining({created_at:offerWaitOverlay.createdAt},clockNow)<=0){setOfferWaitOverlay(null);return}
    const current=orders.find(o=>String(o.id)===String(offerWaitOverlay.orderId));
-   if(current?.my_offer&&current.my_offer.status!=="pending"){setOfferWaitOverlay(null);return}
+   const currentOfferCreatedAt=Date.parse(current?.my_offer?.created_at||"");const waitingSince=Date.parse(offerWaitOverlay.createdAt||"");if(current?.my_offer&&current.my_offer.status!=="pending"&&Number.isFinite(currentOfferCreatedAt)&&Number.isFinite(waitingSince)&&currentOfferCreatedAt>=waitingSince){setOfferWaitOverlay(null);return}
    return;
   }
   const pending=orders.filter(o=>o?.my_offer?.status==="pending").map(o=>{
@@ -394,7 +394,7 @@ export default function Home(){
     setSelectedOrderId(null);setOfferCustomOpen(false);
   }catch(e){mapTab?.close();setError(e.message||"Не удалось принять заказ.")}
 }
- async function offerPrice(o,overridePrice){if(!o?.driver_id&&!orderClassAllowed(o)){setError(!isCourierOrder(o)&&String(o?.vehicle_class||"economy")!==String(driver?.vehicle_class||"economy")?"Этот заказ относится к другому классу автомобиля.":"Этот тариф выключен в настройках водителя.");return}const amount=Number(overridePrice??offerPrices[o.id]),base=counterOfferBase(o),cap=maxCounterOffer(o);if(!Number.isFinite(amount)||amount<base){setError("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");return}if(!Number.isInteger(amount)||amount>cap){setError("Максимальная цена — "+cap.toLocaleString("ru-RU")+" ₸ (не более 30% сверху).");return}setError("");try{const sent=await callApi("driver_offer_price",{...session,order_id:o.id,price:amount});const createdAt=sent?.offer?.created_at||new Date().toISOString();setOfferWaitOverlay({orderId:String(o.id),price:amount,createdAt});setSelectedOrderId(null);setOfferCustomOpen(false);const d=await callApi("driver_list",session);setOrders(sortOrdersNewestFirst(d.orders||[]));setNotice("");setOfferPrices(prev=>({...prev,[o.id]:""}));}catch(e){setError(e.message||"Не удалось отправить цену.")}}
+ async function offerPrice(o,overridePrice){if(!o?.driver_id&&!orderClassAllowed(o)){setError(!isCourierOrder(o)&&String(o?.vehicle_class||"economy")!==String(driver?.vehicle_class||"economy")?"Этот заказ относится к другому классу автомобиля.":"Этот тариф выключен в настройках водителя.");return}const amount=Number(overridePrice??offerPrices[o.id]),base=counterOfferBase(o),cap=maxCounterOffer(o);if(!Number.isFinite(amount)||amount<base){setError("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");return}if(!Number.isInteger(amount)||amount>cap){setError("Максимальная цена — "+cap.toLocaleString("ru-RU")+" ₸ (не более 30% сверху).");return}setError("");try{const sent=await callApi("driver_offer_price",{...session,order_id:o.id,price:amount});const createdAt=sent?.offer?.created_at||new Date().toISOString();setSelectedOrderId(null);setOfferCustomOpen(false);setTab("orders");setOfferWaitOverlay({orderId:String(o.id),price:amount,createdAt});const d=await callApi("driver_list",session);setOrders(sortOrdersNewestFirst(d.orders||[]));setNotice("");setOfferPrices(prev=>({...prev,[o.id]:""}));}catch(e){setError(e.message||"Не удалось отправить цену.")}}
  async function skipOrder(o){try{await callApi("driver_skip_order",{...session,order_id:o.id});setOrders(prev=>prev.filter(item=>item.id!==o.id));setNotice("Заказ скрыт только у тебя. Пассажир продолжит получать предложения других водителей.")}catch(e){setError(e.message||"Не удалось убрать заказ из списка.")}}
  function beginVehicleEdit(){setVehicleDraft({car_model:driver?.car_model||"",car_plate:driver?.car_plate||""});setVehicleEditOpen(v=>!v)}
  async function saveTariffVehicle(e){
@@ -658,10 +658,10 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
     {o.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(o.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём ответа пассажира.
      <div style={{marginTop:8,fontSize:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><span>Предложение активно ещё</span><b>{formatOfferTimeLeft(offerTimeRemaining(o.my_offer,clockNow))}</b></div>
-      <div style={{height:5,width:"100%",borderRadius:99,background:"#cbd5d1",overflow:"hidden",marginTop:6}}><span style={{display:"block",height:"100%",width:offerTimePercent(o.my_offer,clockNow)+"%",background:"#16a34a",transition:"width 1s linear"}} /></div>
+      <div style={{height:10,width:"100%",borderRadius:99,background:"#28352a",overflow:"hidden",marginTop:8,border:"1px solid #596b50"}}><span style={{display:"block",height:"100%",width:offerTimePercent(o.my_offer,clockNow)+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 8px rgba(198,255,0,.55)"}} /></div>
      </div>
     </div>}
-    {o.price_status==="declined"&&<p className="feed-order-note muted">Клиент отклонил цену. Можно предложить другую.</p>}
+    {o.price_status==="declined"&&<p className="feed-order-note muted">Клиент отклонил цену. Можно предложить другую.</p>}{o.my_offer?.status==="declined"&&o.status==="new"&&<p className="feed-order-note muted">Предложение отклонено или время ответа истекло. Заказ остался в ленте — можно предложить другую цену.</p>}
     <div className="order-actions actions feed-order-actions">
      {o.status==="accepted"&&<><a className="button secondary" href={navigationRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут в 2GIS</a><button type="button" className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
      {["arrived","client_ready"].includes(o.status)&&<div className="success feed-order-note"><b>Ты на месте. Ожидаем пассажира.</b>{arrivalRecorded?<p className="small" style={{margin:"5px 0 0"}}>{canCancelNoShow?"10 минут ожидания истекли.":"До возможности отменить заказ осталось:"} <strong>{canCancelNoShow?"00:00":waitCountdown}</strong></p>:<p className="small" style={{margin:"5px 0 0"}}>Не удалось загрузить время прибытия. Обнови приложение; таймер проверяется сервером.</p>}{canCancelNoShow&&<button type="button" className="button danger" style={{marginTop:8}} disabled={busy} onClick={()=>cancelNoShowOrder(o.id)}>Отменить — пассажир не вышел</button>}</div>}
@@ -784,7 +784,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
    {selectedOrder.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(selectedOrder.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём, пока пассажир ответит.
     <div style={{marginTop:8,fontSize:12}}>
      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><span>Предложение активно ещё</span><b>{formatOfferTimeLeft(selectedOfferRemaining)}</b></div>
-     <div style={{height:5,width:"100%",borderRadius:99,background:"#cbd5d1",overflow:"hidden",marginTop:6}}><span style={{display:"block",height:"100%",width:selectedOfferProgress+"%",background:"#16a34a",transition:"width 1s linear"}} /></div>
+     <div style={{height:10,width:"100%",borderRadius:99,background:"#28352a",overflow:"hidden",marginTop:8,border:"1px solid #596b50"}}><span style={{display:"block",height:"100%",width:selectedOfferProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 8px rgba(198,255,0,.55)"}} /></div>
     </div>
    </div>}
    {selectedOrder.price_status==="declined"&&<p className="muted small">Клиент отклонил предыдущую цену. Можно предложить новую.</p>}
@@ -810,9 +810,20 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  <button type="button" className={"driver-nav-item "+(tab==="stats"?"active":"")} onClick={()=>{setTab("stats");setDriverMenuOpen(false)}}><span className="driver-nav-icon">▦</span><span>Статистика</span></button>
  <button type="button" className={"driver-nav-item "+(tab==="wallet"?"active":"")} onClick={()=>{setTab("wallet");setDriverMenuOpen(false);refreshWallet()}}><span className="driver-nav-icon">▱</span><span>Кошелёк</span></button>
 </nav> {quickSwitch&&tab!=="order-filter"&&<button type="button" className="driver-quick-switch" onClick={()=>setTab("orders")} aria-label="Быстрый переход к заказам">↗ Заказы</button>}
-{offerWaitOverlay&&offerWaitRemaining>0&&<div role="dialog" aria-modal="true" aria-label="Ожидание ответа пассажира" style={{position:"fixed",inset:0,zIndex:2147483647,background:"rgba(0,0,0,.68)",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"24px",color:"#fff",fontSize:"clamp(24px,5.1vw,34px)",fontWeight:800,lineHeight:1.27,boxSizing:"border-box"}}>
- <div><div>Предлагаем вашу цену</div><div style={{fontSize:"clamp(30px,6.8vw,42px)",margin:"12px 0",fontWeight:900}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸.</div><div>Дождитесь ответа</div></div>
- <div aria-label={"Осталось "+formatOfferTimeLeft(offerWaitRemaining)} style={{position:"fixed",left:0,right:0,bottom:0,height:6,zIndex:2147483647,pointerEvents:"none",background:"#333"}}><span style={{display:"block",height:"100%",width:offerWaitProgress+"%",background:"#c6ff00",transition:"width 1s linear"}} /></div>
+{offerWaitOverlay&&offerWaitRemaining>0&&<div role="dialog" aria-modal="true" aria-label="Ожидание ответа пассажира" style={{position:"fixed",inset:0,zIndex:2147483647,background:"rgba(0,0,0,.36)",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"20px",color:"#fff",boxSizing:"border-box"}}>
+ <div style={{width:"min(88vw,430px)",background:"linear-gradient(145deg,#202820 0%,#101411 100%)",border:"2px solid #c6ff00",borderRadius:24,padding:"24px 20px 22px",boxShadow:"0 18px 60px rgba(0,0,0,.58)",display:"flex",flexDirection:"column",gap:14,alignItems:"stretch",boxSizing:"border-box"}}>
+  <div style={{fontSize:14,fontWeight:900,letterSpacing:"1.8px",color:"#c6ff00"}}>ЦЕНА ОТПРАВЛЕНА</div>
+  <div style={{fontSize:"clamp(30px,7vw,42px)",fontWeight:900,lineHeight:1.08}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸</div>
+  <div style={{fontSize:"clamp(19px,4.7vw,25px)",fontWeight:750,lineHeight:1.22}}>Ждём ответ пассажира</div>
+  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,fontSize:15,fontWeight:700}}>
+   <span style={{color:"#d0d7ce"}}>Осталось времени</span>
+   <b style={{fontSize:28,fontVariantNumeric:"tabular-nums",background:"#c6ff00",color:"#101411",padding:"5px 10px",borderRadius:10,minWidth:92}}>{formatOfferTimeLeft(offerWaitRemaining)}</b>
+  </div>
+  <div aria-label={"Осталось "+formatOfferTimeLeft(offerWaitRemaining)} style={{height:13,width:"100%",borderRadius:99,background:"#404941",overflow:"hidden",border:"1px solid #687662"}}>
+   <span style={{display:"block",height:"100%",width:offerWaitProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 10px rgba(198,255,0,.7)"}} />
+  </div>
+  <div style={{fontSize:12,lineHeight:1.4,color:"#d0d7ce"}}>Через 10 секунд заказ останется в ленте. Можно предложить другую цену.</div>
+ </div>
 </div>}
 </main>;
 }
