@@ -284,8 +284,20 @@ export default function PassengerPage() {
   }
 
   async function submitOrder() {
-    if (!pickupPoint) { setError("Разреши доступ к геопозиции телефона, чтобы определить точку подачи."); return; }
-    if (!route || !destinationPoint) { setError("Подожди, пока рассчитается маршрут и появятся цены."); return; }
+    if (!name.trim()) {
+      setShowContactFields(true);
+      setError("Укажи своё имя, чтобы заказать такси.");
+      window.setTimeout(() => document.getElementById("moy-taxi-client-name")?.focus(), 0);
+      return;
+    }
+    if (!phone.trim()) {
+      setShowContactFields(true);
+      setError("Укажи номер телефона, чтобы водитель мог с тобой связаться.");
+      window.setTimeout(() => document.getElementById("moy-taxi-client-phone")?.focus(), 0);
+      return;
+    }
+    if (!pickupPoint) { setError("Не определена точка подачи. Разреши GPS или выбери адрес подачи из подсказок."); return; }
+    if (!route || !destinationPoint) { setError("Маршрут не готов. Выбери адрес назначения и нажми «Рассчитать маршрут и цены»."); return; }
     setBusy(true); setError(""); setNotice("");
     try {
       const fare = Number(quote || 0);
@@ -425,7 +437,7 @@ export default function PassengerPage() {
       {["completed","cancelled"].includes(order.status) && <button className="button primary" onClick={newOrder}>Заказать ещё раз</button>}
     </section> : <section className="panel">
       <form onSubmit={event => event.preventDefault()}>
-        {(showContactFields || !name.trim() || !phone.trim()) ? <div className="contact-fields"><div className="field"><label>Ваше имя</label><input required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label>Телефон</label><input required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : <button type="button" className="saved-contact" onClick={()=>setShowContactFields(true)}>👤 {name} · {phone} <span>Изменить</span></button>}
+        {(showContactFields || !name.trim() || !phone.trim()) ? <div className="contact-fields"><div className="field"><label>Ваше имя</label><input id="moy-taxi-client-name" required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label>Телефон</label><input id="moy-taxi-client-phone" required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : <button type="button" className="saved-contact" onClick={()=>setShowContactFields(true)}>👤 {name} · {phone} <span>Изменить</span></button>}
         <div className="field address-field pickup-address-field">
           <label htmlFor="pickupAddress">Откуда забрать?</label>
           <input id="pickupAddress" required maxLength={300} value={pickup} onChange={e=>{
@@ -473,7 +485,7 @@ export default function PassengerPage() {
         <div className="field"><label>Комментарий (необязательно)</label><textarea maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Подъезд, ориентир…" /></div>
         {route && <div className="field"><label>Способ оплаты</label><div className="payment-options"><button type="button" className={paymentMethod==="cash"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("cash")}><span>💵</span><b>Наличные</b></button><button type="button" className={paymentMethod==="kaspi_gold"?"payment-card selected":"payment-card"} onClick={()=>setPaymentMethod("kaspi_gold")}><span>🟥</span><b>Kaspi перевод</b></button></div></div>}
         {route && !onlineClasses.includes(selectedClass) && <p className="muted small" role="status">Сейчас водители класса «{CLASSES.find(x=>x.id===selectedClass)?.label || "Эконом"}» не на линии. Заказ сохранится; водители увидят его, когда выйдут на линию.</p>}
-        <button className="button primary submit-order" type="button" onClick={submitOrder} disabled={busy || !name.trim() || !phone.trim() || !pickupPoint || !destinationPoint || !route}>{busy ? "Подождите…" : route ? "🚕 Заказать такси · "+money(quote) : "Введите адрес назначения"}</button>
+        <button className="button primary submit-order" type="button" onClick={submitOrder} disabled={busy}>{busy ? "Подождите…" : route ? "🚕 Заказать такси · "+money(quote) : "Введите адрес назначения"}</button>
       </form>
       {route && destinationPoint && <div className="quote-panel"><div className="route-summary"><b>{route.distanceKm.toFixed(1)} км</b><span>· около {route.durationMin} мин.</span></div><p className="muted small">Цена примерная и может измениться, если водитель предложит другую.</p><a className="button secondary" href={routeUrl(pickupPoint,destinationPoint)} target="_blank" rel="noreferrer">🗺️ Посмотреть маршрут</a></div>}
     </section>}
