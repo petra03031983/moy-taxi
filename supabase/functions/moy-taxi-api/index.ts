@@ -3,6 +3,7 @@ const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Heade
 const reply=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:corsHeaders});const fail=(m:string,s=400)=>reply({ok:false,error:m},s);const enc=new TextEncoder();const hex=(b:ArrayBuffer|Uint8Array)=>Array.from(b instanceof Uint8Array?b:new Uint8Array(b)).map(x=>x.toString(16).padStart(2,"0")).join("");const fromHex=(v:string)=>new Uint8Array((v.match(/.{1,2}/g)||[]).map(x=>parseInt(x,16)));
 async function sha256(v:string){return hex(await crypto.subtle.digest("SHA-256",enc.encode(v)))}async function passwordHash(p:string,s:string){const k=await crypto.subtle.importKey("raw",enc.encode(p),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",salt:fromHex(s),iterations:120000,hash:"SHA-256"},k,256))}function equal(a:string,b:string){if(a.length!==b.length)return false;let d=0;for(let i=0;i<a.length;i++)d|=a.charCodeAt(i)^b.charCodeAt(i);return d===0}function phone(v:unknown){let d=String(v||"").replace(/\D/g,"");if(d.length===11&&d.startsWith("8"))d="7"+d.slice(1);return d.length>=10&&d.length<=15?"+"+d:""}
 const VEHICLE_CLASSES=["economy","comfort","comfort_plus","business","minivan","premium"];
+const DRIVER_OFFER_TTL_MS=60*1000;
 function vehicleClass(v:unknown){const x=String(v||"economy");return VEHICLE_CLASSES.includes(x)?x:"economy"}
 function pub(d:any){return {id:d.id,account_number:d.account_number||null,public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),photo_url:d.photo_url||"",wallet_balance:Number(d.wallet_balance||0),is_online:Boolean(d.is_online),current_lat:d.current_lat??null,current_lng:d.current_lng??null,location_updated_at:d.location_updated_at||null,documents_verified:Boolean(d.documents_verified)}}
 async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!u||!k)throw new Error("Server configuration is incomplete");return createClient(u,k,{auth:{persistSession:false,autoRefreshToken:false}})}
@@ -632,6 +633,10 @@ if(a==="order_status"){
  const id=String(p.order_id||""),token=String(p.client_token||"");
  const {data:o,error}=await c.from("orders").select("*,drivers(name,phone,car_model,car_plate,car_color,photo_url,is_online,current_lat,current_lng,location_updated_at,documents_verified,vehicle_class)").eq("id",id).eq("client_token",token).maybeSingle();
  if(error||!o)return fail("Заказ не найден.",404);
+ const offerCutoff=new Date(Date.now()-DRIVER_OFFER_TTL_MS).toISOString(),offerExpiredAt=new Date().toISOString();
+ const {data:expiredOffers,error:expiryError}=await c.from("order_offers").update({status:"skipped",responded_at:offerExpiredAt,updated_at:offerExpiredAt}).eq("order_id",id).eq("status","pending").lt("created_at",offerCutoff).select("id");
+ if(expiryError)console.warn("Could not expire old offers for order_status",expiryError.message);
+ if((expiredOffers||[]).length&&o.status==="new"&&o.price_status==="driver_offered")await c.from("orders").update({price_status:"pending",driver_price:null}).eq("id",id).eq("client_token",token).eq("status","new").eq("price_status","driver_offered");
  const [offersQ,ratingQ]=await Promise.all([
   c.from("order_offers").select("id,order_id,driver_id,price,status,created_at,drivers(name,phone,car_model,car_plate,car_color,photo_url,vehicle_class,current_lat,current_lng,location_updated_at)").eq("order_id",id).order("created_at",{ascending:true}),
   c.from("driver_ratings").select("id,stars,comment,created_at").eq("order_id",id).maybeSingle()
@@ -668,9 +673,11 @@ if(a==="client_accept_offer"||a==="client_decline_offer"){
  const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,client_token").eq("id",id).eq("client_token",token).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
  if(o.status!=="new"||o.driver_id)return fail("Этот заказ уже принят или отменён.",409);
- const {data:offer,error:ofe}=await c.from("order_offers").select("id,driver_id,price,status").eq("id",offerId).eq("order_id",id).maybeSingle();
+ const {data:offer,error:ofe}=await c.from("order_offers").select("id,driver_id,price,status,created_at").eq("id",offerId).eq("order_id",id).maybeSingle();
  if(ofe||!offer)return fail("Предложение водителя не найдено.",404);
  if(offer.status!=="pending")return fail("Это предложение уже недоступно.",409);
+ const offerCreatedAt=Date.parse(offer.created_at||"");
+ if(Number.isFinite(offerCreatedAt)&&Date.now()-offerCreatedAt>=DRIVER_OFFER_TTL_MS){const expiredAt=new Date().toISOString();await c.from("order_offers").update({status:"skipped",responded_at:expiredAt,updated_at:expiredAt}).eq("id",offerId).eq("status","pending");return fail("Время ответа на предложение истекло. Попроси водителя предложить цену заново.",409);}
  if(a==="client_decline_offer"){
   const {data:declined,error}=await c.from("order_offers").update({status:"declined",responded_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",offerId).eq("status","pending").select("id,status").maybeSingle();
   if(error||!declined)return fail("Не удалось отклонить предложение.",500);
@@ -743,7 +750,8 @@ if(a==="driver_offer_price"){
  if(base>0&&price>maxOffer)return fail("Максимальная цена предложения — "+maxOffer.toLocaleString("ru-RU")+" ₸ (не более 30% выше цены пассажира).");
  const {data:existing}=await c.from("order_offers").select("id,status").eq("order_id",id).eq("driver_id",d.id).maybeSingle();
  if(existing?.status==="skipped")return fail("Ты скрыл этот заказ у себя. Он недоступен для повторного отклика.");
- const {data:offer,error:offerError}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price,status:"pending",responded_at:null,updated_at:new Date().toISOString()},{onConflict:"order_id,driver_id"}).select("*").single();
+ const offerCreatedAt=new Date().toISOString();
+ const {data:offer,error:offerError}=await c.from("order_offers").upsert({order_id:id,driver_id:d.id,price,status:"pending",created_at:offerCreatedAt,responded_at:null,updated_at:offerCreatedAt},{onConflict:"order_id,driver_id"}).select("*").single();
  if(offerError||!offer)return fail("Не удалось отправить предложение цены.",500);
  if(o.driver_id)await c.from("orders").update({driver_price:price,price_status:"driver_offered"}).eq("id",id).eq("status","new");
  return reply({ok:true,offer,order:o});
@@ -769,6 +777,11 @@ if(a==="driver_skip_order"){
  return reply({ok:true,is_online:u.is_online,driver:pub(u)});
 }if(a==="driver_update_profile"){const name=String(p.name||"").trim().slice(0,100),car=String(p.car_model||"").trim().slice(0,100),plate=String(p.car_plate||"").trim().slice(0,30),color=String(p.car_color||"").trim().slice(0,40),photo=String(p.photo_url||""),vclass=vehicleClass(p.vehicle_class||d.vehicle_class);if(!name)return fail("Имя не может быть пустым.");if(photo.length>250000)return fail("Фото слишком большое.");const {data:u,error}=await c.from("drivers").update({name,car_model:car||null,car_plate:plate||null,car_color:color||null,vehicle_class:vclass,photo_url:photo||null,updated_at:new Date().toISOString()}).eq("id",d.id).select("*").single();if(error)return fail("Не удалось обновить профиль.",500);return reply({ok:true,driver:pub(u)})}if(a==="driver_list"){
  const cancellationCutoff=new Date(Date.now()-10*60*1000).toISOString();
+ const offerCutoff=new Date(Date.now()-DRIVER_OFFER_TTL_MS).toISOString(),offerExpiredAt=new Date().toISOString();
+ const {data:expiredDriverOffers,error:expireDriverOffersError}=await c.from("order_offers").update({status:"skipped",responded_at:offerExpiredAt,updated_at:offerExpiredAt}).eq("driver_id",d.id).eq("status","pending").lt("created_at",offerCutoff).select("order_id");
+ if(expireDriverOffersError)console.warn("Could not expire old driver offers",expireDriverOffersError.message);
+ const expiredDriverOrderIds=[...new Set((expiredDriverOffers||[]).map((x:any)=>String(x.order_id)).filter(Boolean))];
+ if(expiredDriverOrderIds.length)await c.from("orders").update({price_status:"pending",driver_price:null}).in("id",expiredDriverOrderIds).eq("driver_id",d.id).eq("status","new").eq("price_status","driver_offered");
  const [assignedQ,broadcastQ,cancelledQ]=await Promise.all([
   c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).in("status",["new","accepted","arrived","client_ready","started"]).order("created_at",{ascending:false}),
   c.from("orders").select("*,clients(name,phone)").is("driver_id",null).eq("status","new").order("created_at",{ascending:false}).limit(100),
@@ -787,7 +800,7 @@ if(a==="driver_skip_order"){
   return km(Number(d.current_lat),Number(d.current_lng),Number(o.pickup_lat),Number(o.pickup_lng))<=requestedSearchRadiusKm;
  });
  const all=[...(assignedQ.data||[]),...nearbyBroadcasts.filter((o:any)=>!ids.has(o.id))].sort((a:any,b:any)=>Date.parse(b.created_at)-Date.parse(a.created_at));
- const {data:myOffers}=await c.from("order_offers").select("order_id,status,price").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
+ const {data:myOffers}=await c.from("order_offers").select("order_id,status,price,created_at").eq("driver_id",d.id).in("status",["pending","accepted","declined","skipped"]).limit(1000);
  const declined=new Set((myOffers||[]).filter((x:any)=>x.status==="skipped").map((x:any)=>x.order_id));
  return reply({ok:true,orders:all.filter((o:any)=>o.driver_id||!declined.has(o.id)).map((o:any)=>({...enrich(o,d),my_offer:(myOffers||[]).find((x:any)=>x.order_id===o.id)||null})),recently_cancelled:cancelledQ.data||[],is_online:d.is_online,search_radius_km:requestedSearchRadiusKm,gps_fresh:hasFreshLocation});
 }if(a==="driver_history"){const {data:os,error}=await c.from("orders").select("*,clients(name,phone)").eq("driver_id",d.id).eq("status","completed").order("completed_at",{ascending:false}).limit(100);if(error)return fail("Не удалось загрузить историю.",500);return reply({ok:true,orders:os||[]})}
