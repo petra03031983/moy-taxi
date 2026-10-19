@@ -617,7 +617,7 @@ if(a==="create_order"){
   if(de||!direct)return fail("Водитель не найден.",404);
   if(!direct.is_online)return fail("Водитель сейчас не на линии.",409);
   d=direct;cls=vehicleClass(p.vehicle_class||d.vehicle_class);if(!driverCanServeOrder(d,{vehicle_class:cls}))return fail("Этот водитель сейчас не принимает выбранный тариф.",409);
-  const {data:modeRow}=await c.from("platform_settings").select("test_mode").eq("id",true).maybeSingle();serverTestMode=modeRow?.test_mode!==false;
+  const {data:modeRow,error:modeError}=await c.from("platform_settings").select("test_mode").eq("id",true).maybeSingle();if(modeError||!modeRow)return fail("Не удалось проверить режим расчёта.",500);serverTestMode=modeRow.test_mode!==false;
  }
  const {data:clRow,error:ce}=await c.from("clients").insert({name,phone:ph}).select("id").single();
  if(ce||!clRow)return fail("Не удалось сохранить клиента.",500);
