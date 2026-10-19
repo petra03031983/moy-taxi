@@ -1,12 +1,3 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
-    {
-      "source": "/",
-      "missing": [
-        { "type": "query", "key": "role" }
-      ],
-      "destination": "/start"
-    }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }
