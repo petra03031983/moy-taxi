@@ -17,6 +17,12 @@ const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFract
 function routeUrl(a, b) {
   return "https://2gis.kz/directions/points/" + a.lng + "," + a.lat + "|" + b.lng + "," + b.lat;
 }
+function gpsErrorMessage(error) {
+  if (error?.code === 1) return "Chrome не разрешил доступ к местоположению. Нажми значок слева от адреса сайта → Разрешения → Местоположение → Разрешить. На телефоне также включи «Местоположение». Затем нажми «Моё местоположение» ещё раз.";
+  if (error?.code === 2) return "Телефон пока не смог определить координаты. Включи GPS/Местоположение и попробуй ещё раз на открытом месте.";
+  if (error?.code === 3) return "GPS отвечает слишком долго. Включи «Местоположение» в телефоне и нажми кнопку ещё раз — приложение попробует получить координаты повторно.";
+  return "Не удалось получить координаты GPS. Проверь разрешение местоположения для Chrome и попробуй ещё раз.";
+}
 export default function PassengerPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -61,17 +67,46 @@ export default function PassengerPage() {
       setTestMode(data.test_mode !== false);
       if (Array.isArray(data.online_classes)) setOnlineClasses(data.online_classes);
     }).catch(() => setNotice("Используются временные тарифы. Проверь соединение перед заказом."));
-    if (!navigator.geolocation) { setLocating(false); return; }
-    navigator.geolocation.getCurrentPosition(position => {
+    if (!navigator.geolocation) {
+      setLocating(false);
+      setError("Геолокация недоступна в этом браузере. Разреши местоположение в Chrome или укажи адрес подачи вручную.");
+      return;
+    }
+    let active = true;
+    const applyPosition = position => {
+      if (!active || !position?.coords) return;
+      const point = { lat: Number(position.coords.latitude), lng: Number(position.coords.longitude) };
+      if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
+        setLocating(false);
+        setError("Телефон вернул некорректные координаты GPS. Нажми «Моё местоположение» повторно.");
+        return;
+      }
       setLocating(false);
       if (pickupManuallyChosenRef.current) return;
-      const point = { lat: position.coords.latitude, lng: position.coords.longitude };
       setPickupPoint(point);
-      setPickup(current => pickupManuallyChosenRef.current || current.trim() ? current : "Моё местоположение");
-      callApi("address_reverse", point).then(result => setPickup(current =>
-        !pickupManuallyChosenRef.current && (!current.trim() || current === "Моё местоположение") ? result.label : current
-      )).catch(() => {});
-    }, () => setLocating(false), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+      setPickup(current => pickupManuallyChosenRef.current || (current.trim() && current !== "Моё местоположение") ? current : "Моё местоположение");
+      callApi("address_reverse", point).then(result => {
+        if (active && !pickupManuallyChosenRef.current) setPickup(current =>
+          !current.trim() || current === "Моё местоположение" ? result.label || "Моё местоположение" : current
+        );
+      }).catch(() => {});
+    };
+    const failPosition = error => {
+      if (!active) return;
+      if (error?.code !== 1) {
+        navigator.geolocation.getCurrentPosition(applyPosition, finalError => {
+          if (!active) return;
+          setLocating(false);
+          setError(gpsErrorMessage(finalError));
+        }, { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
+        return;
+      }
+      setLocating(false);
+      setError(gpsErrorMessage(error));
+    };
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(applyPosition, failPosition, { enableHighAccuracy: true, timeout: 25000, maximumAge: 120000 });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -322,24 +357,45 @@ export default function PassengerPage() {
   function detectPickup() {
     if (!navigator.geolocation) {
       setLocating(false);
-      setError("Этот браузер не передаёт геопозицию. Можно указать адрес подачи вручную.");
+      setError("Геолокация недоступна в этом браузере. Можно указать адрес подачи вручную.");
       return;
     }
     pickupManuallyChosenRef.current = false;
     setLocating(true); setError(""); setNotice(""); setRoute(null);
     setPickupPoint(null); setPickup("Моё местоположение"); setPickupSuggestions([]);
-    navigator.geolocation.getCurrentPosition(position => {
+    let finished = false;
+    const onSuccess = position => {
+      if (finished || pickupManuallyChosenRef.current) return;
+      const point = { lat: Number(position?.coords?.latitude), lng: Number(position?.coords?.longitude) };
+      if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
+        finished = true;
+        setPickupPoint(null); setLocating(false); setPickup("");
+        setError("Телефон вернул некорректные координаты. Проверь GPS и попробуй снова.");
+        return;
+      }
+      finished = true;
       setLocating(false);
-      if (pickupManuallyChosenRef.current) return;
-      const point = { lat: position.coords.latitude, lng: position.coords.longitude };
       setPickupPoint(point); setPickup("Моё местоположение");
       callApi("address_reverse", point).then(result => {
         if (!pickupManuallyChosenRef.current) setPickup(result.label || "Моё местоположение");
       }).catch(() => {});
-    }, () => {
+    };
+    const onError = error => {
+      if (finished) return;
+      if (error?.code !== 1) {
+        navigator.geolocation.getCurrentPosition(onSuccess, finalError => {
+          if (finished) return;
+          finished = true;
+          setPickupPoint(null); setLocating(false); setPickup("");
+          setError(gpsErrorMessage(finalError));
+        }, { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 });
+        return;
+      }
+      finished = true;
       setPickupPoint(null); setLocating(false); setPickup("");
-      setError("Не удалось определить GPS. Введи адрес подачи вручную или разреши местоположение в Chrome.");
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 });
+      setError(gpsErrorMessage(error));
+    };
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, { enableHighAccuracy: true, timeout: 25000, maximumAge: 120000 });
   }
 
   return <main className="app client-app">
