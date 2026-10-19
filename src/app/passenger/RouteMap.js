@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null, driverPickupOnly = false }) {
+export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null }) {
   const element = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
@@ -10,20 +10,34 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
 
   useEffect(() => {
     let cancelled = false;
+    let loadTimer = null;
+    let script = null;
+    let loadHandler = null;
+    let errorHandler = null;
+    const fail = () => {
+      if (cancelled) return;
+      setFailed(true);
+      setReady(false);
+    };
     const init = () => {
       if (cancelled || !element.current || !window.L || map.current) return;
-      const L = window.L;
-      map.current = L.map(element.current, { zoomControl: true, scrollWheelZoom: false }).setView(
-        pickupPoint ? [pickupPoint.lat, pickupPoint.lng] : [51.1694, 71.4491],
-        pickupPoint ? 13 : 11
-      );
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      }).addTo(map.current);
-      layers.current = L.layerGroup().addTo(map.current);
-      setReady(true);
-      requestAnimationFrame(() => map.current?.invalidateSize());
+      try {
+        const L = window.L;
+        map.current = L.map(element.current, { zoomControl: true, scrollWheelZoom: false }).setView(
+          pickupPoint ? [pickupPoint.lat, pickupPoint.lng] : [51.1694, 71.4491],
+          pickupPoint ? 13 : 11
+        );
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map.current);
+        layers.current = L.layerGroup().addTo(map.current);
+        setFailed(false);
+        setReady(true);
+        requestAnimationFrame(() => map.current?.invalidateSize());
+      } catch {
+        fail();
+      }
     };
     if (!document.querySelector('link[data-leaflet-css="1"]')) {
       const link = document.createElement("link");
@@ -32,21 +46,35 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       link.dataset.leafletCss = "1";
       document.head.appendChild(link);
     }
-    if (window.L) init();
-    else {
-      let script = document.querySelector('script[data-leaflet-js="1"]');
-      if (!script) {
-        script = document.createElement("script");
-        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        script.dataset.leafletJs = "1";
-        script.onerror = () => { if (!cancelled) setFailed(true); };
-        document.head.appendChild(script);
+    if (window.L) {
+      init();
+    } else {
+      script = document.querySelector('script[data-leaflet-js="1"]');
+      if (script?.dataset.loaded === "1") {
+        fail();
+      } else {
+        if (!script) {
+          script = document.createElement("script");
+          script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+          script.dataset.leafletJs = "1";
+        }
+        loadHandler = () => {
+          if (script) script.dataset.loaded = "1";
+          if (window.L) init();
+          else fail();
+        };
+        errorHandler = fail;
+        script.addEventListener("load", loadHandler);
+        script.addEventListener("error", errorHandler);
+        if (!script.isConnected) document.head.appendChild(script);
+        loadTimer = window.setTimeout(fail, 10000);
       }
-      script.addEventListener("load", init);
-      if (script.dataset.loaded === "1") init();
     }
     return () => {
       cancelled = true;
+      if (loadTimer) window.clearTimeout(loadTimer);
+      if (script && loadHandler) script.removeEventListener("load", loadHandler);
+      if (script && errorHandler) script.removeEventListener("error", errorHandler);
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -78,18 +106,8 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       });
       L.marker(latLng, { icon }).bindPopup(title).addTo(group);
     };
-    marker(
-      pickupPoint, "A",
-      driverPickupOnly ? "Местоположение водителя" : "Откуда забрать",
-      pickupInfo || driverPickupOnly ? "#367cf5" : "#146b4b",
-      pickupInfo
-    );
-    marker(
-      destinationPoint, "B",
-      driverPickupOnly ? "Точка подачи клиента" : "Куда ехать",
-      destinationInfo || driverPickupOnly ? "#299958" : "#d94841",
-      destinationInfo
-    );
+    marker(pickupPoint, "A", "Откуда забрать", "#367cf5", pickupInfo);
+    marker(destinationPoint, "B", "Куда ехать", "#299958", destinationInfo);
     if (Array.isArray(routeGeometry) && routeGeometry.length > 1) {
       const line = routeGeometry
         .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
@@ -114,7 +132,7 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       </div>
       <div ref={element} className="route-map" />
       {failed && <p className="muted small">Карта не загрузилась. Адреса и расчёт стоимости можно использовать без неё.</p>}
-      {!ready && !failed && <div className="route-map-loading">Загружаем карту…</div>}
+      {!ready && !failed && <div className="route-map-loading">Загружаем карту…</div>}{failed && <div className="route-map-loading">Карта временно недоступна</div>}
     </section>
   );
 }
