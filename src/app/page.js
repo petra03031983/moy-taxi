@@ -63,6 +63,19 @@ function orderAge(value){
  if(hours<24)return hours+" ч.";
  return new Date(time).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"});
 }
+const DRIVER_OFFER_TTL_MS=60*1000;
+function offerTimeRemaining(offer,now=Date.now()){
+ const created=Date.parse(offer?.created_at||"");
+ if(!Number.isFinite(created))return 0;
+ return Math.max(0,DRIVER_OFFER_TTL_MS-(now-created));
+}
+function formatOfferTimeLeft(ms){
+ const total=Math.max(0,Math.ceil(Number(ms||0)/1000));
+ return String(Math.floor(total/60)).padStart(2,"0")+":"+String(total%60).padStart(2,"0");
+}
+function offerTimePercent(offer,now=Date.now()){
+ return Math.max(0,Math.min(100,offerTimeRemaining(offer,now)/DRIVER_OFFER_TTL_MS*100));
+}
 function formatDistance(value){
  const km=Number(value);
  if(!Number.isFinite(km)||km<0)return "";
@@ -88,6 +101,8 @@ function validOrderPoint(lat,lng){
 export default function Home(){
  const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[selectedOrderId,setSelectedOrderId]=useState(null),[offerCustomOpen,setOfferCustomOpen]=useState(false),[detailRouteGeometry,setDetailRouteGeometry]=useState([]),[detailRouteStats,setDetailRouteStats]=useState(null),[detailPickupStats,setDetailPickupStats]=useState(null),[detailMapLoading,setDetailMapLoading]=useState(false),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[settingsTab,setSettingsTab]=useState("orders"),[darkMode,setDarkMode]=useState("system"),[feedSounds,setFeedSounds]=useState(true),[orderChain,setOrderChain]=useState(false),[quickSwitch,setQuickSwitch]=useState(false),[navigatorApp,setNavigatorApp]=useState("2gis"),[filterMinPrice,setFilterMinPrice]=useState(""),[filterMaxDistance,setFilterMaxDistance]=useState(""),[filterVehicleClass,setFilterVehicleClass]=useState("all"),[filterTripType,setFilterTripType]=useState("all"),[filterPickupDistance,setFilterPickupDistance]=useState(3),[scanRadiusKm,setScanRadiusKm]=useState(3),[filterMinPricePerKm,setFilterMinPricePerKm]=useState(500),[filterMinOrderPrice,setFilterMinOrderPrice]=useState(3000),[settingsLoaded,setSettingsLoaded]=useState(false),[tariffModes,setTariffModes]=useState({economy:true,noBargaining:true,comfort:false,seats6:false,parcels:true}),[vehicleEditOpen,setVehicleEditOpen]=useState(false),[vehicleDraft,setVehicleDraft]=useState({car_model:"",car_plate:""}),[vehicleSaving,setVehicleSaving]=useState(false),[academyCompleted,setAcademyCompleted]=useState([]),[safetyChecks,setSafetyChecks]=useState({vehicle:false,seatbelt:false,phone:false}),[supportMessage,setSupportMessage]=useState(""),[appRefreshing,setAppRefreshing]=useState(false),[sessionRestorePending,setSessionRestorePending]=useState(true),[sessionRestoreError,setSessionRestoreError]=useState(""),[restoreSessionRetry,setRestoreSessionRetry]=useState(0),[appReady,setAppReady]=useState(false),[clockNow,setClockNow]=useState(Date.now());
  const previousIds=useRef(new Set()),previousCancelledIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
+ const hasArrivalClock=orders.some(o=>["arrived","client_ready"].includes(o.status)&&o.arrived_at);
+ const hasPendingOfferClock=orders.some(o=>o.my_offer?.status==="pending");
  useEffect(()=>{const entryParams=new URLSearchParams(window.location.search);if(entryParams.get("role")==="driver"&&entryParams.get("register")==="1"){setEntryMode("driver");setAuthMode("register")}setOrigin(window.location.origin);setNotificationPermission("Notification"in window?Notification.permission:"unsupported");if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});const bip=e=>{e.preventDefault();setInstallPrompt(e)};window.addEventListener("beforeinstallprompt",bip);const saved=localStorage.getItem("moyTaxiSession");if(saved){try{const s=cleanSession(JSON.parse(saved));if(s){setEntryMode("driver");const savedTab=localStorage.getItem("moyTaxiDriverTab");const validTabs=["orders","active","demand","stats","history","wallet","profile","settings","order-filter","city","intercity","cargo","academy","notifications","safety","help","online-registration","invite","support"];if(validTabs.includes(savedTab))setTab(savedTab);let cachedDriver=null;try{const cached=JSON.parse(localStorage.getItem("moyTaxiDriverCache")||"null");if(cached&&String(cached.id)===String(s.driver_id))cachedDriver=cached}catch{}setSessionRestorePending(!cachedDriver);setSessionRestoreError("");setSession(s);if(cachedDriver){setDriver(cachedDriver);setAppReady(true)}}else{localStorage.removeItem("moyTaxiSession");localStorage.removeItem("moyTaxiDriverCache");setSessionRestorePending(false);setAppReady(true)}}catch{localStorage.removeItem("moyTaxiSession");localStorage.removeItem("moyTaxiDriverCache");setSessionRestorePending(false);setAppReady(true)}}else{setSessionRestorePending(false);setAppReady(true)}const unlock=()=>{try{const C=window.AudioContext||window.webkitAudioContext;if(C&&!audioRef.current)audioRef.current=new C();audioRef.current?.resume()}catch{}};window.addEventListener("pointerdown",unlock,{once:true});return()=>{window.removeEventListener("beforeinstallprompt",bip);window.removeEventListener("pointerdown",unlock)}},[]);
  useEffect(()=>{
   if(!session){setSessionRestorePending(false);return}
@@ -153,11 +168,11 @@ export default function Home(){
   return()=>{alive=false;clearInterval(timer)};
  },[session?.driver_id,session?.session_token]);
  useEffect(()=>{
-  const needsClock=orders.some(o=>["arrived","client_ready"].includes(o.status)&&o.arrived_at);
-  if(!needsClock)return;
+  if(!hasArrivalClock&&!hasPendingOfferClock)return;
+  setClockNow(Date.now());
   const timer=window.setInterval(()=>setClockNow(Date.now()),1000);
   return()=>window.clearInterval(timer);
- },[orders]);
+ },[hasArrivalClock,hasPendingOfferClock]);
  useEffect(()=>{
   if(!session){previousIds.current=new Set();previousCancelledIds.current=new Set();firstLoad.current=true;return}
   let alive=true;
@@ -463,6 +478,9 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const filteredOrders=orders;
  const visibleOrders=tab==="active"?filteredOrders.filter(o=>["accepted","arrived","client_ready","started"].includes(o.status)):filteredOrders;
  const selectedOrder=selectedOrderId?orders.find(o=>String(o.id)===String(selectedOrderId))||null:null;
+ const selectedPendingOffer=selectedOrder?.my_offer?.status==="pending"?selectedOrder.my_offer:null;
+ const selectedOfferRemaining=offerTimeRemaining(selectedPendingOffer,clockNow);
+ const selectedOfferProgress=offerTimePercent(selectedPendingOffer,clockNow);
  const selectedOrderWrongVehicleClass=false;
  const selectedOrderTariffDisabled=Boolean(selectedOrder&&!selectedOrderWrongVehicleClass&&!orderClassAllowed(selectedOrder));
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
@@ -476,7 +494,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  async function copyInviteLink(){const link=origin+"/c/"+driver.public_code;try{await navigator.clipboard.writeText(link);setNotice("Ссылка для приглашения скопирована.")}catch{setNotice("Используй кнопку «Поделиться ссылкой» для отправки приглашения.")}}
  async function shareSupportMessage(){const message="Обращение в службу поддержки «Мой Такси»\nВодитель: "+(driver.name||"не указано")+"\nТелефон: "+(driver.phone||"не указан")+"\nСообщение: "+(supportMessage.trim()||"Прошу связаться со мной по вопросу работы приложения.");try{if(navigator.share){await navigator.share({title:"Поддержка «Мой Такси»",text:message})}else{await navigator.clipboard?.writeText(message);setNotice("Текст обращения скопирован. Отправь его в мессенджере.")}}catch(e){if(e?.name!=="AbortError")setNotice("Не удалось открыть меню отправки. Попробуй ещё раз.")}}
  const renderMenuOrders=(list,emptyText)=>list.length===0?<div className="driver-menu-empty"><div className="empty-icon">🚕</div><h3>{emptyText}</h3><p className="muted">Заказы обновляются автоматически, пока водитель на линии.</p></div>:<div className="driver-service-orders">{sortOrdersNewestFirst(list).map(o=>{const fare=Number(o.agreed_price||o.client_price||o.driver_price||0);return <article className="driver-service-order" key={o.id}><div className="driver-service-order-top"><b>{fare>0?fare.toLocaleString("ru-RU")+" ₸":"Цена не указана"}</b><span className="status">{statusLabel(o.status)}</span></div><p>📍 {o.pickup_address||"Адрес подачи не указан"}</p><p>🏁 {o.destination_address||"Адрес назначения не указан"}</p><div className="actions">{o.status==="new"&&<button type="button" className="button primary" disabled={!o.driver_id&&!orderClassAllowed(o)} onClick={()=>acceptOrderAndNavigate(o)}>{!o.driver_id&&!orderClassAllowed(o)?"Тариф для другого автомобиля":"Принять заказ"}</button>}<button type="button" className="button secondary" onClick={()=>openOrderFromMenu(o.id)}>Открыть в ленте</button></div></article>})}</div>;
- return <main className="app dashboard driver-dashboard"><div className="order-alert-stack" aria-live="polite" aria-atomic="false">{incomingAlerts.map(alert=><button type="button" className="order-alert" key={alert.id} onClick={()=>document.getElementById("order-"+alert.id)?.scrollIntoView({behavior:"smooth",block:"center"})}><span className="order-alert-icon">🔔</span><span className="order-alert-copy"><b>Новый заказ!</b><small>{alert.body}</small></span><span className="order-alert-arrow">›</span></button>)}</div><div className={"driver-top-area "+(tab==="order-filter"?"driver-top-area-hidden":"")}><div className="driver-topbar">
+ return <main className="app dashboard driver-dashboard">{selectedPendingOffer&&<div aria-label={"Время ожидания ответа: "+formatOfferTimeLeft(selectedOfferRemaining)} style={{position:"fixed",left:0,right:0,bottom:0,height:5,zIndex:2147483000,pointerEvents:"none",background:"#d7e6da"}}><span style={{display:"block",height:"100%",width:selectedOfferProgress+"%",background:"#16a34a",transition:"width 1s linear"}} /></div>}<div className="order-alert-stack" aria-live="polite" aria-atomic="false">{incomingAlerts.map(alert=><button type="button" className="order-alert" key={alert.id} onClick={()=>document.getElementById("order-"+alert.id)?.scrollIntoView({behavior:"smooth",block:"center"})}><span className="order-alert-icon">🔔</span><span className="order-alert-copy"><b>Новый заказ!</b><small>{alert.body}</small></span><span className="order-alert-arrow">›</span></button>)}</div><div className={"driver-top-area "+(tab==="order-filter"?"driver-top-area-hidden":"")}><div className="driver-topbar">
  <div className="driver-menu-wrap">
   <button type="button" className="driver-top-action driver-menu-trigger" aria-label="Меню водителя" aria-expanded={driverMenuOpen} onClick={()=>setDriverMenuOpen(open=>!open)}>☰</button>
   {driverMenuOpen&&<>
@@ -575,6 +593,12 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
     </div>
     {o.price_status==="accepted"&&Number(o.agreed_price)>0&&<p className="feed-order-note success">✅ Согласовано: <b>{Number(o.agreed_price).toLocaleString("ru-RU")} ₸</b></p>}
     {o.price_status==="driver_offered"&&<p className="feed-order-note success">Твоя цена: <b>{Number(o.driver_price).toLocaleString("ru-RU")} ₸</b> · ждём ответа клиента.</p>}
+    {o.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(o.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём ответа пассажира.
+     <div style={{marginTop:8,fontSize:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><span>Предложение активно ещё</span><b>{formatOfferTimeLeft(offerTimeRemaining(o.my_offer,clockNow))}</b></div>
+      <div style={{height:5,width:"100%",borderRadius:99,background:"#cbd5d1",overflow:"hidden",marginTop:6}}><span style={{display:"block",height:"100%",width:offerTimePercent(o.my_offer,clockNow)+"%",background:"#16a34a",transition:"width 1s linear"}} /></div>
+     </div>
+    </div>}
     {o.price_status==="declined"&&<p className="feed-order-note muted">Клиент отклонил цену. Можно предложить другую.</p>}
     <div className="order-actions actions feed-order-actions">
      {o.status==="accepted"&&<><a className="button secondary" href={navigationRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут в 2GIS</a><button type="button" className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
@@ -695,7 +719,12 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
    <div className="driver-order-detail-address"><span className="driver-order-detail-dot pickup">A</span><div><small>ОТКУДА</small><b>{selectedOrder.pickup_address||"Адрес подачи не указан"}</b></div></div>
    <div className="driver-order-detail-address"><span className="driver-order-detail-dot destination">B</span><div><small>КУДА</small><b>{selectedOrder.destination_address||"Адрес назначения не указан"}</b></div></div>
    <div className="driver-order-detail-meta"><span>{VEHICLE_CLASSES.find(x=>x[0]===selectedOrder.vehicle_class)?.[1]||"Эконом"} · {selectedOrder.trip_type==="intercity"?"Межгород":"Город"}</span><span>{selectedOrder.payment_method==="kaspi_gold"?"Перевод на Kaspi":"Наличные"}</span></div>
-   {selectedOrder.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(selectedOrder.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём, пока пассажир ответит.</div>}
+   {selectedOrder.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(selectedOrder.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём, пока пассажир ответит.
+    <div style={{marginTop:8,fontSize:12}}>
+     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><span>Предложение активно ещё</span><b>{formatOfferTimeLeft(selectedOfferRemaining)}</b></div>
+     <div style={{height:5,width:"100%",borderRadius:99,background:"#cbd5d1",overflow:"hidden",marginTop:6}}><span style={{display:"block",height:"100%",width:selectedOfferProgress+"%",background:"#16a34a",transition:"width 1s linear"}} /></div>
+    </div>
+   </div>}
    {selectedOrder.price_status==="declined"&&<p className="muted small">Клиент отклонил предыдущую цену. Можно предложить новую.</p>}
    {selectedOrderWrongVehicleClass&&<div className="error driver-order-detail-error">Этот заказ тарифа «{VEHICLE_CLASSES.find(x=>x[0]===selectedOrder.vehicle_class)?.[1]||"другой"}» не подходит классу твоего автомобиля «{VEHICLE_CLASSES.find(x=>x[0]===driver?.vehicle_class)?.[1]||"Эконом"}». Заказ виден в ленте, но принять его нельзя.</div>}
    {selectedOrderTariffDisabled&&<div className="muted small">Этот тариф выключен в твоих настройках. Включи его в разделе «Настройки → Тарифы», чтобы принимать такие заказы.</div>}
