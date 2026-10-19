@@ -544,7 +544,7 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  const offerWaitClockOffer=offerWaitOverlay?{created_at:offerWaitCreatedAt}:null;
  const offerWaitRemaining=offerTimeRemaining(offerWaitClockOffer,clockNow);
  const offerWaitProgress=offerTimePercent(offerWaitClockOffer,clockNow);
- const selectedOrderWrongVehicleClass=Boolean(selectedOrder&&!selectedOrder.driver_id&&((["comfort","comfort_plus","business","premium"].includes(String(selectedOrder.vehicle_class||""))&&!vehicleCapabilities.comfort)||(String(selectedOrder.vehicle_class||"")==="minivan"&&!vehicleCapabilities.seats6));
+ const selectedOrderWrongVehicleClass=Boolean(selectedOrder&&!selectedOrder.driver_id&&((["comfort","comfort_plus","business","premium"].includes(String(selectedOrder.vehicle_class||""))&&!vehicleCapabilities.comfort)||(String(selectedOrder.vehicle_class||"")==="minivan"&&!vehicleCapabilities.seats6)));
  const selectedOrderTariffDisabled=Boolean(selectedOrder&&!selectedOrderWrongVehicleClass&&!orderClassAllowed(selectedOrder));
  const showDriverProfile=()=>{setForm({...emptyForm,name:driver.name||"",car_model:driver.car_model||"",car_plate:driver.car_plate||"",car_color:driver.car_color||"",vehicle_class:driver.vehicle_class||"economy",photo_url:driver.photo_url||""});setTab("profile");setDriverMenuOpen(false)};
  const openDriverSettings=()=>{setTab("settings");setDriverMenuOpen(false)};
