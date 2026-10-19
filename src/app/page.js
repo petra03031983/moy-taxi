@@ -176,7 +176,7 @@ export default function Home(){
  },[hasArrivalClock,hasPendingOfferClock,Boolean(offerWaitOverlay)]);
  useEffect(()=>{
   if(offerWaitOverlay){
-   if(offerWaitRemaining<=0){setOfferWaitOverlay(null);return}
+   if(offerTimeRemaining({created_at:offerWaitOverlay.createdAt},clockNow)<=0){setOfferWaitOverlay(null);return}
    const current=orders.find(o=>String(o.id)===String(offerWaitOverlay.orderId));
    if(current?.my_offer&&current.my_offer.status!=="pending"){setOfferWaitOverlay(null);return}
    return;
@@ -190,7 +190,7 @@ export default function Home(){
    const x=pending[0];
    setOfferWaitOverlay({orderId:String(x.order.id),price:Number(x.order.my_offer.price||0),createdAt:x.createdAt});
   }
- },[orders,clockNow,offerWaitOverlay?.orderId,offerWaitRemaining]);
+ },[orders,clockNow,offerWaitOverlay?.orderId]);
  useEffect(()=>{
   if(!session){previousIds.current=new Set();previousCancelledIds.current=new Set();firstLoad.current=true;return}
   let alive=true;
