@@ -224,6 +224,7 @@ h1,h2,h3,p{margin-top:0}h1{font-size:28px;letter-spacing:-.6px;margin-bottom:8px
 .feed-offer-field{margin-top:8px}
 .feed-offer-field input{min-width:0}
 .feed-order-actions.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}
+.feed-order-actions>.feed-order-note{grid-column:1 / -1;display:block;width:100%;min-width:0;box-sizing:border-box}
 .feed-order-actions .button,.feed-order-actions a{display:flex;align-items:center;justify-content:center;min-width:0;min-height:40px;padding:9px 7px;font-size:12px;line-height:1.25;text-align:center;white-space:normal;overflow-wrap:anywhere}
 .feed-notifications-button{margin:4px 0 8px;width:100%;min-height:40px;font-size:13px}
 .feed-sort-note{margin:0 0 10px!important;font-size:12px}
