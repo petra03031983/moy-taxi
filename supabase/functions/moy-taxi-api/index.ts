@@ -722,6 +722,7 @@ if(a==="driver_wallet"){
  if(!d.is_online)return fail("Сначала выйди на линию.");
  const {data:o,error:oe}=await c.from("orders").select("*").eq("id",id).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
+ if(!driverCanServeOrder(d,o))return fail("Этот заказ не соответствует включённым тарифам или автомобилю.",409);
  if(o.status!=="new"||o.driver_id)return fail("Этот заказ уже принят другим водителем.");
 
  const {data:settingsRow,error:se}=await c.from("platform_settings").select("test_mode,minimum_wallet_balance").eq("id",true).maybeSingle();
@@ -745,8 +746,10 @@ if(a==="driver_offer_price"){
  if(!d.is_online)return fail("Сначала выйди на линию, чтобы отвечать на заказы.");
  const id=String(p.order_id||""),price=Math.round(Number(p.price));
  if(!id||!Number.isFinite(price)||price<100||price>1000000)return fail("Укажи корректную цену.");
- const {data:o,error:oe}=await c.from("orders").select("id,status,driver_id,vehicle_class,client_price").eq("id",id).maybeSingle();
+ const {data:o,error:oe}=await c.from("orders").select("*").eq("id",id).maybeSingle();
  if(oe||!o)return fail("Заказ не найден.",404);
+ if(!driverCanServeOrder(d,o))return fail("Этот заказ не соответствует включённым тарифам или автомобилю.",409);
+ if(normalizeTariffModes(d.tariff_modes).noBargaining)return fail("Включён режим «Без торга». Выключи его в настройках, чтобы предлагать цену.");
  if(o.status!=="new"||(o.driver_id&&o.driver_id!==d.id))return fail("Этот заказ уже недоступен.");
 
  const base=amount(o.client_price);
@@ -831,6 +834,11 @@ if(a==="driver_update"){
  if(!["accepted","arrived","started","completed"].includes(status))return fail("Недопустимый статус. Для отмены используй специальную кнопку ожидания.");
  const {data:o}=await c.from("orders").select("*").eq("id",id).eq("driver_id",d.id).maybeSingle();
  if(!o)return fail("Заказ не найден.",404);
+ if(status==="accepted"&&o.status!=="new")return fail("Этот заказ уже не новый и не может быть принят повторно.",409);
+ if(status==="accepted"&&!driverCanServeOrder(d,o))return fail("Этот заказ не соответствует включённым тарифам или автомобилю.",409);
+ if(status==="arrived"&&o.status!=="accepted")return fail("Отметить прибытие можно только после принятия заказа.",409);
+ if(status==="started"&&o.status!=="client_ready")return fail("Дождись, пока пассажир подтвердит, что выходит.",409);
+ if(status==="completed"&&o.status!=="started")return fail("Завершить можно только начатую поездку.",409);
  if(status==="completed"){
   const {data:settingsRow,error:se}=await c.from("platform_settings").select("commission_percent,test_mode").eq("id",true).maybeSingle();
   if(se||!settingsRow)return fail("Не удалось рассчитать комиссию за поездку.",500);
@@ -844,8 +852,6 @@ if(a==="driver_update"){
   return reply({ok:true,order:doneOrder,finance,driver:updatedDriver?pub(updatedDriver):pub(d)});
  }
  if(status==="accepted"&&o.price_status==="driver_offered")return fail("Сначала дождись ответа клиента на твою цену.");
- if(status==="arrived"&&o.status!=="accepted")return fail("Сначала нужно принять заказ.");
- if(status==="started"&&o.status!=="client_ready")return fail("Дождись, пока пассажир нажмёт «Я выхожу».");
  if(status==="cancelled"&&["completed","cancelled"].includes(o.status))return fail("Этот заказ уже закрыт.");
  const patch:any={status};
  if(status==="arrived")patch.arrived_at=new Date().toISOString();
@@ -856,8 +862,8 @@ if(a==="driver_update"){
    else{patch.agreed_price=null;patch.price_status="pending"}
   }
  }
- const {data:u,error}=await c.from("orders").update(patch).eq("id",id).select("*").single();
- if(error)return fail("Не удалось изменить заказ.",500);
+ const {data:u,error}=await c.from("orders").update(patch).eq("id",id).eq("driver_id",d.id).eq("status",o.status).select("*").maybeSingle();
+ if(error)return fail("Не удалось изменить заказ.",500);if(!u)return fail("Статус заказа уже изменился. Обнови список и проверь заказ.",409);
  return reply({ok:true,order:u})
 }
 }
