@@ -505,7 +505,7 @@ export default function Home(){
    const km=Number(result.distance_km||0);
    const minutes=Number(result.duration_minutes||0);
    setDetailPickupStats({distanceKm:km>0?km:Number(o.distance_km||0),durationMin:minutes>0?minutes:0});
-  }).catch(()=>{});
+  }).catch(()=>{}):Promise.resolve();
   Promise.all([tripRoute,pickupRoute]).finally(()=>{if(alive)setDetailMapLoading(false)});
   return()=>{alive=false};
  },[selectedOrderId,session?.driver_id,session?.session_token,driver?.current_lat,driver?.current_lng]);
