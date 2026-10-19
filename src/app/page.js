@@ -246,7 +246,47 @@ export default function Home(){
   load();const t=setInterval(load,3000);
   return()=>{alive=false;clearInterval(t)};
  },[session?.driver_id,session?.session_token,feedSounds,filterPickupDistance,filterMinPricePerKm,filterMinOrderPrice,scanRadiusKm]);
- useEffect(()=>{if(!session||!driver?.is_online||!("geolocation"in navigator))return;const send=p=>callApi("driver_location",{...session,lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}).catch(()=>{});const locate=()=>navigator.geolocation.getCurrentPosition(send,()=>{},{enableHighAccuracy:true,maximumAge:15000,timeout:15000});locate();watchRef.current=navigator.geolocation.watchPosition(send,()=>{},{enableHighAccuracy:true,maximumAge:15000,timeout:15000});const refreshTimer=setInterval(locate,60000);return()=>{clearInterval(refreshTimer);if(watchRef.current!=null)navigator.geolocation.clearWatch(watchRef.current)}},[session?.driver_id,session?.session_token,driver?.is_online]);
+ useEffect(()=>{
+  if(!session||!driver?.is_online)return;
+  if(!("geolocation"in navigator)){
+   setNotice("Браузер не передаёт GPS. Разреши местоположение в Chrome и включи геолокацию телефона.");
+   return;
+  }
+  let active=true,locationWarningShown=false;
+  const options={enableHighAccuracy:true,maximumAge:10000,timeout:25000};
+  const send=async position=>{
+   if(!active||!position?.coords)return;
+   const lat=Number(position.coords.latitude),lng=Number(position.coords.longitude),accuracy=Number(position.coords.accuracy);
+   if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return;
+   const updatedAt=new Date().toISOString();
+   setDriver(current=>current?{...current,current_lat:lat,current_lng:lng,location_updated_at:updatedAt}:current);
+   try{
+    await callApi("driver_location",{...session,lat,lng,accuracy:Number.isFinite(accuracy)?accuracy:null});
+    if(active&&locationWarningShown){locationWarningShown=false;setNotice("✅ Местоположение снова обновляется.");}
+   }catch{
+    if(active&&!locationWarningShown){locationWarningShown=true;setNotice("GPS получен, но не удалось передать координаты на сервер. Проверяю соединение…");}
+   }
+  };
+  const locationError=error=>{
+   if(!active||locationWarningShown)return;
+   locationWarningShown=true;
+   if(error?.code===1)setNotice("📍 Доступ к GPS запрещён. В Chrome открой значок слева от адреса → Разрешения → Местоположение → Разрешить. На телефоне включи «Местоположение», затем обнови страницу.");
+   else if(error?.code===3)setNotice("📍 GPS отвечает слишком долго. Проверь, что на телефоне включено «Местоположение»; приложение продолжит пробовать снова.");
+   else setNotice("📍 Пока не удаётся определить GPS. Проверь геолокацию телефона; приложение продолжит пробовать снова.");
+  };
+  const locate=()=>{
+   if(!active)return;
+   try{navigator.geolocation.getCurrentPosition(send,locationError,options)}catch{locationError({code:2})}
+  };
+  locate();
+  try{watchRef.current=navigator.geolocation.watchPosition(send,locationError,options)}catch{locationError({code:2})}
+  const refreshTimer=setInterval(locate,45000);
+  return()=>{
+   active=false;
+   clearInterval(refreshTimer);
+   if(watchRef.current!=null){try{navigator.geolocation.clearWatch(watchRef.current)}catch{}watchRef.current=null}
+  };
+ },[session?.driver_id,session?.session_token,driver?.is_online]);
  useEffect(()=>{
   const locationFresh=Boolean(driver?.location_updated_at&&Date.now()-Date.parse(driver.location_updated_at)<=5*60*1000&&driver.current_lat!=null&&driver.current_lng!=null);
   if(!driver?.is_online||!locationFresh){setScanRadiusKm(3);return}
