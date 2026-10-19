@@ -599,7 +599,12 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <div className="driver-financial-bottom"><strong>{Number(walletInfo?.wallet_balance??driver.wallet_balance??0).toLocaleString("ru-RU",{maximumFractionDigits:0})} ₸</strong><button type="button" className="driver-topup-button" aria-label="Открыть кошелёк и пополнение" onClick={()=>{setTab("wallet");refreshWallet()}}>+</button></div>
   <button type="button" className="driver-topup-link" onClick={()=>{setTab("wallet");refreshWallet()}}>Пополнить счёт</button>
  </article>
-</section></div>{!["orders","active","demand","stats","wallet","settings","order-filter"].includes(tab)&&<div className="driver-subpage-back-row"><button type="button" className="button secondary" style={{margin:"12px 18px 0"}} onClick={()=>{setTab("orders");setDriverMenuOpen(false)}}>‹ Назад в ленту заказов</button></div>}{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
+</section></div>{offerWaitOverlay&&offerWaitRemaining>0&&<section aria-live="polite" aria-label="Предложение цены отправлено" style={{margin:"12px 18px 14px",padding:"12px 16px 14px",borderRadius:18,background:"linear-gradient(145deg,#202820 0%,#101411 100%)",border:"1.5px solid #c6ff00",boxShadow:"0 4px 18px rgba(0,0,0,.18)",color:"#fff",display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",alignItems:"center",columnGap:12,rowGap:4}}>
+ <div style={{gridColumn:"1 / -1",fontSize:12,fontWeight:900,letterSpacing:"1.25px",color:"#c6ff00"}}>ПРЕДЛАГАЕМ ВАШУ ЦЕНУ</div>
+ <div style={{fontSize:"clamp(24px,5.7vw,32px)",fontWeight:900,lineHeight:1.08}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸</div>
+ <div style={{fontSize:24,fontWeight:900,fontVariantNumeric:"tabular-nums",background:"#c6ff00",color:"#101411",padding:"5px 9px",borderRadius:9}}>{formatOfferTimeLeft(offerWaitRemaining)}</div>
+ <div style={{gridColumn:"1 / -1",fontSize:14,fontWeight:650,color:"#e0e6dc"}}>Дождитесь ответа пассажира</div>
+</section>}{!["orders","active","demand","stats","wallet","settings","order-filter"].includes(tab)&&<div className="driver-subpage-back-row"><button type="button" className="button secondary" style={{margin:"12px 18px 0"}} onClick={()=>{setTab("orders");setDriverMenuOpen(false)}}>‹ Назад в ленту заказов</button></div>}{tab==="orders"&&visibleOrders.length===0?<div className={"driver-radar-empty "+(driver.is_online&&gpsFresh?"is-searching":driver.is_online?"is-locating":"is-offline")}>
   <div className="driver-radar-status"><span className="driver-radar-status-dot"></span>{driver.is_online&&gpsFresh?"ПОИСК ЗАКАЗОВ":driver.is_online?"ОЖИДАЕМ ГЕОЛОКАЦИЮ":"НЕ В СЕТИ"}</div>
   <div className="driver-radar-range driver-radar-range-top"><span>РАДИУС ПОИСКА</span><b>до {scanRadiusKm} км</b></div>
   <div className="driver-radar-visual" role="img" aria-label={driver.is_online&&gpsFresh?"Анимированный радар поиска заказов":"Радар ожидания"}>
@@ -655,13 +660,8 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
     </div>
     {o.price_status==="accepted"&&Number(o.agreed_price)>0&&<p className="feed-order-note success">✅ Согласовано: <b>{Number(o.agreed_price).toLocaleString("ru-RU")} ₸</b></p>}
     {o.price_status==="driver_offered"&&<p className="feed-order-note success">Твоя цена: <b>{Number(o.driver_price).toLocaleString("ru-RU")} ₸</b> · ждём ответа клиента.</p>}
-    {o.my_offer?.status==="pending"&&<div className="driver-order-offer-pending">Ты предложил <b>{Number(o.my_offer.price).toLocaleString("ru-RU")} ₸</b>. Ждём ответа пассажира.
-     <div style={{marginTop:8,fontSize:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}><span>Предложение активно ещё</span><b>{formatOfferTimeLeft(offerTimeRemaining(o.my_offer,clockNow))}</b></div>
-      <div style={{height:10,width:"100%",borderRadius:99,background:"#28352a",overflow:"hidden",marginTop:8,border:"1px solid #596b50"}}><span style={{display:"block",height:"100%",width:offerTimePercent(o.my_offer,clockNow)+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 8px rgba(198,255,0,.55)"}} /></div>
-     </div>
-    </div>}
-    {o.price_status==="declined"&&<p className="feed-order-note muted">Клиент отклонил цену. Можно предложить другую.</p>}{o.my_offer?.status==="declined"&&o.status==="new"&&<p className="feed-order-note muted">Предложение отклонено или время ответа истекло. Заказ остался в ленте — можно предложить другую цену.</p>}
+    
+    
     <div className="order-actions actions feed-order-actions">
      {o.status==="accepted"&&<><a className="button secondary" href={navigationRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут в 2GIS</a><button type="button" className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
      {["arrived","client_ready"].includes(o.status)&&<div className="success feed-order-note"><b>Ты на месте. Ожидаем пассажира.</b>{arrivalRecorded?<p className="small" style={{margin:"5px 0 0"}}>{canCancelNoShow?"10 минут ожидания истекли.":"До возможности отменить заказ осталось:"} <strong>{canCancelNoShow?"00:00":waitCountdown}</strong></p>:<p className="small" style={{margin:"5px 0 0"}}>Не удалось загрузить время прибытия. Обнови приложение; таймер проверяется сервером.</p>}{canCancelNoShow&&<button type="button" className="button danger" style={{marginTop:8}} disabled={busy} onClick={()=>cancelNoShowOrder(o.id)}>Отменить — пассажир не вышел</button>}</div>}
@@ -810,20 +810,6 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  <button type="button" className={"driver-nav-item "+(tab==="stats"?"active":"")} onClick={()=>{setTab("stats");setDriverMenuOpen(false)}}><span className="driver-nav-icon">▦</span><span>Статистика</span></button>
  <button type="button" className={"driver-nav-item "+(tab==="wallet"?"active":"")} onClick={()=>{setTab("wallet");setDriverMenuOpen(false);refreshWallet()}}><span className="driver-nav-icon">▱</span><span>Кошелёк</span></button>
 </nav> {quickSwitch&&tab!=="order-filter"&&<button type="button" className="driver-quick-switch" onClick={()=>setTab("orders")} aria-label="Быстрый переход к заказам">↗ Заказы</button>}
-{offerWaitOverlay&&offerWaitRemaining>0&&<div role="dialog" aria-modal="true" aria-label="Ожидание ответа пассажира" style={{position:"fixed",inset:0,zIndex:2147483647,background:"rgba(0,0,0,.36)",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"20px",color:"#fff",boxSizing:"border-box"}}>
- <div style={{width:"min(88vw,430px)",background:"linear-gradient(145deg,#202820 0%,#101411 100%)",border:"2px solid #c6ff00",borderRadius:24,padding:"24px 20px 22px",boxShadow:"0 18px 60px rgba(0,0,0,.58)",display:"flex",flexDirection:"column",gap:14,alignItems:"stretch",boxSizing:"border-box"}}>
-  <div style={{fontSize:14,fontWeight:900,letterSpacing:"1.8px",color:"#c6ff00"}}>ЦЕНА ОТПРАВЛЕНА</div>
-  <div style={{fontSize:"clamp(30px,7vw,42px)",fontWeight:900,lineHeight:1.08}}>{Number(offerWaitOverlay.price||0).toLocaleString("ru-RU")} ₸</div>
-  <div style={{fontSize:"clamp(19px,4.7vw,25px)",fontWeight:750,lineHeight:1.22}}>Ждём ответ пассажира</div>
-  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,fontSize:15,fontWeight:700}}>
-   <span style={{color:"#d0d7ce"}}>Осталось времени</span>
-   <b style={{fontSize:28,fontVariantNumeric:"tabular-nums",background:"#c6ff00",color:"#101411",padding:"5px 10px",borderRadius:10,minWidth:92}}>{formatOfferTimeLeft(offerWaitRemaining)}</b>
-  </div>
-  <div aria-label={"Осталось "+formatOfferTimeLeft(offerWaitRemaining)} style={{height:13,width:"100%",borderRadius:99,background:"#404941",overflow:"hidden",border:"1px solid #687662"}}>
-   <span style={{display:"block",height:"100%",width:offerWaitProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 10px rgba(198,255,0,.7)"}} />
-  </div>
-  <div style={{fontSize:12,lineHeight:1.4,color:"#d0d7ce"}}>Через 10 секунд заказ останется в ленте. Можно предложить другую цену.</div>
- </div>
-</div>}
+{offerWaitOverlay&&offerWaitRemaining>0&&<div aria-label={"Время на ответ: "+formatOfferTimeLeft(offerWaitRemaining)} style={{position:"fixed",left:0,right:0,bottom:0,height:9,zIndex:2147483647,pointerEvents:"none",background:"#172018",borderTop:"1px solid #52634d",boxShadow:"0 -2px 10px rgba(0,0,0,.25)"}}><span style={{display:"block",height:"100%",width:offerWaitProgress+"%",background:"#c6ff00",transition:"width 1s linear",boxShadow:"0 0 12px rgba(198,255,0,.85)"}} /></div>}
 </main>;
 }
