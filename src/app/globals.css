@@ -2613,3 +2613,81 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 }
 @media(prefers-reduced-motion:reduce){.passenger-screen *{scroll-behavior:auto!important;transition:none!important}}
 
+
+/* Passenger-only photographic polish: no global map or driver styles changed. */
+.passenger-map-stage .route-map-loading{display:none!important;background:transparent!important;color:transparent!important}
+.passenger-map-stage .route-map-panel{background:transparent}
+.passenger-map-stage .route-map{background-color:#e6edf2}
+.passenger-tariff-scroller{
+  grid-auto-flow:row;
+  grid-auto-columns:unset;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:6px;
+  overflow:visible;
+  padding:1px 0 2px;
+  scroll-snap-type:none;
+  scrollbar-width:none;
+}
+.passenger-tariff-scroller::-webkit-scrollbar{display:none}
+.passenger-tariff-card{
+  gap:4px;
+  min-height:112px;
+  padding:6px 3px 8px;
+  border-radius:13px;
+  box-shadow:0 2px 7px #17263b05;
+}
+.passenger-tariff-card.selected{padding:5px 2px 7px}
+.passenger-tariff-car{
+  display:block;
+  flex:0 0 auto;
+  width:100%;
+  height:40px;
+  border-radius:7px;
+  background-color:#fff;
+  background-image:url("/images/astana-taxi-welcome.webp");
+  background-repeat:no-repeat;
+  background-size:245% auto;
+  box-shadow:inset 0 0 0 1px #eff1f4;
+}
+.passenger-car-economy{background-position:86% 87%}
+.passenger-car-comfort{background-position:69% 85%}
+.passenger-car-comfort_plus{background-position:55% 84%}
+.passenger-car-business{background-position:42% 85%}
+.passenger-car-minivan{background-position:26% 86%}
+.passenger-car-premium{background-position:77% 88%}
+.passenger-tariff-name{font-size:11px;line-height:1.15;white-space:normal;overflow-wrap:anywhere}
+.passenger-tariff-price{font-size:10px;line-height:1.15;letter-spacing:-.15px}
+.passenger-tariff-selected-mark{top:4px;right:4px;width:16px;height:16px;font-size:10px}
+.passenger-more-tariffs{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-height:31px;
+  margin:5px auto 2px;
+  padding:5px 10px;
+  border:0;
+  border-radius:999px;
+  background:#f2f6fc;
+  color:#2869c3;
+  font-size:11px;
+  font-weight:850;
+  cursor:pointer;
+}
+.passenger-more-tariffs span{font-size:15px;line-height:1}
+@media(min-width:620px){
+  .passenger-tariff-scroller{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .passenger-tariff-card{min-height:132px;padding:8px 6px 10px}
+  .passenger-tariff-car{height:56px}
+  .passenger-tariff-name{font-size:13px}
+  .passenger-tariff-price{font-size:12px}
+}
+@media(max-width:370px){
+  .passenger-tariff-scroller{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+  .passenger-tariff-card{min-height:104px;padding:5px 2px 6px}
+  .passenger-tariff-card.selected{padding:4px 1px 5px}
+  .passenger-tariff-car{height:33px;background-size:270% auto}
+  .passenger-tariff-name{font-size:10px}
+  .passenger-tariff-price{font-size:9px}
+}
+
