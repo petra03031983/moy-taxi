@@ -2227,3 +2227,198 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 .driver-language-flag{width:30px;flex:0 0 30px;font-size:23px;text-align:center}
 .driver-language-option-label{flex:1;font-weight:750}
 .driver-language-check{width:23px;flex:0 0 23px;color:#1976d2;text-align:center;font-weight:900;font-size:18px}
+
+
+/* Home-screen-only visual treatment for the realistic Astana welcome page */
+.app.moy-taxi-landing{
+ width:100%;
+ max-width:520px;
+ min-height:100svh;
+ margin:0 auto;
+ padding:0;
+ display:flex;
+ flex-direction:column;
+ gap:0;
+ overflow:hidden;
+ background:#fff;
+ border:0;
+ border-radius:0;
+ box-shadow:0 18px 56px rgba(16,35,54,.12);
+}
+.moy-taxi-landing-hero{
+ position:relative;
+ flex:1 0 auto;
+ height:61svh;
+ min-height:440px;
+ max-height:670px;
+ background-image:url("/images/astana-taxi-welcome.webp");
+ background-size:cover;
+ background-position:center 54%;
+ isolation:isolate;
+}
+.moy-taxi-landing-shade{
+ position:absolute;inset:0;z-index:0;pointer-events:none;
+ background:linear-gradient(180deg,rgba(7,27,47,.05) 0%,rgba(14,32,49,.02) 52%,rgba(8,24,39,.24) 100%);
+}
+.moy-taxi-landing-brand{
+ position:absolute;
+ z-index:1;
+ top:clamp(150px,19vh,238px);
+ left:50%;
+ transform:translateX(-50%);
+ width:max-content;
+ max-width:90%;
+ text-align:center;
+ color:#132237;
+ text-shadow:0 1px 5px rgba(255,255,255,.55);
+}
+.moy-taxi-landing-pin{
+ width:76px;height:76px;
+ margin:0 auto 8px;
+ display:flex;align-items:center;justify-content:center;
+ border:5px solid #f5bb18;
+ border-radius:50% 50% 50% 12%;
+ transform:rotate(-45deg);
+ background:#fff;
+ box-shadow:0 7px 20px rgba(5,22,43,.18);
+}
+.moy-taxi-landing-pin span{
+ display:block;
+ transform:rotate(45deg);
+ font-size:38px;
+ line-height:1;
+}
+.moy-taxi-landing-logo{
+ font-size:clamp(34px,8.2vw,46px);
+ line-height:1.05;
+ font-weight:900;
+ letter-spacing:-1.4px;
+ white-space:nowrap;
+ color:#101a27;
+}
+.moy-taxi-landing-logo span{color:#f2ae00;font-weight:900}
+.moy-taxi-landing-tagline{
+ margin:7px 0 0;
+ font-size:clamp(13px,3.45vw,17px);
+ font-weight:650;
+ letter-spacing:.1px;
+ white-space:nowrap;
+ color:#14243a;
+}
+.moy-taxi-language-wrap{
+ position:absolute;
+ z-index:5;
+ top:max(16px,env(safe-area-inset-top));
+ right:14px;
+ width:190px;
+ display:flex;
+ flex-direction:column;
+ align-items:stretch;
+ gap:7px;
+}
+.moy-taxi-language-trigger{
+ display:flex;align-items:center;justify-content:center;gap:9px;
+ width:100%;min-height:48px;padding:8px 12px;
+ border:1px solid rgba(255,255,255,.92);
+ border-radius:999px;
+ background:rgba(255,255,255,.96);
+ color:#126ad1;
+ box-shadow:0 5px 18px rgba(11,38,69,.18);
+ font-size:16px;font-weight:850;cursor:pointer;
+}
+.moy-taxi-language-globe{font-size:24px;line-height:1}
+.moy-taxi-language-arrow{font-size:17px;line-height:1;transform:translateY(3px);transition:transform .15s ease}
+.moy-taxi-language-arrow.open{transform:rotate(180deg) translateY(-3px)}
+.moy-taxi-language-menu{
+ width:100%;box-sizing:border-box;
+ padding:7px;
+ border:1px solid #e4eaf1;
+ border-radius:19px;
+ background:rgba(255,255,255,.985);
+ box-shadow:0 12px 32px rgba(14,35,55,.24);
+ display:flex;flex-direction:column;gap:4px;
+ animation:moyTaxiLanguageShow .14s ease-out;
+}
+@keyframes moyTaxiLanguageShow{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+.moy-taxi-language-option{
+ display:grid;grid-template-columns:31px minmax(0,1fr) 19px;align-items:center;gap:10px;
+ width:100%;min-height:46px;padding:7px 9px;
+ border:1px solid transparent;border-radius:12px;
+ background:transparent;color:#162536;text-align:left;
+ font-size:15px;font-weight:750;cursor:pointer;
+}
+.moy-taxi-language-option.selected{background:#eff6ff;border-color:#c4ddfa;color:#105fb5}
+.moy-taxi-language-flag{font-size:23px;line-height:1;text-align:center}
+.moy-taxi-language-check{font-size:16px;font-weight:900;color:#1674d6;text-align:center}
+.moy-taxi-role-sheet{
+ position:relative;z-index:2;
+ margin-top:-25px;
+ padding:18px 14px max(13px,env(safe-area-inset-bottom));
+ border-radius:28px 28px 0 0;
+ border:1px solid rgba(238,242,247,.96);
+ background:rgba(255,255,255,.985);
+ box-shadow:0 -10px 38px rgba(13,28,48,.16);
+ color:#142136;
+}
+.moy-taxi-role-handle{display:none}
+.moy-taxi-role-eyebrow{
+ margin:0 0 8px;text-align:center;
+ color:#657487;font-size:10px;font-weight:900;letter-spacing:1.4px;
+}
+.moy-taxi-role-sheet h1{
+ max-width:440px;margin:0 auto 8px;
+ font-size:clamp(20px,5.2vw,26px);
+ line-height:1.15;text-align:center;
+ font-weight:900;letter-spacing:-.45px;color:#111e32;
+}
+.moy-taxi-role-intro{
+ max-width:440px;margin:0 auto 15px;
+ font-size:12px;line-height:1.4;text-align:center;color:#657284;
+}
+.moy-taxi-role-actions{
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;
+}
+.moy-taxi-role-card{
+ width:100%;min-width:0;min-height:98px;box-sizing:border-box;
+ display:grid;grid-template-columns:32px minmax(0,1fr) 15px;
+ align-items:center;gap:8px;padding:11px 10px;
+ border:0;border-radius:18px;
+ text-align:left;text-decoration:none;cursor:pointer;
+ box-shadow:0 8px 20px rgba(18,37,61,.12);
+}
+.moy-taxi-role-card.passenger{background:linear-gradient(135deg,#087ff7,#1372e8);color:#fff}
+.moy-taxi-role-card.driver{background:linear-gradient(135deg,#ffe22a,#ffc815);color:#111827;--taxi-window:#ffdf23;--taxi-wheel:#111827}
+.moy-taxi-role-icon{display:flex;align-items:center;justify-content:center;width:32px;height:36px}
+.moy-taxi-role-icon svg{display:block;width:35px;height:35px}
+.moy-taxi-role-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.moy-taxi-role-copy b{display:block;font-size:clamp(13px,3.5vw,16px);font-weight:900;line-height:1.15;overflow-wrap:anywhere}
+.moy-taxi-role-copy small{display:block;font-size:clamp(10px,2.8vw,12px);line-height:1.2;opacity:.93}
+.moy-taxi-role-arrow{font-size:29px;line-height:1;font-weight:500;align-self:center}
+.moy-taxi-landing-install{
+ display:flex;align-items:center;justify-content:flex-start;gap:10px;
+ width:100%;margin:11px 0 0;padding:8px 10px;
+ border:1px solid #e6edf3;border-radius:13px;background:#f9fbfd;color:#3d526b;
+ text-align:left;cursor:pointer;
+}
+.moy-taxi-landing-install>span:first-child{font-size:22px}
+.moy-taxi-landing-install>span:last-child{display:flex;flex-direction:column;gap:3px}
+.moy-taxi-landing-install b{font-size:12px;line-height:1.2}
+.moy-taxi-landing-install small{font-size:10px;line-height:1.25;color:#718096}
+.moy-taxi-landing .success{margin-top:10px}
+.moy-taxi-landing-test-note{
+ margin:10px 0 0;text-align:center;font-size:10px;line-height:1.2;color:#92a0ad;
+}
+@media(min-width:521px){
+ .app.moy-taxi-landing{min-height:100vh}
+ .moy-taxi-landing-hero{height:min(65vh,700px)}
+ .moy-taxi-role-sheet{padding:22px 22px 18px}
+ .moy-taxi-role-card{min-height:105px;padding:13px}
+}
+@media(max-width:370px){
+ .moy-taxi-language-wrap{right:10px;width:169px}
+ .moy-taxi-language-trigger{min-height:44px;font-size:14px}
+ .moy-taxi-role-sheet{padding-left:10px;padding-right:10px}
+ .moy-taxi-role-actions{gap:7px}
+ .moy-taxi-role-card{grid-template-columns:27px minmax(0,1fr) 12px;gap:6px;padding:10px 7px;border-radius:15px}
+ .moy-taxi-role-icon,.moy-taxi-role-icon svg{width:29px;height:31px}
+}
