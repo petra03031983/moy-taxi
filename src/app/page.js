@@ -38,6 +38,132 @@ function passesIncomingNotificationFilter(order, maxPickupKm, minPricePerKm, min
   if (fare / routeKm < Number(minPricePerKm)) return false;
   return true;
 }
+const DRIVER_LANGUAGE_OPTIONS=[
+ {id:"kk",flag:"🇰🇿",label:"Қазақша"},
+ {id:"ru",flag:"🇷🇺",label:"Русский"},
+ {id:"en",flag:"🇬🇧",label:"English"}
+];
+const DRIVER_I18N_ROWS=[
+ ["Мой","Менің","My"],["Такси","Такси","Taxi"],["Единое приложение","Біртұтас қосымша","One app"],
+ ["ДОБРО ПОЖАЛОВАТЬ","ҚОШ КЕЛДІҢІЗ","WELCOME"],["Как вы хотите пользоваться «Мой Такси»?","«Мой Таксиді» қалай пайдаланғыңыз келеді?","How would you like to use My Taxi?"],
+ ["Выберите свою роль. Пассажир заказывает поездку, водитель принимает заказы и управляет поездками.","Рөліңізді таңдаңыз. Жолаушы сапарға тапсырыс береді, жүргізуші тапсырыстарды қабылдап, сапарларды басқарады.","Choose your role. Passengers book rides, and drivers accept and manage trips."],
+ ["Я пассажир","Мен жолаушымын","I'm a passenger"],["Я водитель","Мен жүргізушімін","I'm a driver"],
+ ["Указать адрес и заказать такси","Мекенжайды көрсетіп, такси шақыру","Enter an address and book a taxi"],["Войти или зарегистрироваться","Кіру немесе тіркелу","Log in or sign up"],
+ ["Установить «Мой Такси»","«Мой Таксиді» орнату","Install My Taxi"],["Отдельная иконка для пассажира и водителя","Жолаушы мен жүргізушіге арналған бөлек белгіше","Separate icon for passenger and driver"],
+ ["Мой Такси сейчас работает в тестовом режиме.","«Мой Такси» қазір сынақ режимінде жұмыс істейді.","My Taxi is currently in test mode."],
+ ["Панель водителя","Жүргізуші панелі","Driver dashboard"],["ЛИЧНЫЙ СЕРВИС","ЖЕКЕ ҚЫЗМЕТ","PERSONAL SERVICE"],
+ ["Регистрация водителя","Жүргізушіні тіркеу","Driver registration"],["Вход водителя","Жүргізушінің кіруі","Driver login"],
+ ["Один аккаунт — твой QR-код и твои клиенты.","Бір аккаунт — сенің QR-кодың мен клиенттерің.","One account for your QR code and your customers."],
+ ["Войти","Кіру","Log in"],["Регистрация","Тіркелу","Sign up"],["Имя","Аты","Name"],["Номер телефона","Телефон нөмірі","Phone number"],
+ ["Пароль","Құпиясөз","Password"],["Не менее 8 символов","Кемінде 8 таңба","At least 8 characters"],["Автомобиль","Көлік","Vehicle"],
+ ["Госномер","Мемлекеттік нөмір","License plate"],["Цвет машины","Көліктің түсі","Vehicle color"],["Класс автомобиля","Көлік класы","Vehicle class"],
+ ["Класс определяется автоматически по марке и модели автомобиля.","Класс көліктің маркасы мен моделіне қарай автоматты түрде анықталады.","Vehicle class is determined automatically from its make and model."],
+ ["Создать аккаунт","Аккаунт жасау","Create account"],["Подожди…","Күте тұр…","Please wait…"],["Сохраняем…","Сақталуда…","Saving…"],
+ ["Сохранить профиль","Профильді сақтау","Save profile"],["Сохранить","Сақтау","Save"],["Выйти","Шығу","Log out"],
+ ["ПРОФИЛЬ","ПРОФИЛЬ","PROFILE"],["Данные водителя","Жүргізуші деректері","Driver details"],["Фото водителя","Жүргізушінің фотосы","Driver photo"],
+ ["Предпросмотр","Алдын ала қарау","Preview"],["Номер лицевого счёта","Жеке шот нөмірі","Account number"],
+ ["Полные номера документов клиенту не показываем. На следующем этапе добавим отметку проверки техпаспорта и водительского удостоверения.","Құжаттардың толық нөмірлері клиентке көрсетілмейді. Келесі кезеңде техникалық төлқұжат пен жүргізуші куәлігін тексеру белгісін қосамыз.","Full document numbers are not shown to customers. Document verification will be added in a later stage."],
+ ["Язык","Тіл","Language"],["Язык приложения","Қосымша тілі","App language"],["Выберите язык","Тілді таңдаңыз","Choose a language"],["Закрыть","Жабу","Close"],
+ ["Лента заказов","Тапсырыстар лентасы","Order feed"],["Заказы","Тапсырыстар","Orders"],["Спрос","Сұраныс","Demand"],["Статистика","Статистика","Statistics"],
+ ["Кошелёк","Әмиян","Wallet"],["История","Тарих","History"],["Настройки","Баптаулар","Settings"],["Профиль","Профиль","Profile"],
+ ["Помощь","Көмек","Help"],["Поддержка","Қолдау қызметі","Support"],["Пригласить друга","Дос шақыру","Invite a friend"],
+ ["Уведомления","Хабарландырулар","Notifications"],["Безопасность","Қауіпсіздік","Safety"],["Онлайн-регистрация","Онлайн тіркелу","Online registration"],
+ ["На линии","Желіде","Online"],["Не на линии","Желіде емес","Offline"],["Выйти на линию","Желіге шығу","Go online"],["Уход с линии","Желіден шығу","Go offline"],
+ ["Новый заказ","Жаңа тапсырыс","New order"],["Водитель едет к вам","Жүргізуші сізге келе жатыр","Driver is on the way"],["Водитель на месте","Жүргізуші келді","Driver has arrived"],
+ ["Пассажир выходит","Жолаушы шығып келеді","Passenger is coming out"],["Поездка началась","Сапар басталды","Trip started"],["Поездка завершена","Сапар аяқталды","Trip completed"],
+ ["Отменён","Бас тартылды","Cancelled"],["Заказ отправлен","Тапсырыс жіберілді","Order sent"],["Заказ принят","Тапсырыс қабылданды","Order accepted"],
+ ["Заказов пока нет","Әзірге тапсырыстар жоқ","No orders yet"],["Новых уведомлений пока нет","Әзірге жаңа хабарландыру жоқ","No new notifications yet"],
+ ["Когда клиент закажет поездку, здесь появится компактная карточка и прозвучит сигнал нового заказа.","Клиент сапарға тапсырыс бергенде, мұнда шағын карточка пайда болып, жаңа тапсырыс сигналы естіледі.","When a customer books a ride, a compact card and a new-order alert will appear here."],
+ ["Заказы обновляются автоматически, пока водитель на линии.","Жүргізуші желіде болғанда тапсырыстар автоматты түрде жаңартылады.","Orders refresh automatically while the driver is online."],
+ ["Цена не указана","Баға көрсетілмеген","Price not set"],["Цена пассажира","Жолаушы бағасы","Passenger price"],["Цена клиента","Клиент бағасы","Customer price"],
+ ["Цена","Баға","Price"],["Твоя цена","Сенің бағаң","Your price"],["Предложите цену","Баға ұсыныңыз","Make an offer"],
+ ["Пассажир сам решит, соглашаться или нет.","Жолаушы келісетінін өзі шешеді.","The passenger decides whether to accept."],
+ ["Твоя цена:","Сенің бағаң:" ,"Your offer:"],["ждём ответа клиента.","клиенттің жауабын күтеміз.","waiting for the customer to respond."],
+ ["Маршрут в 2GIS","2GIS-тегі маршрут","Route in 2GIS"],["Открыть маршрут","Маршрутты ашу","Open route"],["Я на месте","Мен келдім","I've arrived"],
+ ["Ты на месте. Ожидаем пассажира.","Сен келдің. Жолаушыны күтеміз.","You've arrived. Waiting for the passenger."],
+ ["До возможности отменить заказ осталось:","Тапсырысты бас тартуға дейін қалды:","Time until no-show cancellation:"],
+ ["Отменить — пассажир не вышел","Жолаушы шықпады — бас тарту","Cancel — passenger did not show"],["3 минуты ожидания истекли.","3 минут күту уақыты аяқталды.","3-minute wait has elapsed."],
+ ["Не удалось загрузить время прибытия. Обнови приложение; таймер проверяется сервером.","Келу уақытын жүктеу мүмкін болмады. Қосымшаны жаңарт; таймер серверде тексеріледі.","Could not load arrival time. Refresh the app; the timer is verified by the server."],
+ ["Ожидаем пассажира","Жолаушыны күтеміз","Waiting for passenger"],["Ожидание","Күту","Waiting"],["Начать поездку A → B","A → B сапарын бастау","Start trip A → B"],
+ ["Завершить поездку","Сапарды аяқтау","Complete trip"],["Принять заказ","Тапсырысты қабылдау","Accept order"],["Принять за","Қабылдау бағасы","Accept for"],
+ ["Принять","Қабылдау","Accept"],["Отклонить","Қабылдамау","Decline"],["Отменить заказ","Тапсырыстан бас тарту","Cancel order"],
+ ["Открыть в ленте","Лентада ашу","Open in feed"],["Открыть ленту заказов","Тапсырыстар лентасын ашу","Open order feed"],["Выбранный заказ","Таңдалған тапсырыс","Selected order"],
+ ["ОТКУДА","ҚАЙДАН","PICKUP"],["КУДА","ҚАЙДА","DESTINATION"],["Маршрут","Маршрут","Route"],["Город","Қала","City"],["Межгород","Қалааралық","Intercity"],
+ ["Эконом","Эконом","Economy"],["Комфорт","Комфорт","Comfort"],["Комфорт+","Комфорт+","Comfort+"],["Бизнес","Бизнес","Business"],["Минивэн","Минивэн","Minivan"],["Премиум","Премиум","Premium"],
+ ["Kaspi перевод","Kaspi аударымы","Kaspi transfer"],["Наличные","Қолма-қол ақша","Cash"],["Оплата","Төлем","Payment"],["Способ оплаты","Төлем тәсілі","Payment method"],
+ ["Предлагаем вашу цену","Сіздің бағаңызды ұсынамыз","Your offer has been sent"],["Дождитесь ответа","Жауапты күтіңіз","Waiting for a response"],
+ ["Заказ отправлен водителю. Ждём подтверждение.","Тапсырыс жүргізушіге жіберілді. Растауды күтеміз.","Order sent to the driver. Waiting for confirmation."],
+ ["Заказ принят. Маршрут можно открыть отдельно кнопкой в карточке заказа.","Тапсырыс қабылданды. Маршрутты тапсырыс карточкасындағы батырмамен ашуға болады.","Order accepted. Open the route using the button on the order card."],
+ ["Фильтр входящих заказов","Келетін тапсырыстар сүзгісі","Incoming order filters"],["Фильтры применяются только к входящим уведомлениям о новых заказах. Вы всё равно будете видеть все доступные заказы в ленте","Сүзгілер тек жаңа тапсырыстар туралы хабарландыруларға қолданылады. Лентада барлық қолжетімді тапсырыстар көрінеді.","Filters only affect new-order alerts. All available orders remain visible in the feed."],
+ ["Расстояние до точки посадки","Отыру орнына дейінгі қашықтық","Distance to pickup"],["Минимальная цена за км","Бір км үшін ең төменгі баға","Minimum price per km"],["Цена заказа","Тапсырыс бағасы","Order price"],
+ ["Тёмный режим","Қараңғы режим","Dark mode"],["Выкл.","Өшірулі","Off"],["Вкл.","Қосулы","On"],["Как в системе","Жүйедегідей","System default"],
+ ["Звуки в ленте заказов","Тапсырыс лентасындағы дыбыстар","Order feed sounds"],["Получать уведомления о новых заказах в ленте","Лентадағы жаңа тапсырыстар туралы хабарландыру алу","Get notifications for new orders in the feed"],
+ ["Цепочка заказов","Тапсырыстар тізбегі","Order chaining"],["После завершения поездки оставайся на линии для следующих заказов","Сапар аяқталғаннан кейін келесі тапсырыстар үшін желіде қал","Stay online for the next orders after a trip"],
+ ["Кнопка быстрого перехода","Жылдам өту батырмасы","Quick navigation button"],["Сохранить настройки","Баптауларды сақтау","Save settings"],["Настройки сохранены.","Баптаулар сақталды.","Settings saved."],
+ ["Сегодня","Бүгін","Today"],["Доход за сегодня","Бүгінгі табыс","Today's earnings"],["Баланс","Баланс","Balance"],["Пополнить счёт","Шотты толтыру","Top up account"],
+ ["Пополнение","Толықтыру","Top-up"],["Комиссия","Комиссия","Commission"],["Корректировка","Түзету","Adjustment"],["Баланс после операции:","Операциядан кейінгі баланс:","Balance after transaction:"],
+ ["Время","Уақыт","Time"],["Телефон","Телефон","Phone"],["Не заполнено","Толтырылмаған","Not provided"],["Не указан","Көрсетілмеген","Not specified"],
+ ["Имя водителя","Жүргізушінің аты","Driver name"],["Не менее","Кемінде","At least"],["Проверить","Тексеру","Check"],["Повторить","Қайталау","Retry"],
+ ["Не удалось связаться с сервером.","Серверге қосылу мүмкін болмады.","Could not connect to the server."],["Проверь подключение и попробуй ещё раз.","Байланысты тексеріп, қайта көр.","Check your connection and try again."],
+ ["Ошибка сервера.","Сервер қатесі.","Server error."],["Сейчас ты уже в установленном приложении.","Сіз қазірдің өзінде орнатылған қосымшадасыз.","You're already using the installed app."],
+ ["Ссылка скопирована.","Сілтеме көшірілді.","Link copied."],["Уведомления включены.","Хабарландырулар қосылды.","Notifications enabled."],
+ ["Поделиться ссылкой","Сілтемемен бөлісу","Share link"],["Скопировать ссылку","Сілтемені көшіру","Copy link"],["Отправить предложение цены","Баға ұсынысын жіберу","Send price offer"],
+ ["Максимальная цена","Ең жоғары баға","Maximum price"],["Введи свою цену","Өз бағаңды енгіз","Enter your price"],["Твоя цена, ₸","Сенің бағаң, ₸","Your price, ₸"],
+ ["ВХОДЯЩИЙ ЗАКАЗ","КЕЛІП ТҮСКЕН ТАПСЫРЫС","INCOMING ORDER"],["Подробности заказа","Тапсырыс мәліметтері","Order details"],["Закрыть","Жабу","Close"],
+ ["Ориентир","Бағдар","Landmark"],["Комментарий","Пікір","Comment"],["Новых заказов нет","Жаңа тапсырыстар жоқ","No new orders"],["Не удалось обновить профиль.","Профильді жаңарту мүмкін болмады.","Could not update profile."],
+ ["Профиль сохранён.","Профиль сақталды.","Profile saved."],["Разрешение браузера","Браузер рұқсаты","Browser permission"],["Включить уведомления","Хабарландыруларды қосу","Enable notifications"],
+ ["Открыть настройки","Баптауларды ашу","Open settings"],["Тарифы","Тарифтер","Tariffs"],["Проверка перед поездкой","Сапар алдындағы тексеру","Pre-trip safety check"],
+ ["Проверить состояние автомобиля и шины","Көліктің күйі мен шиналарын тексеру","Check vehicle condition and tires"],["Пристегнуть ремень безопасности","Қауіпсіздік белдігін тағу","Fasten your seat belt"],
+ ["Установить телефон в держатель и не отвлекаться во время движения","Телефонды ұстағышқа қойып, көлік жүргізгенде алаңдамау","Place your phone in a holder and avoid distractions while driving"],
+ ["Экстренный номер 112","Төтенше жағдай нөмірі 112","Emergency number 112"],["Частые вопросы","Жиі қойылатын сұрақтар","Frequently asked questions"],
+ ["Как выйти на линию?","Желіге қалай шығуға болады?","How do I go online?"],["Почему не приходят заказы?","Неліктен тапсырыстар келмейді?","Why am I not receiving orders?"],
+ ["Где посмотреть заработок и баланс?","Табыс пен балансты қайдан көруге болады?","Where can I view earnings and balance?"],
+ ["Как изменить данные машины?","Көлік деректерін қалай өзгертуге болады?","How can I change my vehicle details?"],
+ ["Связаться с поддержкой","Қолдау қызметіне хабарласу","Contact support"],["Сообщение","Хабарлама","Message"],["Подготовить обращение","Өтінішті дайындау","Prepare support request"],
+ ["Отправляем…","Жіберілуде…","Sending…"],["Подождите…","Күте тұрыңыз…","Please wait…"],["Сначала выйди на линию, чтобы отвечать на заказы.","Алдымен тапсырыстарға жауап беру үшін желіге шығыңыз.","Go online first to respond to orders."],
+ ["Заказ скрыт только у тебя. Пассажир продолжит получать предложения других водителей.","Тапсырыс тек сенен жасырылды. Жолаушы басқа жүргізушілерден ұсыныс ала береді.","The order is hidden only for you. The passenger can still receive offers from other drivers."],
+ ["Пассажир отклонил предыдущую цену. Можно предложить новую.","Жолаушы алдыңғы бағаны қабылдамады. Жаңа баға ұсынуға болады.","The passenger declined the previous price. You can make a new offer."],
+ ["Водитель направляется к вам.","Жүргізуші сізге келе жатыр.","The driver is on the way."],["Водитель прибыл к точке подачи.","Жүргізуші алып кету орнына келді.","The driver has arrived at the pickup point."],
+ ["Ты сообщил водителю, что выходишь.","Жүргізушіге шығып келе жатқаныңды хабарладың.","You've told the driver you're coming out."],
+ ["Садись в автомобиль; водитель начнёт поездку после посадки.","Көлікке отыр; жүргізуші отырғаннан кейін сапарды бастайды.","Get in the car; the driver will start the trip when you're seated."],
+ ["Заказ отменён.","Тапсырыс тоқтатылды.","Order cancelled."],["Чтобы заказать снова, нажмите кнопку ниже.","Қайта тапсырыс беру үшін төмендегі батырманы басыңыз.","To book again, press the button below."],
+ ["Предложение цены отправлено","Баға ұсынысы жіберілді","Price offer sent"],["Открой свою страницу такси","Такси парақшаңды аш","Open your taxi page"],
+ ["Спрос рядом","Жақын маңдағы сұраныс","Nearby demand"],["Новых","Жаңа","New"],["Активные","Белсенді","Active"],["Завершённые","Аяқталған","Completed"],
+ ["Водитель","Жүргізуші","Driver"],["Клиент","Клиент","Customer"],["Карта","Карта","Map"],["Расстояние до подачи","Алып кету орнына дейінгі қашықтық","Distance to pickup"],
+ ["Обновить приложение","Қосымшаны жаңарту","Refresh app"],["Сохранить на экран телефона","Телефон экранына сақтау","Add to home screen"],["До клиента","Клиентке дейін","To passenger"],
+ ["Цена согласована. Теперь водитель может принять заказ.","Баға келісілді. Енді жүргізуші тапсырысты қабылдай алады.","Price agreed. The driver can now accept the order."],
+ ["Вы отклонили предложение. Ждём возможную новую цену.","Ұсынысты қабылдамадыңыз. Жаңа бағаны күтеміз.","You declined the offer. Waiting for a possible new price."],
+ ["Предложение должно быть не ниже цены пассажира:","Ұсыныс жолаушы бағасынан төмен болмауы керек:","The offer must not be lower than the passenger's price:"],
+ ["Максимальная цена —","Ең жоғары баға —","Maximum price —"],["(не более 100% сверху).","(ең көбі 100% үстеме).","(up to 100% above)."],
+ ["В настройках включён режим «Без торга». Выключи его, чтобы предложить свою цену.","Баптауларда «Саудаласусыз» режимі қосулы. Баға ұсыну үшін оны өшір.","“No bargaining” is enabled in settings. Turn it off to make an offer."],
+ ["Этот заказ уже недоступен.","Бұл тапсырыс енді қолжетімді емес.","This order is no longer available."],
+ ["Не удалось отправить цену.","Бағаны жіберу мүмкін болмады.","Could not send the offer."],["Не удалось принять заказ.","Тапсырысты қабылдау мүмкін болмады.","Could not accept the order."],
+ ["Новых заказов пока нет","Әзірге жаңа тапсырыстар жоқ","No new orders yet"],["Сейчас","Қазір","Now"],["мин.","мин.","min"],["сек.","сек.","sec"],
+ ["Все заказы","Барлық тапсырыстар","All orders"],["Сумма","Сома","Amount"],["Тарифы выключены","Тарифтер өшірулі","Tariffs disabled"],
+ ["Заказать ещё раз","Қайта тапсырыс беру","Book again"],["Принять за ","Қабылдау бағасы ","Accept for "],[" · ждём ответа клиента."," · клиент жауабын күтеміз."," · waiting for customer response."],
+ ["Клиент отклонил последнее предложение водителя. Можно дождаться новой цены.","Жолаушы жүргізушінің соңғы ұсынысын қабылдамады. Жаңа бағаны күтуге болады.","The passenger declined the driver's latest offer. You can wait for a new price."],
+ ["Заказ завершён","Тапсырыс аяқталды","Order completed"],["Поездка завершена. Сумма","Сапар аяқталды. Сома","Trip completed. Fare"],
+ ["Заказ отменён: пассажир не вышел после 3 минут ожидания.","Тапсырыс тоқтатылды: жолаушы 3 минут ішінде шықпады.","Order cancelled: passenger did not show within 3 minutes."],
+ ["Служба поддержки","Қолдау қызметі","Customer support"],["Опиши вопрос или проблему…","Сұрақты немесе мәселені сипаттаңыз…","Describe your question or issue…"],
+ ["Фильтр заказов","Тапсырыстар сүзгісі","Order filter"],["Класс автомобиля определяется автоматически по марке и модели автомобиля.","Көлік класы маркасы мен моделіне қарай автоматты түрде анықталады.","Vehicle class is automatically determined from the make and model."],
+ ["Перевод на Kaspi","Kaspi аударымы","Kaspi transfer"],["Водитель получил сообщение: ты выходишь.","Жүргізушіге шығып келе жатқаның туралы хабар жіберілді.","The driver has been notified that you're coming out."],
+ ["Отмена не подтверждена.","Бас тарту расталмады.","Cancellation not confirmed."],["Загрузка…","Жүктелуде…","Loading…"]
+];
+const DRIVER_I18N={kk:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk])=>[ru,kk])),en:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk,en])=>[ru,en]))};
+function translateDriverText(value,language){
+ const dictionary=DRIVER_I18N[language];
+ if(!dictionary||!value)return value;
+ const leading=(String(value).match(/^\\s*/)||[""])[0],trailing=(String(value).match(/\\s*$/)||[""])[0];
+ const source=String(value).trim();
+ if(!source)return value;
+ if(dictionary[source])return leading+dictionary[source]+trailing;
+ let translated=source;
+ for(const [ru,target] of Object.entries(dictionary).filter(([ru])=>ru.length>=9).sort((a,b)=>b[0].length-a[0].length)){
+  if(translated.includes(ru))translated=translated.split(ru).join(target);
+ }
+ return leading+translated+trailing;
+}
+
 const VEHICLE_CLASSES=[["economy","Эконом"],["comfort","Комфорт"],["comfort_plus","Комфорт+"],["business","Бизнес"],["minivan","Минивэн"],["premium","Премиум"]];
 const emptyForm={name:"",phone:"",password:"",car_model:"",car_plate:"",car_color:"",vehicle_class:"economy",photo_url:""};
 function cleanSession(v){return v&&typeof v.driver_id==="string"&&typeof v.session_token==="string"?v:null}
@@ -101,6 +227,61 @@ function validOrderPoint(lat,lng){
 export default function Home(){
  const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[selectedOrderId,setSelectedOrderId]=useState(null),[offerCustomOpen,setOfferCustomOpen]=useState(false),[detailRouteGeometry,setDetailRouteGeometry]=useState([]),[detailRouteStats,setDetailRouteStats]=useState(null),[detailPickupStats,setDetailPickupStats]=useState(null),[detailMapLoading,setDetailMapLoading]=useState(false),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[settingsTab,setSettingsTab]=useState("orders"),[darkMode,setDarkMode]=useState("system"),[feedSounds,setFeedSounds]=useState(true),[orderChain,setOrderChain]=useState(false),[quickSwitch,setQuickSwitch]=useState(false),[navigatorApp,setNavigatorApp]=useState("2gis"),[filterMinPrice,setFilterMinPrice]=useState(""),[filterMaxDistance,setFilterMaxDistance]=useState(""),[filterVehicleClass,setFilterVehicleClass]=useState("all"),[filterTripType,setFilterTripType]=useState("all"),[filterPickupDistance,setFilterPickupDistance]=useState(3),[scanRadiusKm,setScanRadiusKm]=useState(3),[filterMinPricePerKm,setFilterMinPricePerKm]=useState(500),[filterMinOrderPrice,setFilterMinOrderPrice]=useState(3000),[settingsLoaded,setSettingsLoaded]=useState(false),[tariffModes,setTariffModes]=useState({economy:true,noBargaining:true,comfort:false,seats6:false,parcels:true}),[vehicleEditOpen,setVehicleEditOpen]=useState(false),[vehicleDraft,setVehicleDraft]=useState({car_model:"",car_plate:""}),[vehicleSaving,setVehicleSaving]=useState(false),[academyCompleted,setAcademyCompleted]=useState([]),[safetyChecks,setSafetyChecks]=useState({vehicle:false,seatbelt:false,phone:false}),[supportMessage,setSupportMessage]=useState(""),[appRefreshing,setAppRefreshing]=useState(false),[sessionRestorePending,setSessionRestorePending]=useState(true),[sessionRestoreError,setSessionRestoreError]=useState(""),[restoreSessionRetry,setRestoreSessionRetry]=useState(0),[appReady,setAppReady]=useState(false),[clockNow,setClockNow]=useState(Date.now());
  const [offerWaitOverlay,setOfferWaitOverlay]=useState(null);
+ const [uiLanguage,setUiLanguage]=useState("ru"),[languagePickerOpen,setLanguagePickerOpen]=useState(false);
+ const languageTextNodes=useRef(new WeakMap()),languageAttributes=useRef(new WeakMap());
+ useEffect(()=>{try{const saved=localStorage.getItem("moyTaxiLanguage");if(DRIVER_LANGUAGE_OPTIONS.some(item=>item.id===saved))setUiLanguage(saved)}catch{}},[]);
+ useEffect(()=>{
+  document.documentElement.lang=uiLanguage==="kk"?"kk":uiLanguage==="en"?"en":"ru";
+  const root=document.querySelector(".driver-dashboard")||document.querySelector(".auth-app")||document.querySelector(".app");
+  if(!root)return;
+  const translateNode=node=>{
+   if(!node||!node.nodeValue||!node.nodeValue.trim())return;
+   const parent=node.parentElement;
+   if(!parent||parent.closest("script,style,textarea,input,select,option,.driver-order-detail-map,.leaflet-container,.route-map,[data-map-root]"))return;
+   const current=node.nodeValue,cache=languageTextNodes.current;
+   let record=cache.get(node);
+   if(!record){record={source:current,last:null};cache.set(node,record)}
+   else if(current!==record.last){record.source=current;record.last=null}
+   const output=translateDriverText(record.source,uiLanguage);
+   record.last=output;
+   if(current!==output)node.nodeValue=output;
+  };
+  const translateAttributes=element=>{
+   if(!element||element.closest?.(".driver-order-detail-map,.leaflet-container,.route-map,[data-map-root]"))return;
+   const cache=languageAttributes.current;
+   let attributes=cache.get(element);
+   if(!attributes){attributes=new Map();cache.set(element,attributes)}
+   for(const name of ["placeholder","aria-label","title","alt"]){
+    if(!element.hasAttribute(name))continue;
+    const current=element.getAttribute(name)||"";
+    let record=attributes.get(name);
+    if(!record){record={source:current,last:null};attributes.set(name,record)}
+    else if(current!==record.last){record.source=current;record.last=null}
+    const output=translateDriverText(record.source,uiLanguage);
+    record.last=output;
+    if(current!==output)element.setAttribute(name,output);
+   }
+  };
+  const translateTree=container=>{
+   if(container.nodeType===Node.TEXT_NODE){translateNode(container);return}
+   if(container.nodeType!==Node.ELEMENT_NODE&&container!==root)return;
+   if(container.nodeType===Node.ELEMENT_NODE&&container.closest(".driver-order-detail-map,.leaflet-container,.route-map,[data-map-root]"))return;
+   if(container.nodeType===Node.ELEMENT_NODE)translateAttributes(container);
+   const walker=document.createTreeWalker(container,NodeFilter.SHOW_TEXT);
+   let node;while((node=walker.nextNode()))translateNode(node);
+   if(container.querySelectorAll)container.querySelectorAll("*").forEach(translateAttributes);
+  };
+  translateTree(root);
+  const observer=new MutationObserver(records=>{
+   for(const record of records){
+    if(record.type==="characterData")translateNode(record.target);
+    else if(record.type==="attributes")translateAttributes(record.target);
+    else for(const node of record.addedNodes)translateTree(node);
+   }
+  });
+  observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","aria-label","title","alt"]});
+  return()=>observer.disconnect();
+ },[uiLanguage,entryMode,appReady,session?.driver_id]);
  const previousIds=useRef(new Set()),previousCancelledIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
  const hasArrivalClock=orders.some(o=>["arrived","client_ready"].includes(o.status)&&o.arrived_at);
  const hasPendingOfferClock=orders.some(o=>o.my_offer?.status==="pending");
