@@ -753,9 +753,9 @@ if(a==="driver_offer_price"){
  if(o.status!=="new"||(o.driver_id&&o.driver_id!==d.id))return fail("Этот заказ уже недоступен.");
 
  const base=amount(o.client_price);
- const maxOffer=base>0?Math.min(1000000,Math.floor(base*1.3/50)*50):0;
+ const maxOffer=base>0?Math.min(1000000,Math.floor(base*2/50)*50):0;
  if(base>0&&price<base)return fail("Предложение должно быть не ниже цены пассажира: "+base.toLocaleString("ru-RU")+" ₸.");
- if(base>0&&price>maxOffer)return fail("Максимальная цена предложения — "+maxOffer.toLocaleString("ru-RU")+" ₸ (не более 30% выше цены пассажира).");
+ if(base>0&&price>maxOffer)return fail("Максимальная цена предложения — "+maxOffer.toLocaleString("ru-RU")+" ₸ (не более 100% выше цены пассажира).");
  const {data:existing}=await c.from("order_offers").select("id,status").eq("order_id",id).eq("driver_id",d.id).maybeSingle();
  if(existing?.status==="skipped")return fail("Ты скрыл этот заказ у себя. Он недоступен для повторного отклика.");
  const offerCreatedAt=new Date().toISOString();
