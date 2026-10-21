@@ -2756,3 +2756,63 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
   }
 }
 
+/* Passenger-only explicit zoom buttons: visible independently of Leaflet's built-in controls. */
+.passenger-map-stage .route-map-panel{position:absolute}
+.passenger-map-stage .moy-passenger-map-zoom{
+  position:absolute!important;
+  top:66px!important;
+  right:10px!important;
+  z-index:1000!important;
+  display:flex!important;
+  flex-direction:column!important;
+  width:44px!important;
+  height:auto!important;
+  margin:0!important;
+  padding:0!important;
+  border:1px solid #d8e0e7!important;
+  border-radius:13px!important;
+  overflow:hidden!important;
+  background:#fff!important;
+  box-shadow:0 4px 16px rgba(20,35,55,.24)!important;
+  pointer-events:auto!important;
+}
+.passenger-map-stage .moy-passenger-map-zoom button{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:44px!important;
+  min-width:44px!important;
+  height:44px!important;
+  min-height:44px!important;
+  margin:0!important;
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:#fff!important;
+  color:#17212c!important;
+  font-family:Arial,Helvetica,sans-serif!important;
+  font-size:29px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  text-indent:0!important;
+  opacity:1!important;
+  box-shadow:none!important;
+  cursor:pointer!important;
+  touch-action:manipulation!important;
+}
+.passenger-map-stage .moy-passenger-map-zoom button:first-child{
+  border-bottom:1px solid #e4e9ee!important;
+}
+.passenger-map-stage .moy-passenger-map-zoom button:hover,
+.passenger-map-stage .moy-passenger-map-zoom button:active{
+  background:#edf4ff!important;
+}
+.passenger-map-stage .moy-passenger-map-zoom button:disabled{
+  opacity:1!important;
+  color:#17212c!important;
+}
+.passenger-map-stage .moy-passenger-map-zoom button:focus-visible{
+  outline:3px solid #2678ed!important;
+  outline-offset:-4px!important;
+}
+
