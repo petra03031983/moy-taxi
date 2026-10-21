@@ -21,6 +21,79 @@ const TARIFF_IMAGES = {
   premium: "https://toppng.com/public/uploads/preview/mercedes-logo-png-transparent-background-116604284845alexjibor.png",
 };
 
+
+const PASSENGER_I18N_ROWS = [
+  ["Мой Такси","Мой Такси","My Taxi"],["Карта поездки","Сапар картасы","Trip map"],["Карта Астаны","Астана картасы","Astana map"],
+  ["Местоположение определено","Орналасқан жер анықталды","Location detected"],["Определяем местоположение…","Орналасқан жерді анықтап жатырмыз…","Detecting location…"],
+  ["Как вас зовут?","Атыңыз кім?","What's your name?"],["Ваше имя","Атыңыз","Your name"],["Телефон","Телефон","Phone"],["Изменить","Өзгерту","Edit"],
+  ["Куда едем?","Қайда барамыз?","Where to?"],["ВАША ПОЕЗДКА","СІЗДІҢ САПАРЫҢЫЗ","YOUR RIDE"],["ЗАКАЗ ТАКСИ","ТАКСИГЕ ТАПСЫРЫС","BOOK A TAXI"],
+  ["Астана","Астана","Astana"],["Откуда","Қайдан","Pickup"],["Куда","Қайда","Destination"],
+  ["Моё местоположение или адрес","Менің орналасқан жерім немесе мекенжай","My location or address"],
+  ["Адрес, улица или место","Мекенжай, көше немесе орын","Address, street or place"],["Моё местоположение","Менің орналасқан жерім","My location"],
+  ["Точка подачи выбрана","Отырғызу орны таңдалды","Pickup point selected"],["Выбери адрес из подсказок","Ұсыныстардан мекенжайды таңдаңыз","Choose an address suggestion"],
+  ["Можно указать адрес вручную","Мекенжайды қолмен енгізуге болады","You can enter an address manually"],["Ищем адреса…","Мекенжайларды іздеп жатырмыз…","Searching addresses…"],
+  ["Поменять адреса местами","Мекенжайлардың орнын ауыстыру","Swap addresses"],["Выберите тариф","Тарифті таңдаңыз","Choose a ride class"],
+  ["Подробнее о тарифах","Тарифтер туралы толығырақ","About ride classes"],["О тарифах","Тарифтер туралы","About fares"],
+  ["Стоимость рассчитывается по выбранному маршруту и классу автомобиля. После отправки заказа водитель может принять предложенную сумму или предложить встречную цену.","Құны таңдалған бағыт пен көлік класы бойынша есептеледі. Тапсырыс жіберілгеннен кейін жүргізуші ұсынылған бағаны қабылдай алады немесе өз бағасын ұсына алады.","The fare is calculated from the selected route and vehicle class. After you send the request, a driver can accept your price or make a counteroffer."],
+  ["Эконом","Эконом","Economy"],["Комфорт","Комфорт","Comfort"],["Комфорт+","Комфорт+","Comfort+"],["Бизнес","Бизнес","Business"],["Минивэн","Минивэн","Minivan"],["Премиум","Премиум","Premium"],
+  ["Нет цены","Баға жоқ","No price"],["Сейчас водители класса","Қазір осы кластағы жүргізушілер","Drivers in this class are currently"],
+  ["не на линии. Заказ сохранится; водители увидят его, когда выйдут на линию.","желідегі жоқ. Тапсырыс сақталады; жүргізушілер желіге шыққанда оны көреді.","not online. Your request will be saved and drivers will see it when they come online."],
+  ["Предложите свою цену","Өз бағаңызды ұсыныңыз","Offer your price"],["Водители могут принять её или предложить свою","Жүргізушілер оны қабылдай алады немесе өз бағасын ұсына алады","Drivers can accept it or make their own offer"],
+  ["Меняй цену шагом 50 ₸","Бағаны 50 ₸ қадамымен өзгертіңіз","Adjust the price in 50 ₸ steps"],["Цена появится после расчёта маршрута","Баға бағыт есептелгеннен кейін шығады","Price appears after the route is calculated"],
+  ["Уменьшить цену на 50 тенге","Бағаны 50 теңгеге азайту","Decrease price by 50 tenge"],["Увеличить цену на 50 тенге","Бағаны 50 теңгеге арттыру","Increase price by 50 tenge"],
+  ["Способ оплаты","Төлем тәсілі","Payment method"],["Наличные","Қолма-қол ақша","Cash"],["Kaspi перевод","Kaspi аударымы","Kaspi transfer"],["Kaspi","Kaspi","Kaspi"],
+  ["Пожелания водителю","Жүргізушіге арналған ескертулер","Notes for the driver"],["необязательно","міндетті емес","optional"],["Подъезд, ориентир или другие пожелания…","Кіреберіс, бағдар немесе басқа ескертулер…","Entrance, landmark, or other notes…"],
+  ["Предложить цену","Баға ұсыну","Offer price"],["Отправить водителям","Жүргізушілерге жіберу","Send to drivers"],["Быстрый заказ","Жылдам тапсырыс","Quick request"],["По расчётной цене","Есептелген бағамен","At the estimated price"],
+  ["Тестовый режим: списания не выполняются.","Сынақ режимі: ақша алынбайды.","Test mode: no charges are made."],
+  ["Главная","Басты бет","Home"],["Мои поездки","Сапарларым","My rides"],["Чаты","Чаттар","Chats"],["Профиль","Профиль","Profile"],
+  ["Ищем водителя","Жүргізушіні іздеп жатырмыз","Finding a driver"],["Водитель едет к вам","Жүргізуші сізге келе жатыр","Driver is on the way"],
+  ["Водитель на месте","Жүргізуші келді","Driver has arrived"],["Поездка началась","Сапар басталды","Ride started"],["Новый заказ","Жаңа тапсырыс","New request"],
+  ["Пассажир выходит","Жолаушы шығып келеді","Passenger is coming out"],["Поездка завершена","Сапар аяқталды","Ride completed"],["Отменён","Бас тартылды","Cancelled"],
+  ["Тариф","Тариф","Ride class"],["Расстояние","Қашықтық","Distance"],["Оплата","Төлем","Payment"],["Тип","Түрі","Type"],["Межгород","Қалааралық","Intercity"],["Город","Қала","City"],
+  ["Автомобиль","Көлік","Vehicle"],["Водитель","Жүргізуші","Driver"],
+  ["Водитель приехал за тобой. Нажми кнопку, когда подходишь к машине.","Жүргізуші келді. Көлікке жақындағанда батырманы басыңыз.","Your driver has arrived. Tap the button when you are approaching the car."],
+  ["Я выхожу","Шығып келемін","I'm coming out"],["Ты сообщил водителю, что выходишь.","Жүргізушіге шығып келе жатқаныңызды хабарладыңыз.","You've told the driver you're coming out."],
+  ["Садись в автомобиль; водитель начнёт поездку после посадки.","Көлікке отырыңыз; жүргізуші отырғаннан кейін сапарды бастайды.","Get in the car; the driver will start the ride once you're seated."],
+  ["Ищем водителей","Жүргізушілерді іздеп жатырмыз","Finding drivers"],
+  ["Водители выбранного класса рядом получат заказ и смогут предложить свою цену.","Жақын жердегі таңдалған класс жүргізушілері тапсырысты алып, өз бағасын ұсына алады.","Nearby drivers in this class will receive the request and can offer their price."],
+  ["Предложений:","Ұсыныстар:","Offers:"],["Принять","Қабылдау","Accept"],["Отклонить","Қабылдамау","Decline"],["Отменить заказ","Тапсырыстан бас тарту","Cancel request"],
+  ["Открыть маршрут в 2ГИС","2GIS қолданбасында бағытты ашу","Open route in 2GIS"],["Если планы изменились, можно отменить заказ до начала поездки.","Жоспар өзгерсе, сапар басталғанға дейін тапсырыстан бас тартуға болады.","If your plans change, you can cancel before the ride begins."],
+  ["Как прошла поездка?","Сапар қалай өтті?","How was your ride?"],["Оцени водителя — это поможет улучшать сервис.","Жүргізушіні бағалаңыз — бұл қызметті жақсартуға көмектеседі.","Rate your driver to help us improve the service."],
+  ["Оценка от 1 до 5 звёзд","1-ден 5 жұлдызға дейін бағалау","Rate from 1 to 5 stars"],["Комментарий (необязательно)","Пікір (міндетті емес)","Comment (optional)"],
+  ["Что понравилось или что улучшить?","Не ұнады немесе нені жақсарту керек?","What did you like or what could be improved?"],["Сохраняем…","Сақтап жатырмыз…","Saving…"],["Отправить оценку","Бағаны жіберу","Submit rating"],["Спасибо за оценку!","Бағаңызға рақмет!","Thanks for your rating!"],["Заказать ещё раз","Қайта тапсырыс беру","Book again"],
+  ["Не удалось получить координаты GPS. Проверь разрешение местоположения для Chrome и попробуй ещё раз.","GPS координаттарын алу мүмкін болмады. Chrome қолданбасындағы орналасу рұқсатын тексеріп, қайта көріңіз.","Could not get GPS coordinates. Check Chrome's location permission and try again."],
+  ["Chrome не разрешил доступ к местоположению. Нажми значок слева от адреса сайта → Разрешения → Местоположение → Разрешить. На телефоне также включи «Местоположение». Затем нажми «Моё местоположение» ещё раз.","Chrome орналасқан жерге кіруге рұқсат бермеді. Сайт мекенжайының сол жағындағы белгішені басыңыз → Рұқсаттар → Орналасқан жер → Рұқсат беру. Телефонда да «Орналасқан жер» параметрін қосыңыз. Содан кейін «Менің орналасқан жерім» түймесін қайта басыңыз.","Chrome couldn't access your location. Tap the icon beside the site address → Permissions → Location → Allow. Also enable Location on your phone, then tap My location again."],
+  ["Телефон пока не смог определить координаты. Включи GPS/Местоположение и попробуй ещё раз на открытом месте.","Телефон координаттарды анықтай алмады. GPS/Орналасқан жерді қосып, ашық жерде қайта көріңіз.","Your phone couldn't determine its location. Turn on GPS/Location and try again in an open area."],
+  ["GPS отвечает слишком долго. Включи «Местоположение» в телефоне и нажми кнопку ещё раз — приложение попробует получить координаты повторно.","GPS тым ұзақ жауап беріп жатыр. Телефондағы «Орналасқан жер» параметрін қосып, түймені қайта басыңыз.","GPS is taking too long. Enable Location on your phone and tap again to retry."],
+  ["Используются временные тарифы. Проверь соединение перед заказом.","Уақытша тарифтер қолданылып жатыр. Тапсырыс бермес бұрын байланысты тексеріңіз.","Temporary fares are being used. Check your connection before booking."],
+  ["Заказ отправлен. Тестовый режим: никаких списаний.","Тапсырыс жіберілді. Сынақ режимі: ақша алынбайды.","Request sent. Test mode: no charges."],
+  ["Заказ отправлен водителям.","Тапсырыс жүргізушілерге жіберілді.","Request sent to drivers."],
+  ["Предложение цены отправлено. Тестовый режим: никаких списаний.","Баға ұсынысы жіберілді. Сынақ режимі: ақша алынбайды.","Price offer sent. Test mode: no charges."],
+  ["Предложение цены отправлено водителям.","Баға ұсынысы жүргізушілерге жіберілді.","Price offer sent to drivers."],
+  ["Рассчитываем маршрут…","Бағытты есептеп жатырмыз…","Calculating route…"],
+  ["Маршрут рассчитывается слишком долго. Проверь подключение и попробуй ещё раз.","Бағыт тым ұзақ есептеліп жатыр. Байланысты тексеріп, қайта көріңіз.","Route calculation is taking too long. Check your connection and try again."],
+  ["Сервер долго не отвечает. Проверь подключение и попробуй ещё раз.","Сервер ұзақ жауап бермей жатыр. Байланысты тексеріп, қайта көріңіз.","The server is taking too long to respond. Check your connection and try again."],
+  ["Не настроен ключ приложения.","Қолданба кілті бапталмаған.","The app key is not configured."],["Ошибка сервера.","Сервер қатесі.","Server error."]
+];
+const PASSENGER_I18N = {
+  kk: Object.fromEntries(PASSENGER_I18N_ROWS.map(([ru, kk]) => [ru, kk])),
+  en: Object.fromEntries(PASSENGER_I18N_ROWS.map(([ru, kk, en]) => [ru, en])),
+};
+function translatePassengerText(value, language) {
+  const dictionary = PASSENGER_I18N[language];
+  if (!dictionary || !value) return value;
+  const input = String(value);
+  const leading = (input.match(/^\s*/) || [""])[0];
+  const trailing = (input.match(/\s*$/) || [""])[0];
+  const source = input.trim();
+  if (!source) return value;
+  if (dictionary[source]) return leading + dictionary[source] + trailing;
+  const keys = Object.keys(dictionary).filter(key => key.length >= 3).sort((a,b) => b.length - a.length);
+  const escaped = keys.map(key => key.replace(/[.+?()]/g, "\\const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";"));
+  const pattern = new RegExp(escaped.join("|"), "g");
+  return leading + source.replace(pattern, match => dictionary[match] || match) + trailing;
+}
+
 const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";
 
 function routeUrl(a, b) {
@@ -37,6 +110,9 @@ export default function PassengerPage() {
   const [phone, setPhone] = useState("");
   const [showContactFields, setShowContactFields] = useState(false);
   const [tariffInfoOpen, setTariffInfoOpen] = useState(false);
+  const [uiLanguage, setUiLanguage] = useState("ru");
+  const passengerLanguageTextNodes = useRef(new WeakMap());
+  const passengerLanguageAttributes = useRef(new WeakMap());
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
   const [comment, setComment] = useState("");
@@ -64,6 +140,90 @@ export default function PassengerPage() {
   const routeRequestRef = useRef(false);
   const pickupManuallyChosenRef = useRef(false);
   const clientAudioRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const savedLanguage = localStorage.getItem("moyTaxiLanguage");
+      if (savedLanguage === "kk" || savedLanguage === "ru" || savedLanguage === "en") setUiLanguage(savedLanguage);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const root = document.querySelector(".passenger-screen");
+    if (!root) return;
+    root.setAttribute("lang", uiLanguage === "kk" ? "kk" : uiLanguage === "en" ? "en" : "ru");
+
+    const skipSelector = "script,style,.leaflet-container,.route-map,[data-map-root],svg";
+    const translateNode = node => {
+      if (!node || !node.nodeValue || !node.nodeValue.trim()) return;
+      const parent = node.parentElement;
+      if (!parent || parent.closest(skipSelector)) return;
+      const cache = passengerLanguageTextNodes.current;
+      const current = node.nodeValue;
+      let record = cache.get(node);
+      if (!record) {
+        record = { source: current, last: null };
+        cache.set(node, record);
+      } else if (current !== record.last) {
+        record.source = current;
+        record.last = null;
+      }
+      const output = translatePassengerText(record.source, uiLanguage);
+      record.last = output;
+      if (current !== output) node.nodeValue = output;
+    };
+
+    const translateAttributes = element => {
+      if (!element || element.closest?.(".leaflet-container,.route-map,[data-map-root],svg")) return;
+      const cache = passengerLanguageAttributes.current;
+      let attributes = cache.get(element);
+      if (!attributes) {
+        attributes = new Map();
+        cache.set(element, attributes);
+      }
+      for (const name of ["placeholder", "aria-label", "title", "alt"]) {
+        if (!element.hasAttribute(name)) continue;
+        const current = element.getAttribute(name) || "";
+        let record = attributes.get(name);
+        if (!record) {
+          record = { source: current, last: null };
+          attributes.set(name, record);
+        } else if (current !== record.last) {
+          record.source = current;
+          record.last = null;
+        }
+        const output = translatePassengerText(record.source, uiLanguage);
+        record.last = output;
+        if (current !== output) element.setAttribute(name, output);
+      }
+    };
+
+    const translateTree = container => {
+      if (!container) return;
+      if (container.nodeType === Node.TEXT_NODE) {
+        translateNode(container);
+        return;
+      }
+      if (container.nodeType !== Node.ELEMENT_NODE && container !== root) return;
+      if (container.nodeType === Node.ELEMENT_NODE && container.closest(skipSelector)) return;
+      if (container.nodeType === Node.ELEMENT_NODE) translateAttributes(container);
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) translateNode(node);
+      if (container.querySelectorAll) container.querySelectorAll("*").forEach(translateAttributes);
+    };
+
+    translateTree(root);
+    const observer = new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type === "characterData") translateNode(record.target);
+        else if (record.type === "attributes") translateAttributes(record.target);
+        else for (const node of record.addedNodes) translateTree(node);
+      }
+    });
+    observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["placeholder", "aria-label", "title", "alt"] });
+    return () => observer.disconnect();
+  }, [uiLanguage]);
 
   useEffect(() => {
     try {
