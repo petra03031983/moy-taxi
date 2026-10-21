@@ -371,7 +371,7 @@ export default function Home(){
    const list=await callApi("driver_list",session);
    setOrders(sortOrdersNewestFirst(list.orders||[]));
    if(String(selectedOrderId)===String(id))setSelectedOrderId(null);
-   setNotice("Заказ отменён: пассажир не вышел после 10 минут ожидания.");
+   setNotice("Заказ отменён: пассажир не вышел после 3 минут ожидания.");
   }catch(e){setError(e.message||"Не удалось отменить заказ. Проверь время ожидания и повтори попытку.");}
   finally{setBusy(false)}
  }
@@ -643,10 +643,10 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   const arrivalTime=Date.parse(o.arrived_at||"");
   const arrivalRecorded=Number.isFinite(arrivalTime);
   const waitElapsed=arrivalRecorded?Math.max(0,clockNow-arrivalTime):0;
-  const waitRemaining=Math.max(0,10*60*1000-waitElapsed);
-  const canCancelNoShow=arrivalRecorded&&waitElapsed>=10*60*1000;
+  const waitRemaining=Math.max(0,3*60*1000-waitElapsed);
+  const canCancelNoShow=arrivalRecorded&&waitElapsed>=3*60*1000;
   const waitCountdown=(()=>{const total=Math.ceil(waitRemaining/1000);return String(Math.floor(total/60)).padStart(2,"0")+":"+String(total%60).padStart(2,"0")})();
-  return <article className={"order feed-order "+(o.status==="new"?"feed-order-new feed-order-selectable":"")} id={"order-"+o.id} key={o.id} onClick={()=>{if(o.status==="new")setSelectedOrderId(o.id)}} onKeyDown={e=>{if(o.status==="new"&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setSelectedOrderId(o.id)}}} role={o.status==="new"?"button":undefined} tabIndex={o.status==="new"?0:undefined} style={o.status==="new"?{cursor:"pointer"}:undefined}>
+  return <article className={"order feed-order "+(o.status==="new"?"feed-order-new feed-order-selectable":"")} id={"order-"+o.id} key={o.id} onClick={()=>{if(o.status==="new")setSelectedOrderId(o.id)}} onKeyDown={e=>{if(o.status==="new"&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setSelectedOrderId(o.id)}}} role={o.status==="new"?"button":undefined} tabIndex={o.status==="new"?0:undefined} style={o.status==="new"?{cursor:"pointer"}:["arrived","client_ready"].includes(o.status)?{position:"relative",paddingBottom:42}:undefined}>
    <aside className="feed-order-side">
     <div className="feed-order-avatar">{customerName.slice(0,1).toLocaleUpperCase("ru-RU")}</div>
     <strong>{customerName}</strong>
@@ -669,17 +669,17 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
      <span>{o.payment_method==="kaspi_gold"?"Kaspi перевод":"Наличные"}</span>
      {Number(o.route_distance_km)>0&&<span>Маршрут {Number(o.route_distance_km).toLocaleString("ru-RU",{maximumFractionDigits:1})} км</span>}
     </div>
-    {o.price_status==="accepted"&&Number(o.agreed_price)>0&&<p className="feed-order-note success">✅ Согласовано: <b>{Number(o.agreed_price).toLocaleString("ru-RU")} ₸</b></p>}
     {o.price_status==="driver_offered"&&<p className="feed-order-note success">Твоя цена: <b>{Number(o.driver_price).toLocaleString("ru-RU")} ₸</b> · ждём ответа клиента.</p>}
     
     
     <div className="order-actions actions feed-order-actions">
      {o.status==="accepted"&&<><a className="button secondary" href={navigationRoute(o.pickup_lat,o.pickup_lng,o.pickup_address)} target="_blank" rel="noreferrer">🗺️ Маршрут в 2GIS</a><button type="button" className="button primary" onClick={()=>updateOrder(o.id,"arrived")}>✅ Я на месте</button></>}
-     {["arrived","client_ready"].includes(o.status)&&<div className="success feed-order-note"><b>Ты на месте. Ожидаем пассажира.</b>{arrivalRecorded?<p className="small" style={{margin:"5px 0 0"}}>{canCancelNoShow?"10 минут ожидания истекли.":"До возможности отменить заказ осталось:"} <strong>{canCancelNoShow?"00:00":waitCountdown}</strong></p>:<p className="small" style={{margin:"5px 0 0"}}>Не удалось загрузить время прибытия. Обнови приложение; таймер проверяется сервером.</p>}{canCancelNoShow&&<button type="button" className="button danger" style={{marginTop:8}} disabled={busy} onClick={()=>cancelNoShowOrder(o.id)}>Отменить — пассажир не вышел</button>}</div>}
+     {["arrived","client_ready"].includes(o.status)&&canCancelNoShow&&<button type="button" className="button danger" disabled={busy} onClick={()=>cancelNoShowOrder(o.id)}>Отменить — пассажир не вышел</button>}
      {o.status==="client_ready"&&<a className="button primary" href={navigationTripRoute(o.pickup_lat,o.pickup_lng,o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer" onClick={()=>updateOrder(o.id,"started")}>▶️ Начать поездку A → B</a>}
      {o.status==="started"&&<><a className="button secondary" href={navigationRoute(o.destination_lat,o.destination_lng,o.destination_address)} target="_blank" rel="noreferrer">🧭 До пункта B</a><button type="button" className="button primary" onClick={()=>updateOrder(o.id,"completed")}>Завершить поездку</button></>}
     </div>
    </div>
+   {["arrived","client_ready"].includes(o.status)&&arrivalRecorded&&<span aria-label="Осталось времени ожидания" title="Осталось времени ожидания" style={{position:"absolute",right:10,bottom:8,zIndex:2,background:"#eaf5ee",color:"#176b4d",border:"1px solid #cbe8d7",borderRadius:999,padding:"5px 9px",fontSize:12,fontWeight:850,fontVariantNumeric:"tabular-nums",minWidth:55,textAlign:"center"}}>{waitCountdown}</span>}
   </article>
  })}
  </div>
