@@ -2248,9 +2248,9 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 .moy-taxi-landing-hero{
  position:relative;
  flex:1 0 auto;
- height:61svh;
- min-height:440px;
- max-height:670px;
+ height:72svh;
+ min-height:480px;
+ max-height:790px;
  background-image:url("/images/astana-taxi-welcome.webp");
  background-size:cover;
  background-position:center 54%;
@@ -2282,11 +2282,11 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
  background:#fff;
  box-shadow:0 7px 20px rgba(5,22,43,.18);
 }
-.moy-taxi-landing-pin span{
+.moy-taxi-landing-pin svg{
  display:block;
+ width:38px;
+ height:38px;
  transform:rotate(45deg);
- font-size:38px;
- line-height:1;
 }
 .moy-taxi-landing-logo{
  font-size:clamp(34px,8.2vw,46px);
@@ -2326,7 +2326,8 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
  box-shadow:0 5px 18px rgba(11,38,69,.18);
  font-size:16px;font-weight:850;cursor:pointer;
 }
-.moy-taxi-language-globe{font-size:24px;line-height:1}
+.moy-taxi-language-globe{display:flex;align-items:center;justify-content:center;line-height:1}
+.moy-taxi-language-globe svg{display:block;width:25px;height:25px;flex:0 0 25px}
 .moy-taxi-language-arrow{font-size:17px;line-height:1;transform:translateY(3px);transition:transform .15s ease}
 .moy-taxi-language-arrow.open{transform:rotate(180deg) translateY(-3px)}
 .moy-taxi-language-menu{
@@ -2353,7 +2354,7 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 .moy-taxi-role-sheet{
  position:relative;z-index:2;
  margin-top:-25px;
- padding:18px 14px max(13px,env(safe-area-inset-bottom));
+ padding:22px 14px max(13px,env(safe-area-inset-bottom));
  border-radius:28px 28px 0 0;
  border:1px solid rgba(238,242,247,.96);
  background:rgba(255,255,255,.985);
@@ -2366,9 +2367,9 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
  color:#657487;font-size:10px;font-weight:900;letter-spacing:1.4px;
 }
 .moy-taxi-role-sheet h1{
- max-width:440px;margin:0 auto 8px;
- font-size:clamp(20px,5.2vw,26px);
- line-height:1.15;text-align:center;
+ max-width:440px;margin:0 auto 18px;
+ font-size:clamp(23px,5.8vw,30px);
+ line-height:1.13;text-align:center;
  font-weight:900;letter-spacing:-.45px;color:#111e32;
 }
 .moy-taxi-role-intro{
@@ -2379,7 +2380,7 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;
 }
 .moy-taxi-role-card{
- width:100%;min-width:0;min-height:98px;box-sizing:border-box;
+ width:100%;min-width:0;min-height:clamp(106px,13vh,130px);box-sizing:border-box;
  display:grid;grid-template-columns:32px minmax(0,1fr) 15px;
  align-items:center;gap:8px;padding:11px 10px;
  border:0;border-radius:18px;
@@ -2388,11 +2389,11 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 }
 .moy-taxi-role-card.passenger{background:linear-gradient(135deg,#087ff7,#1372e8);color:#fff}
 .moy-taxi-role-card.driver{background:linear-gradient(135deg,#ffe22a,#ffc815);color:#111827;--taxi-window:#ffdf23;--taxi-wheel:#111827}
-.moy-taxi-role-icon{display:flex;align-items:center;justify-content:center;width:32px;height:36px}
-.moy-taxi-role-icon svg{display:block;width:35px;height:35px}
-.moy-taxi-role-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
-.moy-taxi-role-copy b{display:block;font-size:clamp(13px,3.5vw,16px);font-weight:900;line-height:1.15;overflow-wrap:anywhere}
-.moy-taxi-role-copy small{display:block;font-size:clamp(10px,2.8vw,12px);line-height:1.2;opacity:.93}
+.moy-taxi-role-icon{display:flex;align-items:center;justify-content:center;width:38px;height:40px}
+.moy-taxi-role-icon svg{display:block;width:39px;height:39px}
+.moy-taxi-role-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.moy-taxi-role-copy b{display:block;font-size:clamp(14px,3.7vw,18px);font-weight:900;line-height:1.15;overflow-wrap:anywhere}
+.moy-taxi-role-copy small{display:block;font-size:clamp(11px,3vw,14px);line-height:1.2;opacity:.93}
 .moy-taxi-role-arrow{font-size:29px;line-height:1;font-weight:500;align-self:center}
 .moy-taxi-landing-install{
  display:flex;align-items:center;justify-content:flex-start;gap:10px;
