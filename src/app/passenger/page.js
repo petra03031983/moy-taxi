@@ -28,6 +28,7 @@ export default function PassengerPage() {
   const [phone, setPhone] = useState("");
   const [showContactFields, setShowContactFields] = useState(false);
   const [tariffInfoOpen, setTariffInfoOpen] = useState(false);
+  const [showMoreTariffs, setShowMoreTariffs] = useState(false);
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
   const [comment, setComment] = useState("");
@@ -526,11 +527,11 @@ export default function PassengerPage() {
             <div className="passenger-section-heading"><div><h2>Выберите тариф</h2><p>{route ? "Цена за весь маршрут" : "Сначала укажи адреса поездки"}</p></div><button type="button" className="passenger-tariff-info-trigger" aria-expanded={tariffInfoOpen} onClick={()=>setTariffInfoOpen(value=>!value)}>О тарифах <span aria-hidden="true">ⓘ</span></button></div>
             {tariffInfoOpen && <div className="passenger-tariff-info">Стоимость рассчитывается по выбранному маршруту и классу автомобиля. После отправки заказа водитель может принять предложенную сумму или предложить встречную цену.</div>}
             <div className="passenger-tariff-scroller">
-              {CLASSES.map(item=>{
+              {CLASSES.slice(0, showMoreTariffs ? CLASSES.length : 4).map(item=>{
                 const estimated=route?.estimated_prices?.[item.id];
                 const selected=selectedClass===item.id;
                 const carFill=item.id==="business"||item.id==="premium" ? "#222933" : item.id==="comfort_plus" ? "#cdd4dc" : item.id==="minivan" ? "#d5dbe1" : "#f7f8fa";
-                return <button key={item.id} type="button" className={"passenger-tariff-card"+(selected?" selected":"")} onClick={()=>{setSelectedClass(item.id);setPriceAdjustment(0);}} aria-pressed={selected} disabled={!estimated}>
+                return <button key={item.id} type="button" className={"passenger-tariff-card"+(selected?" selected":"")} onClick={()=>{setSelectedClass(item.id);setPriceAdjustment(0);if(CLASSES.findIndex(x=>x.id===item.id)>=4)setShowMoreTariffs(true);}} aria-pressed={selected} disabled={!estimated}>
                   <span className={"passenger-tariff-car passenger-car-"+item.id} aria-hidden="true" />
                   <b className="passenger-tariff-name">{item.label}</b>
                   <strong className="passenger-tariff-price">{estimated ? money(selected && quote!=null ? quote : estimated) : route ? "Нет цены" : "Рассчитай маршрут"}</strong>
@@ -538,6 +539,7 @@ export default function PassengerPage() {
                 </button>;
               })}
             </div>
+            {CLASSES.length>4 && <button type="button" className="passenger-more-tariffs" aria-expanded={showMoreTariffs} onClick={()=>{if(showMoreTariffs && CLASSES.findIndex(x=>x.id===selectedClass)>=4){setSelectedClass("economy");setPriceAdjustment(0);}setShowMoreTariffs(value=>!value);}}>{showMoreTariffs ? "Скрыть дополнительные тарифы" : "Ещё "+(CLASSES.length-4)+" тарифа"} <span aria-hidden="true">{showMoreTariffs ? "⌃" : "⌄"}</span></button>}
             {route && !onlineClasses.includes(selectedClass) && <p className="passenger-offline-note" role="status">Сейчас водители класса «{CLASSES.find(x=>x.id===selectedClass)?.label || "Эконом"}» не на линии. Заказ сохранится; водители увидят его, когда выйдут на линию.</p>}
           </section>
 
