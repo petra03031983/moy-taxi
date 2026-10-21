@@ -440,7 +440,6 @@ export default function PassengerPage() {
         pickupPoint={pickupPoint || (order?.pickup_lat != null ? {lat:order.pickup_lat,lng:order.pickup_lng} : null)}
         destinationPoint={destinationPoint || (order?.destination_lat != null ? {lat:order.destination_lat,lng:order.destination_lng} : null)}
         routeGeometry={route?.geometry || order?.route_geometry || []}
-        pickupInfo={route ? {timeText:Math.round(route.durationMin)+" мин",distanceText:Number(route.distanceKm).toLocaleString("ru-RU",{maximumFractionDigits:1})+" км"} : null}
         destinationInfo={route ? {timeText:Math.round(route.durationMin)+" мин",distanceText:Number(route.distanceKm).toLocaleString("ru-RU",{maximumFractionDigits:1})+" км"} : null}
       />
       <header className="passenger-topbar">
