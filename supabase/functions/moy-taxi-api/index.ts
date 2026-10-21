@@ -822,8 +822,8 @@ if(a==="driver_cancel_no_show"){
  if(!["arrived","client_ready"].includes(o.status))return fail("Отменить по причине «пассажир не вышел» можно только после прибытия.");
  const arrivalTime=Date.parse(o.arrived_at||"");
  if(!Number.isFinite(arrivalTime))return fail("Время прибытия не найдено. Обнови заказ или обратись в поддержку.",409);
- const remainingMs=10*60*1000-(Date.now()-arrivalTime);
- if(remainingMs>0)return fail("10 минут ожидания ещё не прошло. Осталось примерно "+Math.ceil(remainingMs/1000)+" секунд.",409);
+ const remainingMs=3*60*1000-(Date.now()-arrivalTime);
+ if(remainingMs>0)return fail("3 минуты ожидания ещё не прошло. Осталось примерно "+Math.ceil(remainingMs/1000)+" секунд.",409);
  const cancelledAt=new Date().toISOString();
  const {data:u,error}=await c.from("orders").update({status:"cancelled",cancelled_at:cancelledAt,cancellation_reason:"driver_no_show"}).eq("id",id).eq("driver_id",d.id).in("status",["arrived","client_ready"]).eq("arrived_at",o.arrived_at).select("id,status,cancelled_at,cancellation_reason").maybeSingle();
  if(error||!u)return fail("Не удалось отменить заказ. Возможно, его статус уже изменился.",409);
