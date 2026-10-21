@@ -585,3 +585,4 @@ export default function PassengerPage() {
       <button type="button" className="passenger-nav-item" onClick={()=>{setShowContactFields(true);scrollPassengerSection("passenger-contact-section");}}><span aria-hidden="true">●</span><b>Профиль</b></button>
     </nav>
   </main>;
+}
