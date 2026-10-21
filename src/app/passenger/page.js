@@ -492,7 +492,7 @@ export default function PassengerPage() {
       </section> : <section className="passenger-booking-view" id="passenger-booking">
         <form onSubmit={event=>event.preventDefault()}>
           <div className="passenger-contact-block" id="passenger-contact-section">
-            {(showContactFields || !name.trim() || !phone.trim()) ? <div className="contact-fields"><div className="field"><label htmlFor="moy-taxi-client-name">Ваше имя</label><input id="moy-taxi-client-name" required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label htmlFor="moy-taxi-client-phone">Телефон</label><input id="moy-taxi-client-phone" required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : <button type="button" className="saved-contact passenger-saved-contact" onClick={()=>setShowContactFields(true)}><span className="passenger-saved-contact-person" aria-hidden="true">👤</span><span className="passenger-saved-contact-data"><b>{name}</b><small>{phone}</small></span><span className="passenger-contact-edit">Изменить</span></button>}
+            {showContactFields ? <div className="contact-fields"><div className="field"><label htmlFor="moy-taxi-client-name">Ваше имя</label><input id="moy-taxi-client-name" required maxLength={100} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} placeholder="Как вас зовут?" /></div><div className="field"><label htmlFor="moy-taxi-client-phone">Телефон</label><input id="moy-taxi-client-phone" required type="tel" maxLength={40} autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+7 777 000 00 00" /></div></div> : (name.trim() && phone.trim() ? <button type="button" className="saved-contact passenger-saved-contact" onClick={()=>setShowContactFields(true)}><span className="passenger-saved-contact-person" aria-hidden="true">👤</span><span className="passenger-saved-contact-data"><b>{name}</b><small>{phone}</small></span><span className="passenger-contact-edit">Изменить</span></button> : null)}
           </div>
 
           <div className="passenger-route-inputs">
@@ -531,16 +531,9 @@ export default function PassengerPage() {
                 const selected=selectedClass===item.id;
                 const carFill=item.id==="business"||item.id==="premium" ? "#222933" : item.id==="comfort_plus" ? "#cdd4dc" : item.id==="minivan" ? "#d5dbe1" : "#f7f8fa";
                 return <button key={item.id} type="button" className={"passenger-tariff-card"+(selected?" selected":"")} onClick={()=>{setSelectedClass(item.id);setPriceAdjustment(0);}} aria-pressed={selected} disabled={!estimated}>
-                  <span className="passenger-tariff-car" aria-hidden="true">
-                    <svg viewBox="0 0 120 52" focusable="false">
-                      {item.id==="minivan" ? <path d="M12 32l3-12c1-4 4-6 8-6h46c4 0 7 2 9 6l7 12 8 3v8H9v-8z" fill={carFill} stroke="#8e98a4" strokeWidth="1.3"/> : <path d="M12 32l7-10c2-4 6-6 10-6h48c5 0 8 2 11 7l6 9 7 3v8H10v-8z" fill={carFill} stroke="#8e98a4" strokeWidth="1.3"/>}
-                      <path d="M29 22l4-5h18v13H21z" fill="#a9c8da" stroke="#8195a4" strokeWidth="1"/><path d="M55 17h19c4 0 6 2 8 6l3 7H55z" fill="#8eb5cc" stroke="#8195a4" strokeWidth="1"/><path d="M55 17v13" stroke="#728a9a" strokeWidth="1"/>
-                      <path d="M14 33h-3v5h6M97 33h5v5h-5" fill="#efba27"/>
-                      <circle cx="29" cy="41" r="7" fill="#22262c"/><circle cx="29" cy="41" r="3" fill="#bfc7cf"/><circle cx="84" cy="41" r="7" fill="#22262c"/><circle cx="84" cy="41" r="3" fill="#bfc7cf"/>
-                    </svg>
-                  </span>
+                  <span className={"passenger-tariff-car passenger-car-"+item.id} aria-hidden="true" />
                   <b className="passenger-tariff-name">{item.label}</b>
-                  <strong className="passenger-tariff-price">{estimated ? money(selected && quote!=null ? quote : estimated) : route ? "Нет цены" : "После маршрута"}</strong>
+                  <strong className="passenger-tariff-price">{estimated ? money(selected && quote!=null ? quote : estimated) : route ? "Нет цены" : "Рассчитай маршрут"}</strong>
                   {selected && <span className="passenger-tariff-selected-mark" aria-hidden="true">✓</span>}
                 </button>;
               })}
