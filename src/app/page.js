@@ -211,7 +211,7 @@ const DRIVER_I18N_ROWS=[
  ["На месте","Келді","Arrived"],["Перерыв","Үзіліс","Break"],["Новый","Жаңа","New"],["Активный","Белсенді","Active"],["Завершён","Аяқталды","Completed"],
  ["Справка","Анықтама","Help guide"],["О приложении","Қосымша туралы","About"],["Версия приложения","Қосымша нұсқасы","App version"],
  ["Благодарим за работу!","Жұмысыңыз үшін рақмет!","Thank you for your work!"],["Успешно","Сәтті","Success"],
- ["Попробовать снова","Қайта байқап көру","Try again"],["Обновление доступно","Жаңарту қолжетімді","Update available"]
+ ["Попробовать снова","Қайта байқап көру","Try again"],["Обновление доступно","Жаңарту қолжетімді","Update available"],
  ["Отмена не подтверждена.","Бас тарту расталмады.","Cancellation not confirmed."],["Загрузка…","Жүктелуде…","Loading…"]
 ];
 const DRIVER_I18N={kk:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk])=>[ru,kk])),en:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk,en])=>[ru,en]))};
