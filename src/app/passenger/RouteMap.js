@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null }) {
+export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry, pickupInfo = null, destinationInfo = null, showZoomButtons = false }) {
   const element = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
@@ -23,7 +23,7 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       if (cancelled || !element.current || !window.L || map.current) return;
       try {
         const L = window.L;
-        map.current = L.map(element.current, { zoomControl: true, scrollWheelZoom: false }).setView(
+        map.current = L.map(element.current, { zoomControl: !showZoomButtons, scrollWheelZoom: false }).setView(
           pickupPoint ? [pickupPoint.lat, pickupPoint.lng] : [51.1694, 71.4491],
           pickupPoint ? 13 : 11
         );
@@ -131,6 +131,10 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
         <span className="route-map-badge">{routeGeometry?.length > 1 ? "Маршрут" : "Карта"}</span>
       </div>
       <div ref={element} className="route-map" />
+      {showZoomButtons && <div className="moy-passenger-map-zoom" aria-label="Масштаб карты">
+        <button type="button" aria-label="Приблизить карту" title="Приблизить" disabled={!ready} onClick={event => { event.preventDefault(); event.stopPropagation(); map.current?.zoomIn(); }}>+</button>
+        <button type="button" aria-label="Уменьшить карту" title="Уменьшить" disabled={!ready} onClick={event => { event.preventDefault(); event.stopPropagation(); map.current?.zoomOut(); }}>−</button>
+      </div>}
       {failed && <p className="muted small">Карта не загрузилась. Адреса и расчёт стоимости можно использовать без неё.</p>}
       {!ready && !failed && <div className="route-map-loading">Загружаем карту…</div>}{failed && <div className="route-map-loading">Карта временно недоступна</div>}
     </section>
