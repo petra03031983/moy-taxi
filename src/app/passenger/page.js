@@ -89,7 +89,7 @@ function translatePassengerText(value, language) {
   if (!source) return value;
   if (dictionary[source]) return leading + dictionary[source] + trailing;
   const keys = Object.keys(dictionary).filter(key => key.length >= 3).sort((a,b) => b.length - a.length);
-  const escaped = keys.map(key => key.replace(/[.+?()]/g, "\\const money = value => Number(value || 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) + " ₸";"));
+  const escaped = keys.map(key => key.replace(/[.+?()]/g, "\\$&"));
   const pattern = new RegExp(escaped.join("|"), "g");
   return leading + source.replace(pattern, match => dictionary[match] || match) + trailing;
 }
