@@ -791,13 +791,13 @@ export default function Home(){
   <section className="moy-taxi-landing-hero" aria-label="Астана и Байтерек">
     <div className="moy-taxi-landing-shade" aria-hidden="true"></div>
     <div className="moy-taxi-landing-brand">
-      <div className="moy-taxi-landing-pin" aria-hidden="true"><span>🚕</span></div>
+      <div className="moy-taxi-landing-pin" aria-hidden="true"><svg viewBox="0 0 48 48" focusable="false"><path d="M8 27l3-10c1-3 4-5 7-5h12c3 0 6 2 7 5l3 10 2 3v9h-5v-5H11v5H6V30z" fill="#111827"/><path d="M14 25l2-8h16l2 8z" fill="#fff"/><circle cx="14" cy="30" r="2.5" fill="#f4c21b"/><circle cx="34" cy="30" r="2.5" fill="#f4c21b"/></svg></div>
       <div className="moy-taxi-landing-logo">Мой <span>Такси</span></div>
       <p className="moy-taxi-landing-tagline">Быстро · Удобно · Надёжно</p>
     </div>
     <div className="moy-taxi-language-wrap">
       <button type="button" className="moy-taxi-language-trigger" aria-expanded={languagePickerOpen} aria-haspopup="menu" onClick={()=>setLanguagePickerOpen(v=>!v)}>
-        <span className="moy-taxi-language-globe" aria-hidden="true">🌐</span>
+        <span className="moy-taxi-language-globe" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.5 3.8 5.5 3.8 9S14.6 18.5 12 21M12 3C9.4 5.5 8.2 8.5 8.2 12S9.4 18.5 12 21"/></svg></span>
         <span>Язык</span><span className={"moy-taxi-language-arrow "+(languagePickerOpen?"open":"")} aria-hidden="true">⌃</span>
       </button>
       {languagePickerOpen&&<div className="moy-taxi-language-menu" role="menu" aria-label="Выберите язык">
@@ -807,9 +807,7 @@ export default function Home(){
   </section>
   <section className="moy-taxi-role-sheet">
     <div className="moy-taxi-role-handle" aria-hidden="true"></div>
-    <p className="moy-taxi-role-eyebrow">ДОБРО ПОЖАЛОВАТЬ</p>
     <h1>Как вы хотите пользоваться «Мой Такси»?</h1>
-    <p className="moy-taxi-role-intro">Выберите свою роль. Пассажир заказывает поездку, водитель принимает заказы и управляет поездками.</p>
     <div className="moy-taxi-role-actions">
       <a className="moy-taxi-role-card passenger" href="/passenger">
         <span className="moy-taxi-role-icon" aria-hidden="true"><svg viewBox="0 0 48 48" role="presentation"><circle cx="24" cy="13" r="8" fill="currentColor"/><path d="M7 41v-4c0-8 7-13 17-13s17 5 17 13v4z" fill="currentColor"/></svg></span>
@@ -822,9 +820,6 @@ export default function Home(){
         <span className="moy-taxi-role-arrow" aria-hidden="true">›</span>
       </button>
     </div>
-    <button type="button" className="moy-taxi-landing-install" onClick={install}><span aria-hidden="true">📲</span><span><b>Установить «Мой Такси»</b><small>Отдельная иконка для пассажира и водителя</small></span></button>
-    {notice && <div className="success" role="status">{notice}</div>}
-    <p className="moy-taxi-landing-test-note">Мой Такси сейчас работает в тестовом режиме.</p>
   </section>
 </main>;
 if(!session||!driver) returnif(!session||!driver) return <main className="app auth-app"><header className="header"><div className="logo">Мой <span>Такси</span></div><span className="small">Панель водителя</span></header><section className="hero panel"><div className="hero-icon">🚕</div><p className="eyebrow">ЛИЧНЫЙ СЕРВИС</p><h1>{authMode==="register"?"Регистрация водителя":"Вход водителя"}</h1><p className="muted">Один аккаунт — твой QR-код и твои клиенты.</p></section>{error&&<div className="error">{error}</div>}{notice&&<div className="success">{notice}</div>}<section className="panel auth-panel"><div className="switcher"><button className={authMode==="login"?"switch active":"switch"} onClick={()=>setAuthMode("login")}>Войти</button><button className={authMode==="register"?"switch active":"switch"} onClick={()=>setAuthMode("register")}>Регистрация</button></div><form onSubmit={auth}>{authMode==="register"&&<div className="field"><label>Имя</label><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Имя водителя"/></div>}<div className="field"><label>Номер телефона</label><input required type="tel" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+7 777 000 00 00"/></div><div className="field"><label>Пароль</label><input required type="password" minLength={8} value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Не менее 8 символов"/></div>{authMode==="register"&&<><div className="field"><label>Автомобиль</label><input value={form.car_model} onChange={e=>setForm({...form,car_model:e.target.value})} placeholder="Toyota Camry"/></div><div className="field"><label>Госномер</label><input value={form.car_plate} onChange={e=>setForm({...form,car_plate:e.target.value})} placeholder="123 ABC 01"/></div><div className="field"><label>Цвет машины</label><input value={form.car_color} onChange={e=>setForm({...form,car_color:e.target.value})} placeholder="Белый"/></div><div className="field"><label>Класс автомобиля</label><p className="muted small">Класс определяется автоматически по марке и модели автомобиля.</p></div></>}<button className="button primary" disabled={busy}>{busy?"Подожди…":authMode==="register"?"Создать аккаунт":"Войти"}</button></form></section></main>;
