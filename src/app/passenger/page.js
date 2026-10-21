@@ -143,7 +143,7 @@ export default function PassengerPage() {
 
   useEffect(() => {
     try {
-      const savedLanguage = localStorage.getItem("moyTaxiLanguage");
+      const savedLanguage = localStorage.getItem("moyTaxiPassengerLanguage") || localStorage.getItem("moyTaxiLanguage");
       if (savedLanguage === "kk" || savedLanguage === "ru" || savedLanguage === "en") setUiLanguage(savedLanguage);
     } catch {}
   }, []);

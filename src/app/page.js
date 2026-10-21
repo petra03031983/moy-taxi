@@ -323,11 +323,17 @@ function validOrderPoint(lat,lng){
 export default function Home(){
  const [entryMode,setEntryMode]=useState("choose"),[authMode,setAuthMode]=useState("login"),[form,setForm]=useState(emptyForm),[session,setSession]=useState(null),[driver,setDriver]=useState(null),[orders,setOrders]=useState([]),[history,setHistory]=useState([]),[tab,setTab]=useState("orders"),[showQR,setShowQR]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState(""),[installPrompt,setInstallPrompt]=useState(null),[origin,setOrigin]=useState(""),[offerPrices,setOfferPrices]=useState({}),[selectedOrderId,setSelectedOrderId]=useState(null),[offerCustomOpen,setOfferCustomOpen]=useState(false),[detailRouteGeometry,setDetailRouteGeometry]=useState([]),[detailRouteStats,setDetailRouteStats]=useState(null),[detailPickupStats,setDetailPickupStats]=useState(null),[detailMapLoading,setDetailMapLoading]=useState(false),[walletInfo,setWalletInfo]=useState({wallet_balance:0,test_mode:true,minimum_wallet_balance:500,transactions:[]}),[notificationPermission,setNotificationPermission]=useState("default"),[incomingAlerts,setIncomingAlerts]=useState([]),[lineSwitchBusy,setLineSwitchBusy]=useState(false),[driverMenuOpen,setDriverMenuOpen]=useState(false),[settingsTab,setSettingsTab]=useState("orders"),[darkMode,setDarkMode]=useState("system"),[feedSounds,setFeedSounds]=useState(true),[orderChain,setOrderChain]=useState(false),[quickSwitch,setQuickSwitch]=useState(false),[navigatorApp,setNavigatorApp]=useState("2gis"),[filterMinPrice,setFilterMinPrice]=useState(""),[filterMaxDistance,setFilterMaxDistance]=useState(""),[filterVehicleClass,setFilterVehicleClass]=useState("all"),[filterTripType,setFilterTripType]=useState("all"),[filterPickupDistance,setFilterPickupDistance]=useState(3),[scanRadiusKm,setScanRadiusKm]=useState(3),[filterMinPricePerKm,setFilterMinPricePerKm]=useState(500),[filterMinOrderPrice,setFilterMinOrderPrice]=useState(3000),[settingsLoaded,setSettingsLoaded]=useState(false),[tariffModes,setTariffModes]=useState({economy:true,noBargaining:true,comfort:false,seats6:false,parcels:true}),[vehicleEditOpen,setVehicleEditOpen]=useState(false),[vehicleDraft,setVehicleDraft]=useState({car_model:"",car_plate:""}),[vehicleSaving,setVehicleSaving]=useState(false),[academyCompleted,setAcademyCompleted]=useState([]),[safetyChecks,setSafetyChecks]=useState({vehicle:false,seatbelt:false,phone:false}),[supportMessage,setSupportMessage]=useState(""),[appRefreshing,setAppRefreshing]=useState(false),[sessionRestorePending,setSessionRestorePending]=useState(true),[sessionRestoreError,setSessionRestoreError]=useState(""),[restoreSessionRetry,setRestoreSessionRetry]=useState(0),[appReady,setAppReady]=useState(false),[clockNow,setClockNow]=useState(Date.now());
  const [offerWaitOverlay,setOfferWaitOverlay]=useState(null);
- const [uiLanguage,setUiLanguage]=useState("ru"),[languagePickerOpen,setLanguagePickerOpen]=useState(false);
+ const [passengerLanguage,setPassengerLanguage]=useState("ru"),[driverLanguage,setDriverLanguage]=useState("ru"),[languagePickerOpen,setLanguagePickerOpen]=useState(false);
  const languageTextNodes=useRef(new WeakMap()),languageAttributes=useRef(new WeakMap());
- useEffect(()=>{try{const saved=localStorage.getItem("moyTaxiLanguage");if(DRIVER_LANGUAGE_OPTIONS.some(item=>item.id===saved))setUiLanguage(saved)}catch{}},[]);
+ useEffect(()=>{try{
+  const savedPassengerLanguage=localStorage.getItem("moyTaxiPassengerLanguage")||localStorage.getItem("moyTaxiLanguage");
+  if(DRIVER_LANGUAGE_OPTIONS.some(item=>item.id===savedPassengerLanguage))setPassengerLanguage(savedPassengerLanguage);
+  const savedDriverLanguage=localStorage.getItem("moyTaxiDriverLanguage");
+  if(DRIVER_LANGUAGE_OPTIONS.some(item=>item.id===savedDriverLanguage))setDriverLanguage(savedDriverLanguage);
+ }catch{}},[]);
  useEffect(()=>{
-  document.documentElement.lang=uiLanguage==="kk"?"kk":uiLanguage==="en"?"en":"ru";
+  const activeLanguage=entryMode==="choose"?passengerLanguage:driverLanguage;
+  document.documentElement.lang=activeLanguage==="kk"?"kk":activeLanguage==="en"?"en":"ru";
   const root=document.querySelector(".driver-dashboard")||document.querySelector(".auth-app")||document.querySelector(".app");
   if(!root)return;
   const translateNode=node=>{
@@ -338,7 +344,7 @@ export default function Home(){
    let record=cache.get(node);
    if(!record){record={source:current,last:null};cache.set(node,record)}
    else if(current!==record.last){record.source=current;record.last=null}
-   const output=translateDriverText(record.source,uiLanguage);
+   const output=translateDriverText(record.source,activeLanguage);
    record.last=output;
    if(current!==output)node.nodeValue=output;
   };
@@ -353,7 +359,7 @@ export default function Home(){
     let record=attributes.get(name);
     if(!record){record={source:current,last:null};attributes.set(name,record)}
     else if(current!==record.last){record.source=current;record.last=null}
-    const output=translateDriverText(record.source,uiLanguage);
+    const output=translateDriverText(record.source,activeLanguage);
     record.last=output;
     if(current!==output)element.setAttribute(name,output);
    }
@@ -377,7 +383,7 @@ export default function Home(){
   });
   observer.observe(root,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["placeholder","aria-label","title","alt"]});
   return()=>observer.disconnect();
- },[uiLanguage,entryMode,appReady,session?.driver_id]);
+ },[passengerLanguage,driverLanguage,entryMode,appReady,session?.driver_id]);
  const previousIds=useRef(new Set()),previousCancelledIds=useRef(new Set()),firstLoad=useRef(true),audioRef=useRef(null),watchRef=useRef(null);
  const hasArrivalClock=orders.some(o=>["arrived","client_ready"].includes(o.status)&&o.arrived_at);
  const hasPendingOfferClock=orders.some(o=>o.my_offer?.status==="pending");
@@ -801,7 +807,7 @@ export default function Home(){
         <span>Язык</span><span className={"moy-taxi-language-arrow "+(languagePickerOpen?"open":"")} aria-hidden="true">⌃</span>
       </button>
       {languagePickerOpen&&<div className="moy-taxi-language-menu" role="menu" aria-label="Выберите язык">
-        {DRIVER_LANGUAGE_OPTIONS.map(item=><button type="button" key={item.id} role="menuitemradio" aria-checked={uiLanguage===item.id} className={"moy-taxi-language-option "+(uiLanguage===item.id?"selected":"")} onClick={()=>{setUiLanguage(item.id);try{localStorage.setItem("moyTaxiLanguage",item.id)}catch{}setLanguagePickerOpen(false)}}><span className="moy-taxi-language-flag">{item.flag}</span><span>{item.label}</span><span className="moy-taxi-language-check" aria-hidden="true">{uiLanguage===item.id?"✓":""}</span></button>)}
+        {DRIVER_LANGUAGE_OPTIONS.map(item=><button type="button" key={item.id} role="menuitemradio" aria-checked={passengerLanguage===item.id} className={"moy-taxi-language-option "+(passengerLanguage===item.id?"selected":"")} onClick={()=>{setPassengerLanguage(item.id);try{localStorage.setItem("moyTaxiPassengerLanguage",item.id)}catch{}setLanguagePickerOpen(false)}}><span className="moy-taxi-language-flag">{item.flag}</span><span>{item.label}</span><span className="moy-taxi-language-check" aria-hidden="true">{passengerLanguage===item.id?"✓":""}</span></button>)}
       </div>}
     </div>
   </section>
@@ -992,14 +998,14 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
 <div className="driver-language-setting">
  <button type="button" className="driver-language-row" aria-label="Язык приложения" onClick={()=>setLanguagePickerOpen(true)}>
   <span className="driver-language-globe" aria-hidden="true">🌐</span>
-  <span className="driver-language-copy"><b>Язык</b><small>{DRIVER_LANGUAGE_OPTIONS.find(item=>item.id===uiLanguage)?.label||"Русский"}</small></span>
+  <span className="driver-language-copy"><b>Язык</b><small>{DRIVER_LANGUAGE_OPTIONS.find(item=>item.id===driverLanguage)?.label||"Русский"}</small></span>
   <span className="driver-language-chevron" aria-hidden="true">›</span>
  </button>
 </div>
 {languagePickerOpen&&<div className="driver-language-overlay" role="presentation" onClick={()=>setLanguagePickerOpen(false)}>
  <section className="driver-language-dialog" role="dialog" aria-modal="true" aria-label="Выберите язык" onClick={event=>event.stopPropagation()}>
   <header className="driver-language-dialog-header"><div className="driver-language-title"><span className="driver-language-globe" aria-hidden="true">🌐</span><h3>Выберите язык</h3></div><button type="button" className="driver-language-close" aria-label="Закрыть" onClick={()=>setLanguagePickerOpen(false)}>×</button></header>
-  <div className="driver-language-options">{DRIVER_LANGUAGE_OPTIONS.map(item=><button type="button" key={item.id} className={"driver-language-option "+(uiLanguage===item.id?"selected":"")} aria-pressed={uiLanguage===item.id} onClick={()=>{setUiLanguage(item.id);try{localStorage.setItem("moyTaxiLanguage",item.id)}catch{}setLanguagePickerOpen(false)}}><span className="driver-language-flag">{item.flag}</span><span className="driver-language-option-label">{item.label}</span><span className="driver-language-check" aria-hidden="true">{uiLanguage===item.id?"✓":""}</span></button>)}</div>
+  <div className="driver-language-options">{DRIVER_LANGUAGE_OPTIONS.map(item=><button type="button" key={item.id} className={"driver-language-option "+(driverLanguage===item.id?"selected":"")} aria-pressed={driverLanguage===item.id} onClick={()=>{setDriverLanguage(item.id);try{localStorage.setItem("moyTaxiDriverLanguage",item.id)}catch{}setLanguagePickerOpen(false)}}><span className="driver-language-flag">{item.flag}</span><span className="driver-language-option-label">{item.label}</span><span className="driver-language-check" aria-hidden="true">{driverLanguage===item.id?"✓":""}</span></button>)}</div>
  </section>
 </div>}
 <form onSubmit={saveProfile}><div className="field"><label>Фото водителя</label>{form.photo_url&&<img src={form.photo_url} alt="Предпросмотр" style={{width:90,height:90,borderRadius:20,objectFit:"cover",marginBottom:6}}/>}<input type="file" accept="image/*" onChange={photo}/></div><div className="field"><label>Имя</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div className="field"><label>Номер лицевого счёта</label><input value={driver.account_number||"—"} readOnly/></div><div className="field"><label>Телефон</label><input value={driver.phone} readOnly/></div><div className="field"><label>Автомобиль</label><input value={form.car_model} onChange={e=>setForm({...form,car_model:e.target.value})}/></div><div className="field"><label>Госномер</label><input value={form.car_plate} onChange={e=>setForm({...form,car_plate:e.target.value})}/></div><div className="field"><label>Цвет машины</label><input value={form.car_color} onChange={e=>setForm({...form,car_color:e.target.value})}/></div><div className="field"><label>Класс автомобиля</label><p className="muted small">Класс определяется автоматически по марке и модели автомобиля.</p></div><div className="success">Полные номера документов клиенту не показываем. На следующем этапе добавим отметку проверки техпаспорта и водительского удостоверения.</div><button className="button primary" disabled={busy}>{busy?"Сохраняем…":"Сохранить профиль"}</button></form><button className="button danger" style={{marginTop:10}} onClick={logout}>Выйти</button></section>}{tab==="order-filter"&&<section className="driver-order-filter-page">
