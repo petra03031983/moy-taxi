@@ -237,6 +237,9 @@ const DRIVER_I18N_ROWS=[
  ["Доступно","Қолжетімді","Available"],["Недоступно","Қолжетімсіз","Unavailable"],["Новая цена","Жаңа баға","New fare"],
  ["Дождитесь ответа клиента","Клиент жауабын күтіңіз","Wait for the customer's response"],["Водитель принял заказ","Жүргізуші тапсырысты қабылдады","The driver accepted the order"],
  ["Сумма поездки","Сапар сомасы","Trip fare"],["Карта оплаты","Төлем картасы","Payment card"],["Перейти","Өту","Go"],
+["поездкам","сапар","trips"],["до","дейін","up to"],["от","бастап","from"],["Подача","Алып кету","Pickup"],
+ ["Автоматический учёт приглашений и бонусы ещё не подключены.","Шақыруларды автоматты есептеу мен бонустар әлі қосылмаған.","Automatic referral tracking and bonuses are not enabled yet."],
+ ["Настроить","Баптау","Configure"],["Закрыть меню","Мәзірді жабу","Close menu"],["Открыть меню","Мәзірді ашу","Open menu"],
 ["Отмена не подтверждена.","Бас тарту расталмады.","Cancellation not confirmed."],["Загрузка…","Жүктелуде…","Loading…"]
 ];
 const DRIVER_I18N={kk:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk])=>[ru,kk])),en:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk,en])=>[ru,en]))};
