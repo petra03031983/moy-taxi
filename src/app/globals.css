@@ -2203,3 +2203,27 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 .owner-withdrawal-panel .muted{margin-bottom:9px}
 .owner-withdrawal-panel .field{margin:10px 0}
 .owner-withdrawal-panel .button{margin-top:4px}
+
+
+/* Driver profile language picker */
+.driver-language-setting{margin:12px 0 16px}
+.driver-language-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:1px solid #dbe7f4;border-radius:16px;background:#f7faff;color:#182b40;text-align:left;cursor:pointer}
+.driver-language-row:active{background:#edf5ff}
+.driver-language-globe{width:40px;height:40px;flex:0 0 40px;display:inline-flex;align-items:center;justify-content:center;border-radius:13px;background:#e3efff;color:#1976d2;font-size:23px}
+.driver-language-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.driver-language-copy b{font-size:15px;font-weight:800;line-height:1.2}
+.driver-language-copy small{font-size:13px;color:#65768a;line-height:1.25}
+.driver-language-chevron{font-size:27px;line-height:1;color:#1976d2;font-weight:500}
+.driver-language-overlay{position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(11,22,35,.48);box-sizing:border-box}
+.driver-language-dialog{width:min(100%,420px);max-height:min(82dvh,520px);overflow:auto;box-sizing:border-box;padding:17px;background:#fff;border:1px solid #e2eaf3;border-radius:23px;box-shadow:0 20px 60px rgba(0,0,0,.24);color:#182b40}
+.driver-language-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px}
+.driver-language-title{display:flex;align-items:center;gap:10px;min-width:0}
+.driver-language-title .driver-language-globe{width:35px;height:35px;flex-basis:35px;border-radius:11px;font-size:20px}
+.driver-language-title h3{font-size:19px;line-height:1.25;margin:0;font-weight:850}
+.driver-language-close{width:38px;height:38px;flex:0 0 38px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;background:#f0f4f9;color:#526578;font-size:27px;cursor:pointer}
+.driver-language-options{display:flex;flex-direction:column;gap:8px}
+.driver-language-option{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 12px;border:1px solid #e1e8f0;border-radius:14px;background:#fff;color:#202e3c;text-align:left;font-size:16px;cursor:pointer}
+.driver-language-option.selected{border-color:#3787e9;background:#f0f7ff;box-shadow:inset 0 0 0 1px #3787e9}
+.driver-language-flag{width:30px;flex:0 0 30px;font-size:23px;text-align:center}
+.driver-language-option-label{flex:1;font-weight:750}
+.driver-language-check{width:23px;flex:0 0 23px;color:#1976d2;text-align:center;font-weight:900;font-size:18px}
