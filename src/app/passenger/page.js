@@ -153,7 +153,7 @@ export default function PassengerPage() {
     if (!root) return;
     root.setAttribute("lang", uiLanguage === "kk" ? "kk" : uiLanguage === "en" ? "en" : "ru");
 
-    const skipSelector = "script,style,.leaflet-container,.route-map,[data-map-root],svg";
+    const skipSelector = "script,style,.route-map-panel,.leaflet-container,.route-map,[data-map-root],svg";
     const translateNode = node => {
       if (!node || !node.nodeValue || !node.nodeValue.trim()) return;
       const parent = node.parentElement;
@@ -174,7 +174,7 @@ export default function PassengerPage() {
     };
 
     const translateAttributes = element => {
-      if (!element || element.closest?.(".leaflet-container,.route-map,[data-map-root],svg")) return;
+      if (!element || element.closest?.(".route-map-panel,.leaflet-container,.route-map,[data-map-root],svg")) return;
       const cache = passengerLanguageAttributes.current;
       let attributes = cache.get(element);
       if (!attributes) {
