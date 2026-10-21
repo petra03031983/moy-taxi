@@ -875,12 +875,13 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
  <div className="driver-menu-wrap">
   <button type="button" className="driver-top-action driver-menu-trigger" aria-label="Меню водителя" aria-expanded={driverMenuOpen} onClick={()=>setDriverMenuOpen(open=>!open)}>☰</button>
   {driverMenuOpen&&<>
-  <button type="button" className="driver-menu-backdrop" aria-label="Закрыть меню" onClick={()=>setDriverMenuOpen(false)}></button>
+  <button type="button" className="driver-menu-backdrop" aria-label="Закрыть меню" onClick={()=>{setDriverMenuOpen(false);setLanguagePickerOpen(false)}}></button>
   <div className="driver-menu-panel">
    <button type="button" className="driver-menu-identity driver-menu-profile" onClick={showDriverProfile}>
     <span className="driver-menu-avatar">{driver.photo_url?<img src={driver.photo_url} alt="" />:(driver.name||"В").slice(0,1).toLocaleUpperCase("ru-RU")}</span>
     <span className="driver-menu-identity-copy"><b>{driver.name||"Водитель"}</b><span>{driver.phone}</span><small>{driver.car_model||"Автомобиль не указан"}{driver.car_plate?" · "+driver.car_plate:""}</small></span><b className="driver-menu-chevron">›</b>
    </button>
+   <button type="button" className="driver-menu-item" onClick={()=>setLanguagePickerOpen(true)}><span>🌐</span><span>Язык · {DRIVER_LANGUAGE_OPTIONS.find(item=>item.id===driverLanguage)?.label||"Русский"}</span><b>›</b></button>
    <button type="button" className="driver-menu-item" onClick={()=>openDriverTab("city")}><span>🚘</span><span>Город</span><b>›</b></button>
    <button type="button" className="driver-menu-item" onClick={()=>openDriverTab("academy")}><span>🎓</span><span>Академия</span><b>›</b></button>
    <button type="button" className="driver-menu-item" onClick={()=>openDriverTab("wallet")}><span>▣</span><span>Кошелёк</span><b>›</b></button>
@@ -897,6 +898,12 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
    <a className="driver-menu-passenger" href="/passenger"><span>Стать пассажиром</span><b>›</b></a>
    <div className="driver-menu-socials"><a href={"https://www.facebook.com/sharer/sharer.php?u="+encodeURIComponent(origin+"/c/"+driver.public_code)} target="_blank" rel="noreferrer" aria-label="Поделиться в Facebook">f</a><button type="button" onClick={share} aria-label="Поделиться ссылкой в Instagram">◎</button></div>
   </div>
+  {languagePickerOpen&&<div className="driver-language-overlay" role="presentation" onClick={()=>setLanguagePickerOpen(false)}>
+ <section className="driver-language-dialog" role="dialog" aria-modal="true" aria-label="Выберите язык" onClick={event=>event.stopPropagation()}>
+  <header className="driver-language-dialog-header"><div className="driver-language-title"><span className="driver-language-globe" aria-hidden="true">🌐</span><h3>Выберите язык</h3></div><button type="button" className="driver-language-close" aria-label="Закрыть" onClick={()=>setLanguagePickerOpen(false)}>×</button></header>
+  <div className="driver-language-options">{DRIVER_LANGUAGE_OPTIONS.map(item=><button type="button" key={item.id} className={"driver-language-option "+(driverLanguage===item.id?"selected":"")} aria-pressed={driverLanguage===item.id} onClick={()=>{setDriverLanguage(item.id);try{localStorage.setItem("moyTaxiDriverLanguage",item.id)}catch{}setLanguagePickerOpen(false)}}><span className="driver-language-flag">{item.flag}</span><span className="driver-language-option-label">{item.label}</span><span className="driver-language-check" aria-hidden="true">{driverLanguage===item.id?"✓":""}</span></button>)}</div>
+ </section>
+</div>}
  </>}
  </div>
  <div className="driver-line-center" style={{display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"center",width:"100%",minWidth:0,gap:0}}>
@@ -1002,12 +1009,6 @@ if(!session||!driver) return <main className="app auth-app"><header className="h
   <span className="driver-language-chevron" aria-hidden="true">›</span>
  </button>
 </div>
-{languagePickerOpen&&<div className="driver-language-overlay" role="presentation" onClick={()=>setLanguagePickerOpen(false)}>
- <section className="driver-language-dialog" role="dialog" aria-modal="true" aria-label="Выберите язык" onClick={event=>event.stopPropagation()}>
-  <header className="driver-language-dialog-header"><div className="driver-language-title"><span className="driver-language-globe" aria-hidden="true">🌐</span><h3>Выберите язык</h3></div><button type="button" className="driver-language-close" aria-label="Закрыть" onClick={()=>setLanguagePickerOpen(false)}>×</button></header>
-  <div className="driver-language-options">{DRIVER_LANGUAGE_OPTIONS.map(item=><button type="button" key={item.id} className={"driver-language-option "+(driverLanguage===item.id?"selected":"")} aria-pressed={driverLanguage===item.id} onClick={()=>{setDriverLanguage(item.id);try{localStorage.setItem("moyTaxiDriverLanguage",item.id)}catch{}setLanguagePickerOpen(false)}}><span className="driver-language-flag">{item.flag}</span><span className="driver-language-option-label">{item.label}</span><span className="driver-language-check" aria-hidden="true">{driverLanguage===item.id?"✓":""}</span></button>)}</div>
- </section>
-</div>}
 <form onSubmit={saveProfile}><div className="field"><label>Фото водителя</label>{form.photo_url&&<img src={form.photo_url} alt="Предпросмотр" style={{width:90,height:90,borderRadius:20,objectFit:"cover",marginBottom:6}}/>}<input type="file" accept="image/*" onChange={photo}/></div><div className="field"><label>Имя</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div className="field"><label>Номер лицевого счёта</label><input value={driver.account_number||"—"} readOnly/></div><div className="field"><label>Телефон</label><input value={driver.phone} readOnly/></div><div className="field"><label>Автомобиль</label><input value={form.car_model} onChange={e=>setForm({...form,car_model:e.target.value})}/></div><div className="field"><label>Госномер</label><input value={form.car_plate} onChange={e=>setForm({...form,car_plate:e.target.value})}/></div><div className="field"><label>Цвет машины</label><input value={form.car_color} onChange={e=>setForm({...form,car_color:e.target.value})}/></div><div className="field"><label>Класс автомобиля</label><p className="muted small">Класс определяется автоматически по марке и модели автомобиля.</p></div><div className="success">Полные номера документов клиенту не показываем. На следующем этапе добавим отметку проверки техпаспорта и водительского удостоверения.</div><button className="button primary" disabled={busy}>{busy?"Сохраняем…":"Сохранить профиль"}</button></form><button className="button danger" style={{marginTop:10}} onClick={logout}>Выйти</button></section>}{tab==="order-filter"&&<section className="driver-order-filter-page">
  <header className="driver-order-filter-header"><button type="button" aria-label="Назад" onClick={()=>setTab("settings")}>‹</button><h2>Фильтр входящих заказов</h2><span></span></header>
  <div className="driver-order-filter-info">Фильтры применяются только к входящим уведомлениям о новых заказах. Вы всё равно будете видеть все доступные заказы в ленте</div>
