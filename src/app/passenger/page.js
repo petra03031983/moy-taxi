@@ -442,6 +442,7 @@ export default function PassengerPage() {
         destinationPoint={destinationPoint || (order?.destination_lat != null ? {lat:order.destination_lat,lng:order.destination_lng} : null)}
         routeGeometry={route?.geometry || order?.route_geometry || []}
         destinationInfo={route ? {timeText:Math.round(route.durationMin)+" мин",distanceText:Number(route.distanceKm).toLocaleString("ru-RU",{maximumFractionDigits:1})+" км"} : null}
+        showZoomButtons={true}
       />
       <header className="passenger-topbar">
         <a href="/" className="passenger-top-icon" aria-label="На главный экран">‹</a>
