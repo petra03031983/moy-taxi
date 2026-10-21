@@ -236,7 +236,7 @@ const DRIVER_I18N_ROWS=[
  ["ТЕКУЩИЙ БАЛАНС","АҒЫМДАҒЫ БАЛАНС","CURRENT BALANCE"],["ВАШ ПРОФИЛЬ","ПРОФИЛІҢІЗ","YOUR PROFILE"],
  ["Доступно","Қолжетімді","Available"],["Недоступно","Қолжетімсіз","Unavailable"],["Новая цена","Жаңа баға","New fare"],
  ["Дождитесь ответа клиента","Клиент жауабын күтіңіз","Wait for the customer's response"],["Водитель принял заказ","Жүргізуші тапсырысты қабылдады","The driver accepted the order"],
- ["Сумма поездки","Сапар сомасы","Trip fare"],["Карта оплаты","Төлем картасы","Payment card"],["Перейти","Өту","Go"]
+ ["Сумма поездки","Сапар сомасы","Trip fare"],["Карта оплаты","Төлем картасы","Payment card"],["Перейти","Өту","Go"],
 ["Отмена не подтверждена.","Бас тарту расталмады.","Cancellation not confirmed."],["Загрузка…","Жүктелуде…","Loading…"]
 ];
 const DRIVER_I18N={kk:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk])=>[ru,kk])),en:Object.fromEntries(DRIVER_I18N_ROWS.map(([ru,kk,en])=>[ru,en]))};
