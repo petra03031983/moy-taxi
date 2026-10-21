@@ -2816,3 +2816,25 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
   outline-offset:-4px!important;
 }
 
+
+/* Passenger tariff cards: horizontal swipe row with complete vehicle pictures. */
+.passenger-tariff-scroller{
+ display:grid!important;grid-auto-flow:column!important;grid-auto-columns:min(168px,43vw)!important;
+ grid-template-columns:none!important;gap:10px!important;width:100%;
+ overflow-x:auto!important;overflow-y:hidden!important;padding:3px 13px 12px 1px!important;margin:0 -13px 0 0;
+ scroll-snap-type:x mandatory;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;touch-action:pan-x;scrollbar-width:none;
+}
+.passenger-tariff-scroller::-webkit-scrollbar{display:none!important}
+.passenger-screen .passenger-tariff-card{display:flex;flex-direction:column;align-items:center;gap:7px;width:100%;min-width:0;min-height:168px;padding:10px 8px 12px;border-radius:17px;scroll-snap-align:start}
+.passenger-screen .passenger-tariff-card.selected{padding:9px 7px 11px}
+.passenger-screen .passenger-tariff-car{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:100%;height:82px;padding:0;margin:0;border-radius:9px;background:#fff!important;background-image:none!important;box-shadow:none!important;overflow:hidden}
+.passenger-screen .passenger-tariff-car img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;object-position:center;background:transparent}
+.passenger-screen .passenger-tariff-name{font-size:13px;line-height:1.2;text-align:center;overflow-wrap:anywhere}
+.passenger-screen .passenger-tariff-price{display:block;margin-top:auto;font-size:13px;line-height:1.25;text-align:center;white-space:normal;overflow-wrap:anywhere}
+.passenger-screen .passenger-tariff-selected-mark{top:6px;right:6px;width:20px;height:20px;font-size:12px}
+.passenger-screen .passenger-section-heading{align-items:center}
+.passenger-screen .passenger-tariff-info-trigger{font-size:11px;white-space:nowrap}
+.passenger-screen .passenger-route-calculation{margin:2px 0 13px}
+@media(min-width:620px){.passenger-tariff-scroller{grid-auto-columns:178px!important;gap:12px!important}.passenger-screen .passenger-tariff-card{min-height:182px;padding:12px}.passenger-screen .passenger-tariff-car{height:94px}.passenger-screen .passenger-tariff-name,.passenger-screen .passenger-tariff-price{font-size:14px}}
+@media(max-width:370px){.passenger-tariff-scroller{grid-auto-columns:148px!important;gap:8px!important}.passenger-screen .passenger-tariff-card{min-height:158px;padding:8px 6px 10px}.passenger-screen .passenger-tariff-card.selected{padding:7px 5px 9px}.passenger-screen .passenger-tariff-car{height:74px}.passenger-screen .passenger-tariff-name,.passenger-screen .passenger-tariff-price{font-size:12px}}
+
