@@ -792,13 +792,6 @@ export default function AstanaMapPage() {
         <button onClick={swapMapType} aria-label="Сменить карту" title="Сменить тип карты">◈</button>
       </div>}
 
-      {destination && !route && <div className="astana-place-photos" aria-label="Фотографии места">
-        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=480&q=80" alt="Высотное здание" loading="lazy" /></div>
-        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=480&q=80" alt="Жилой комплекс" loading="lazy" /></div>
-        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=480&q=80" alt="Интерьер помещения" loading="lazy" /></div>
-        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=480&q=80" alt="Интерьер квартиры" loading="lazy" /></div>
-      </div>}
-
       {destination && !route && <section className="astana-place-card">
         <div className="astana-place-handle"><span /></div>
         <div className="astana-place-heading">
@@ -1018,9 +1011,6 @@ const styles = `
 .astana-place-map-controls button{width:58px;height:58px;border:0;border-radius:50%;background:rgba(255,255,255,.98);color:#222a30;box-shadow:0 3px 14px rgba(16,30,43,.18);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:500;cursor:pointer}
 .astana-place-map-controls button:first-child{font-size:26px;color:#087cf5}
 .astana-place-map-controls button:last-child{color:#64717b;font-size:24px}
-.astana-place-photos{position:fixed;left:12px;right:12px;bottom:340px;z-index:19;height:112px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;overflow:hidden}
-.astana-place-photo{height:100%;overflow:hidden;border-radius:13px;background:linear-gradient(135deg,#dbe7ed,#9cafa9);box-shadow:0 2px 8px rgba(10,25,36,.15)}
-.astana-place-photo img{display:block;width:100%;height:100%;object-fit:cover}
 .astana-place-card{position:fixed;left:0;right:0;bottom:0;z-index:21;height:auto;min-height:0;max-height:min(62dvh,460px);box-sizing:border-box;overflow-y:auto;padding:0 16px calc(8px + env(safe-area-inset-bottom,0px));border-radius:29px 29px 0 0;background:rgba(255,255,255,.99);color:#1e252a;box-shadow:0 -5px 28px rgba(25,45,58,.15);scrollbar-width:none}
 .astana-place-card::-webkit-scrollbar{display:none}
 .astana-place-handle{height:21px;display:flex;justify-content:center;align-items:center;margin-bottom:7px}
@@ -1056,7 +1046,6 @@ const styles = `
 @media(max-width:520px){
  .astana-place-map-controls{right:10px;top:26%;gap:8px}
  .astana-place-map-controls button{width:51px;height:51px;font-size:27px}
- .astana-place-photos{left:10px;right:10px;height:94px;bottom:330px;gap:6px}
  .astana-place-card{height:auto;min-height:0;max-height:min(62dvh,440px);padding-left:14px;padding-right:14px;padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
  .astana-place-heading h2{font-size:21px}
  .astana-place-category{font-size:14px}
