@@ -1061,7 +1061,7 @@ const styles = `
 .astana-place-icon-action.saved{color:#11a94f;background:#e1f7e9}
 .astana-place-taxi-action{background:#f0f2f3;color:#262b2f;padding:0 10px}
 .astana-place-taxi-action span{font-size:21px}
-.moy-selected-place{background:none;border:0}
+.moy-selected-place{display:flex;align-items:center;width:290px;height:58px;overflow:visible;background:none;border:0}
 .moy-selected-place .moy-selected-pin{display:inline-block;width:34px;height:34px;border:4px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#087df2;box-shadow:0 3px 10px #0004;box-sizing:border-box;flex:none}
 .moy-selected-place .moy-selected-label{display:flex;flex-direction:column;gap:2px;max-width:236px;margin-left:7px;margin-top:-2px;padding:9px 11px;border-radius:13px;background:rgba(255,255,255,.97);color:#20272d;box-shadow:0 3px 12px #0002;font-family:Arial,sans-serif;line-height:1.2}
 .moy-selected-place .moy-selected-label b{font-size:13px;font-weight:700;white-space:normal}
