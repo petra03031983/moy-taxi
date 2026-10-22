@@ -237,7 +237,7 @@ export default function AstanaMapPage() {
       if (cancelled || !window.L || !mapEl.current || mapRef.current) return;
       const L = window.L;
       const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(ASTANA, 12);
-      const base = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors © CARTO" });
+      const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
       const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20, attribution: "© OpenStreetMap © CARTO" });
       const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "© Esri" });
       base.addTo(map);
@@ -655,11 +655,7 @@ export default function AstanaMapPage() {
     <main className="astana-map-page">
       <div ref={mapEl} className="astana-map-canvas" />
 
-      {isHomeScreen && <div className="astana-home-map-side" aria-hidden="true">
-        <div className="astana-home-avatar">М<span>1</span></div>
-        <div className="astana-home-city-mark">♜</div>
-      </div>}
-      {isHomeScreen && <div className="astana-home-briefcase" aria-hidden="true">💼</div>}
+
 
       <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : "astana-search-wrap-active"}`}>
         {isHomeScreen && <div className="astana-home-handle"><span /></div>}
@@ -735,14 +731,14 @@ export default function AstanaMapPage() {
 
       {navigating && route && <div className="astana-nav-guidance"><b>{nextInstruction?.distance || "Маршрут"}</b><span>{nextInstruction?.text || "Ведём по выбранному маршруту"}</span></div>}
 
-      <div className="astana-map-right-controls">
-        {!isHomeScreen && <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], navigating ? 17 : 16); }} title="Моё местоположение">◎</button>}
+      {!isHomeScreen && <div className="astana-map-right-controls">
+        <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], navigating ? 17 : 16); }} title="Моё местоположение">◎</button>
         <div className="astana-speed-limit"><b>{speedLimit || "—"}</b><span>км/ч</span></div>
         <div className="astana-speed-now"><b>{speed}</b><span>км/ч</span></div>
         <button onClick={() => mapRef.current?.zoomIn()} title="Приблизить">+</button>
         <button onClick={() => mapRef.current?.zoomOut()} title="Отдалить">−</button>
         <button onClick={swapMapType} title="Карта / спутник">▱</button>
-      </div>
+      </div>}
 
       {destination && !route && <section className="astana-bottom-card">
         <div className="astana-destination-title"><span className="green-dot" /> <div><b>{selectedLabel}</b><small>Адрес выбран</small></div></div>
@@ -859,11 +855,11 @@ const styles = `
 .astana-home-locate::first-letter{color:#137cf4}
 .astana-home-weather{position:fixed;left:16px;bottom:calc(57dvh + 18px);z-index:16;display:flex;align-items:center;gap:6px;border-radius:14px;background:#fff;padding:9px 12px;box-shadow:0 3px 13px #0002;color:#535e66}
 .astana-home-weather span{font-size:24px}.astana-home-weather b{font-size:12px;font-weight:700}
-.astana-home-map-side{position:fixed;left:15px;top:24px;z-index:14;display:flex;flex-direction:column;gap:13px;align-items:center}
+.astana-home-map-side{display:none!important;position:fixed;left:15px;top:24px;z-index:14;flex-direction:column;gap:13px;align-items:center}
 .astana-home-avatar{position:relative;width:66px;height:66px;border:4px solid #fff;border-radius:50%;background:linear-gradient(140deg,#e7c6ab,#8b9da3 50%,#263741);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;box-shadow:0 3px 12px #0003}
 .astana-home-avatar span{position:absolute;right:-4px;top:-2px;width:23px;height:23px;border-radius:50%;background:#f33d4b;color:#fff;text-align:center;line-height:23px;font-size:13px}
 .astana-home-city-mark{width:55px;height:55px;border-radius:50%;background:#20272d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 3px 12px #0003}
-.astana-home-briefcase{position:fixed;top:24px;right:16px;z-index:14;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;font-size:29px;box-shadow:0 3px 13px #0002}
+.astana-home-briefcase{display:none!important;position:fixed;top:24px;right:16px;z-index:14;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.95);align-items:center;justify-content:center;font-size:29px;box-shadow:0 3px 13px #0002}
 .astana-search-wrap-home .astana-home-shortcuts,.astana-search-wrap-home .astana-home-promo-strip,.astana-search-wrap-home .astana-home-interesting{max-width:100%}
 /* Photo-led cards like the approved home-screen reference. Colors remain as fallbacks if an image is unavailable. */
 .astana-promo-art{display:none}
