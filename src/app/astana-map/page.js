@@ -865,6 +865,19 @@ const styles = `
 .astana-home-city-mark{width:55px;height:55px;border-radius:50%;background:#20272d;color:#fff;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 3px 12px #0003}
 .astana-home-briefcase{position:fixed;top:24px;right:16px;z-index:14;width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.95);display:flex;align-items:center;justify-content:center;font-size:29px;box-shadow:0 3px 13px #0002}
 .astana-search-wrap-home .astana-home-shortcuts,.astana-search-wrap-home .astana-home-promo-strip,.astana-search-wrap-home .astana-home-interesting{max-width:100%}
+/* Photo-led cards like the approved home-screen reference. Colors remain as fallbacks if an image is unavailable. */
+.astana-promo-art{display:none}
+.astana-promo-card span{position:absolute;left:0;right:0;bottom:0;padding:12px 10px 11px;background:linear-gradient(180deg,transparent,rgba(255,255,255,.94) 36%);color:#141719}
+.astana-promo-child{background-color:#f9df53;background-image:linear-gradient(0deg,rgba(255,225,74,.98) 0%,rgba(255,225,74,.88) 28%,rgba(255,225,74,0) 78%),url("https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=420&q=80");background-size:cover;background-position:center 30%}
+.astana-promo-business{background-color:#176d3a;background-image:linear-gradient(0deg,rgba(0,72,40,.98) 0%,rgba(0,72,40,.8) 32%,rgba(0,72,40,0) 82%),url("https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=420&q=80");background-size:cover;background-position:center}
+.astana-promo-business span{color:#fff;background:linear-gradient(180deg,transparent,rgba(0,61,34,.95) 35%);text-shadow:0 1px 2px #00361f}
+.astana-promo-autumn{background-color:#ffad22;background-image:linear-gradient(0deg,rgba(255,183,35,.98) 0%,rgba(255,183,35,.78) 32%,rgba(255,183,35,0) 82%),url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=420&q=80");background-size:cover;background-position:center}
+.astana-promo-smile{background-color:#ff7a61;background-image:linear-gradient(0deg,rgba(255,113,86,.98) 0%,rgba(255,113,86,.82) 34%,rgba(255,113,86,0) 82%),url("https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=420&q=80");background-size:cover;background-position:center}
+.astana-promo-smile span{color:#fff;background:linear-gradient(180deg,transparent,rgba(220,66,51,.96) 38%)}
+.astana-interesting-card{background-size:cover;background-position:center}
+.astana-friends-card{background-color:#e9f4ed;background-image:linear-gradient(180deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 44%,rgba(228,244,235,.2) 100%),url("https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=700&q=82")}
+.astana-sauna-card{background-color:#dbe6ed;background-image:linear-gradient(180deg,rgba(247,251,255,.98) 0%,rgba(247,251,255,.87) 40%,rgba(226,237,246,.12) 100%),url("https://images.unsplash.com/photo-1449158743715-0a90ebb6d2d8?auto=format&fit=crop&w=700&q=82")}
+.astana-friends-art,.astana-sauna-art{display:none}
 @media(max-width:520px){
   .astana-search-wrap-home{height:57dvh;min-height:400px;padding-left:12px;padding-right:12px;padding-bottom:85px}
   .astana-search-wrap-home .astana-search-box{height:52px}
