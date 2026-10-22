@@ -221,12 +221,12 @@ function nextTurnArrow(step) {
 }
 
 function nextRouteInstruction(route, points, progress) {
-  if (!route?.steps?.length || points.length < 2) return { distance: "", arrow: "↑" };
+  if (!route?.steps?.length || points.length < 2) return { distance: "", distanceMeters: null, arrow: "↑", maneuverKey: "none" };
   let next = null;
   let nextIndex = Infinity;
   for (const step of route.steps) {
     const loc = step?.maneuver?.location;
-    if (!Array.isArray(loc) || !["turn", "roundabout", "rotary", "fork", "merge", "arrive"].includes(step.maneuver?.type)) continue;
+    if (!Array.isArray(loc) || !["turn", "roundabout", "rotary", "exit roundabout", "fork", "merge", "on ramp", "off ramp", "end of road", "arrive"].includes(step.maneuver?.type)) continue;
     let nearest = { index: 0, distance: Infinity };
     for (let i = 0; i < points.length; i += 1) {
       const d = (points[i][0] - loc[1]) ** 2 + (points[i][1] - loc[0]) ** 2;
@@ -237,11 +237,81 @@ function nextRouteInstruction(route, points, progress) {
       nextIndex = nearest.index;
     }
   }
-  if (!next) return { distance: "", arrow: "↑" };
+  if (!next) return { distance: "", distanceMeters: null, arrow: "↑", maneuverKey: "route-end", maneuverType: "arrive", modifier: "" };
+  const distanceMeters = routeDistanceToIndex(points, progress, nextIndex);
+  const maneuver = next.maneuver || {};
+  const indications = (next.intersections || []).flatMap(intersection =>
+    (intersection.lanes || []).flatMap(lane => lane.indications || [])
+  ).map(value => String(value).toLowerCase());
+  const hasRightLane = indications.includes("right") || indications.includes("slight right");
+  const hasStraightLane = indications.includes("straight");
   return {
-    distance: formatDistance(routeDistanceToIndex(points, progress, nextIndex)),
+    distance: formatDistance(distanceMeters),
+    distanceMeters,
     arrow: nextTurnArrow(next),
+    maneuverKey: `${maneuver.type || "turn"}:${maneuver.modifier || ""}:${Array.isArray(maneuver.location) ? maneuver.location.join(",") : nextIndex}`,
+    maneuverType: maneuver.type || "turn",
+    modifier: maneuver.modifier || "",
+    exit: maneuver.exit || next.exit || null,
+    laneRight: hasRightLane && hasStraightLane,
   };
+}
+
+function voiceDistanceText(meters) {
+  const distance = Math.max(0, Number(meters) || 0);
+  if (distance >= 1000) {
+    const km = Math.round(distance / 100) / 10;
+    if (!Number.isInteger(km)) return `${km.toLocaleString("ru-RU")} километра`;
+    const lastTwo = km % 100;
+    const last = km % 10;
+    const unit = lastTwo >= 11 && lastTwo <= 14 ? "километров" : last === 1 ? "километр" : last >= 2 && last <= 4 ? "километра" : "километров";
+    return `${km} ${unit}`;
+  }
+  const rounded = Math.max(50, Math.round(distance / 50) * 50);
+  return `${rounded} метров`;
+}
+
+function voiceManeuverText(instruction) {
+  const type = String(instruction?.maneuverType || "turn").toLowerCase();
+  const modifier = String(instruction?.modifier || "").toLowerCase();
+  if (type === "arrive") return "Вы прибыли.";
+  if (type === "roundabout" || type === "rotary" || type === "exit roundabout") {
+    return instruction?.exit ? `На круговом движении съезд номер ${instruction.exit}.` : "На круговом движении выберите нужный съезд.";
+  }
+  if (type === "off ramp") return modifier.includes("left") ? "Поверните на съезд налево." : "Поверните на съезд направо.";
+  if (type === "on ramp") return modifier.includes("left") ? "Держитесь левой полосы для съезда." : "Держитесь правой полосы для съезда.";
+  if (type === "fork") {
+    if (modifier.includes("left")) return "На развилке держитесь левее.";
+    if (modifier.includes("right")) return "На развилке держитесь правее.";
+    return "На развилке держитесь прямо.";
+  }
+  if (type === "merge") {
+    if (modifier.includes("left")) return "Держитесь левой полосы.";
+    if (modifier.includes("right")) return "Держитесь правой полосы.";
+    return "Перестройтесь на главную дорогу.";
+  }
+  if (instruction?.laneRight && modifier.includes("right")) return "Держитесь правой полосы.";
+  if (instruction?.laneRight && modifier.includes("left")) return "Держитесь левой полосы.";
+  if (modifier.includes("uturn")) return "Развернитесь.";
+  if (modifier.includes("slight left")) return "Держитесь левее.";
+  if (modifier.includes("slight right")) return "Держитесь правее.";
+  if (modifier.includes("left")) return "Поверните налево.";
+  if (modifier.includes("right")) return "Поверните направо.";
+  return "Продолжайте прямо.";
+}
+
+function speakRoutePrompt(message) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof window.SpeechSynthesisUtterance !== "function") return false;
+  window.speechSynthesis.cancel();
+  const utterance = new window.SpeechSynthesisUtterance(message);
+  utterance.lang = "ru-RU";
+  utterance.rate = 0.96;
+  utterance.pitch = 1;
+  utterance.volume = 1;
+  const russianVoice = window.speechSynthesis.getVoices().find(voice => /^ru(-|$)/i.test(voice.lang));
+  if (russianVoice) utterance.voice = russianVoice;
+  window.speechSynthesis.speak(utterance);
+  return true;
 }
 
 export default function AstanaMapPage() {
@@ -284,6 +354,8 @@ export default function AstanaMapPage() {
   const [showSteps, setShowSteps] = useState(false);
   const [navigating, setNavigating] = useState(false);
   const [nextInstruction, setNextInstruction] = useState(null);
+  const [voiceGuidanceEnabled, setVoiceGuidanceEnabled] = useState(false);
+  const voiceAnnouncementRef = useRef({ key: null, lastDistance: null, announced: new Set(), initialAnnounced: false });
   const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
   const navigationMapTypeRef = useRef(null);
   const navigationBearingRef = useRef(0);
@@ -676,6 +748,39 @@ export default function AstanaMapPage() {
   }, [leafletReady, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps, navigating, route]);
 
   useEffect(() => {
+    if (!navigating || !voiceGuidanceEnabled || !nextInstruction || !Number.isFinite(nextInstruction.distanceMeters)) return;
+    const instruction = nextInstruction;
+    const distanceMeters = Math.max(0, instruction.distanceMeters);
+    const currentKey = instruction.maneuverKey || "route";
+    let state = voiceAnnouncementRef.current;
+    if (state.key !== currentKey) {
+      state = { key: currentKey, lastDistance: null, announced: new Set(), initialAnnounced: false };
+    }
+    let phrase = "";
+    if (!state.initialAnnounced) {
+      state.initialAnnounced = true;
+      if (distanceMeters >= 5000) phrase = `Продолжайте прямо ${voiceDistanceText(distanceMeters)}.`;
+      else if (distanceMeters > 0) phrase = `Через ${voiceDistanceText(distanceMeters)} ${voiceManeuverText(instruction)}`;
+      else phrase = voiceManeuverText(instruction);
+    } else {
+      const thresholds = [1000, 500, 300, 100];
+      const crossed = thresholds.find(threshold =>
+        state.lastDistance !== null &&
+        state.lastDistance > threshold &&
+        distanceMeters <= threshold &&
+        !state.announced.has(threshold)
+      );
+      if (crossed !== undefined) {
+        state.announced.add(crossed);
+        phrase = `Через ${voiceDistanceText(crossed)} ${voiceManeuverText(instruction)}`;
+      }
+    }
+    state.lastDistance = distanceMeters;
+    voiceAnnouncementRef.current = state;
+    if (phrase) speakRoutePrompt(phrase);
+  }, [navigating, voiceGuidanceEnabled, nextInstruction?.maneuverKey, nextInstruction?.distanceMeters, nextInstruction?.maneuverType, nextInstruction?.modifier, nextInstruction?.exit, nextInstruction?.laneRight]);
+
+  useEffect(() => {
     if (!speedLimitCell) {
       setSpeedLimit(null);
       return;
@@ -784,6 +889,23 @@ export default function AstanaMapPage() {
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
 
+  function toggleVoiceGuidance() {
+    if (voiceGuidanceEnabled) {
+      setVoiceGuidanceEnabled(false);
+      if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
+      return;
+    }
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof window.SpeechSynthesisUtterance !== "function") {
+      setError("Голосовые подсказки не поддерживаются этим браузером.");
+      return;
+    }
+    voiceAnnouncementRef.current = { key: null, lastDistance: null, announced: new Set(), initialAnnounced: false };
+    setVoiceGuidanceEnabled(true);
+    if (!navigating || !nextInstruction || !Number.isFinite(nextInstruction.distanceMeters)) {
+      speakRoutePrompt("Голосовые подсказки включены.");
+    }
+  }
+
   function startNavigation(nextRoute = route) {
     const activeRoute = nextRoute || route;
     if (!activeRoute?.geometry?.length) {
@@ -799,6 +921,8 @@ export default function AstanaMapPage() {
     setNavigationMenuOpen(false);
     routeProgressRef.current = -1;
     setNextInstruction(null);
+    voiceAnnouncementRef.current = { key: null, lastDistance: null, announced: new Set(), initialAnnounced: false };
+    if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
     const current = routeOrigin || origin;
     const routePoints = activeRoute.geometry.map(p => [p[1], p[0]]);
     const initialHeading = current && routePoints.length > 1 ? snapToRoute(current, routePoints).heading : null;
@@ -819,6 +943,8 @@ export default function AstanaMapPage() {
     setNavigating(false);
     setNavigationMenuOpen(false);
     setNextInstruction(null);
+    if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
+    voiceAnnouncementRef.current = { key: null, lastDistance: null, announced: new Set(), initialAnnounced: false };
     routeProgressRef.current = -1;
     setRouteOptions(items => items.slice());
     if (typeof mapRef.current?.stopHeadingUp === "function") mapRef.current.stopHeadingUp();
@@ -993,6 +1119,7 @@ export default function AstanaMapPage() {
       </section>}
 
       {showMapUtilityControls && <div className="astana-map-right-controls astana-navigation-controls">
+        <button className={`astana-nav-voice-toggle ${voiceGuidanceEnabled ? "enabled" : ""}`} onClick={toggleVoiceGuidance} aria-label={voiceGuidanceEnabled ? "Выключить голосовые подсказки" : "Включить голосовые подсказки"} title={voiceGuidanceEnabled ? "Голосовые подсказки включены" : "Включить голосовые подсказки"}>{voiceGuidanceEnabled ? "🔊" : "🔇"}</button>
         <div className="astana-nav-speed-limit"><b>{speedLimit || "—"}</b></div>
         <div className="astana-nav-speed-now"><b>{speed}</b></div>
         <button className="astana-nav-parking" title="Парковки" onClick={() => setError("Данные парковок пока не подключены.")}>P</button>
@@ -1365,6 +1492,8 @@ const styles = `
 .astana-nav-guidance-copy span{display:none}
 .astana-navigation-controls{position:fixed;top:14px;right:10px;z-index:28;display:flex;flex-direction:column;align-items:center;gap:8px}
 .astana-navigation-controls button{border:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.astana-nav-voice-toggle{width:53px;height:53px;flex:none;border-radius:50%;background:#090b0d;color:#c5cbd0;font-size:24px;box-shadow:0 3px 12px #0008}
+.astana-nav-voice-toggle.enabled{background:#14a94f;color:#fff;box-shadow:0 0 0 3px rgba(20,169,79,.25),0 3px 12px #0008}
 .astana-nav-speed-limit{width:61px;height:61px;border-radius:50%;border:5px solid #df2638;background:#090b0d;color:#fff;display:flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:0 2px 8px #0008}
 .astana-nav-speed-limit b{font-size:25px;font-weight:900}
 .astana-nav-speed-now{width:80px;height:80px;border-radius:50%;background:#090b0d;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px #0008}
@@ -1394,6 +1523,7 @@ const styles = `
  .astana-nav-guidance-copy b{font-size:21px;line-height:1.05}
  .astana-nav-guidance-copy span{display:none}
  .astana-navigation-controls{top:10px;right:7px;gap:7px}
+ .astana-nav-voice-toggle{width:45px;height:45px;font-size:21px}
  .astana-nav-speed-limit{width:53px;height:53px;border-width:4px}
  .astana-nav-speed-limit b{font-size:22px}
  .astana-nav-speed-now{width:67px;height:67px}
