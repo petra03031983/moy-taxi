@@ -2838,30 +2838,3 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
 @media(min-width:620px){.passenger-tariff-scroller{grid-auto-columns:178px!important;gap:12px!important}.passenger-screen .passenger-tariff-card{min-height:182px;padding:12px}.passenger-screen .passenger-tariff-car{height:94px}.passenger-screen .passenger-tariff-name,.passenger-screen .passenger-tariff-price{font-size:14px}}
 @media(max-width:370px){.passenger-tariff-scroller{grid-auto-columns:148px!important;gap:8px!important}.passenger-screen .passenger-tariff-card{min-height:158px;padding:8px 6px 10px}.passenger-screen .passenger-tariff-card.selected{padding:7px 5px 9px}.passenger-screen .passenger-tariff-car{height:74px}.passenger-screen .passenger-tariff-name,.passenger-screen .passenger-tariff-price{font-size:12px}}
 
-
-
-/* Live route arrow: compact, directional and snapped to the remaining route line. */
-.moy-route-moving-arrow-wrap {
-  width: 12px !important;
-  height: 12px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  overflow: visible !important;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
-.moy-route-moving-arrow {
-  display: block;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 10px solid #087f4b;
-  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
-  transform: rotate(var(--heading, 0deg));
-  transform-origin: 50% 65%;
-  transition: transform .12s linear;
-  pointer-events: none;
-}
