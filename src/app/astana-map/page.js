@@ -850,16 +850,6 @@ export default function AstanaMapPage() {
         <button onClick={swapMapType} title="Карта / спутник">▱</button>
       </div>}
 
-      {destination && !route && <section className="astana-bottom-card">
-        <div className="astana-destination-title"><span className="green-dot" /> <div><b>{selectedLabel}</b><small>Адрес выбран</small></div></div>
-        <button className="astana-route-button" onClick={() => buildRoute(mode)} disabled={routing || locating}>{routing ? "Строим маршрут…" : "➤ Маршрут"}</button>
-        <div className="astana-mode-row">
-          <button className={mode === "car" ? "active" : ""} onClick={() => setMode("car")}>🚗 Авто</button>
-          <button className={mode === "walk" ? "active" : ""} onClick={() => setMode("walk")}>🚶 Пешком</button>
-          <button className={mode === "bus" ? "active" : ""} onClick={() => setMode("bus")}>🚌 Автобус</button>
-        </div>
-      </section>}
-
       {route && <section className="astana-route-card">
         <div className="astana-route-summary">
           <div><strong>{formatDuration(route.duration)}</strong><small>в пути</small></div>
