@@ -286,6 +286,7 @@ export default function AstanaMapPage() {
   const [nextInstruction, setNextInstruction] = useState(null);
   const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
   const navigationMapTypeRef = useRef(null);
+  const navigationBearingRef = useRef(0);
   const speedLimitCell = useMemo(() => origin ? `${Math.round(origin.lat * 100)},${Math.round(origin.lng * 100)}` : "", [origin?.lat, origin?.lng]);
 
   useEffect(() => {
@@ -369,7 +370,7 @@ export default function AstanaMapPage() {
     }
     navigator.geolocation.getCurrentPosition(
       pos => {
-        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, speedMps: Number.isFinite(pos.coords.speed) ? pos.coords.speed : 0 };
         positionRef.current = p;
         setOrigin(p);
         setSpeed(Math.max(0, Math.round((pos.coords.speed || 0) * 3.6)));
@@ -381,7 +382,7 @@ export default function AstanaMapPage() {
     );
     watchRef.current = navigator.geolocation.watchPosition(
       pos => {
-        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, speedMps: Number.isFinite(pos.coords.speed) ? pos.coords.speed : 0 };
         positionRef.current = p;
         setOrigin(p);
         setSpeed(Math.max(0, Math.round((pos.coords.speed || 0) * 3.6)));
@@ -644,6 +645,10 @@ export default function AstanaMapPage() {
           points[segment][1] + (points[segment + 1][1] - points[segment][1]) * fraction,
         ];
         heading = snapToRoute({ lat: point[0], lng: point[1] }, points).heading;
+        // Heading-up navigation: keep direction of travel at the top of the screen.
+        if (typeof mapRef.current?.setHeading === "function") {
+          mapRef.current.setHeading(heading, { ease: 0.16, deadzone: 1.5 });
+        }
         const remaining = progress >= points.length - 1 ? [points[points.length - 1]] : [point, ...points.slice(segment + 1)];
         routeRef.current?.setLatLngs(remaining);
         setNextInstruction(nextRouteInstruction(route, points, progress));
@@ -656,7 +661,10 @@ export default function AstanaMapPage() {
         });
         arrowRef.current = L.marker(point, { icon, interactive: false, zIndexOffset: 2000 }).addTo(group);
       } else {
-        setNextInstruction({ text: "Вы отклонились от маршрута", distance: "" });
+        setNextInstruction({ distance: "", arrow: "↑" });
+        if (Number.isFinite(origin.heading) && (origin.speedMps || 0) > 1 && typeof mapRef.current?.setHeading === "function") {
+          mapRef.current.setHeading(origin.heading, { ease: 0.16, deadzone: 2 });
+        }
         const icon = L.divIcon({ className: "moy-user-icon", html: '<span class="moy-user-dot"></span>', iconSize: [26, 26], iconAnchor: [13, 13] });
         L.marker(point, { icon, zIndexOffset: 2000 }).addTo(group);
       }
@@ -665,7 +673,7 @@ export default function AstanaMapPage() {
       const icon = L.divIcon({ className: "moy-user-icon", html: '<span class="moy-user-dot"></span>', iconSize: [26, 26], iconAnchor: [13, 13] });
       L.marker(point, { icon, zIndexOffset: 1000 }).addTo(group);
     }
-  }, [leafletReady, origin?.lat, origin?.lng, navigating, route]);
+  }, [leafletReady, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps, navigating, route]);
 
   useEffect(() => {
     if (!speedLimitCell) {
@@ -783,16 +791,24 @@ export default function AstanaMapPage() {
       return;
     }
     setRoute(activeRoute);
-    if (navigationMapTypeRef.current === null) navigationMapTypeRef.current = mapType;
+    if (navigationMapTypeRef.current === null) {
+      navigationMapTypeRef.current = mapType;
+      navigationBearingRef.current = typeof mapRef.current?.getBearing === "function" ? mapRef.current.getBearing() : 0;
+    }
     setShowSteps(false);
     setNavigationMenuOpen(false);
     routeProgressRef.current = -1;
     setNextInstruction(null);
+    const current = routeOrigin || origin;
+    const routePoints = activeRoute.geometry.map(p => [p[1], p[0]]);
+    const initialHeading = current && routePoints.length > 1 ? snapToRoute(current, routePoints).heading : null;
     setNavigating(true);
     setMapType("dark");
-    const current = routeOrigin || origin;
     if (current && mapRef.current) {
       mapRef.current.setView([current.lat, current.lng], 17, { animate: true });
+      if (Number.isFinite(initialHeading) && typeof mapRef.current.setHeading === "function") {
+        mapRef.current.setHeading(initialHeading, { ease: 0.18, deadzone: 1.5 });
+      }
     }
     window.setTimeout(() => {
       if (mapRef.current) mapRef.current.invalidateSize({ animate: false });
@@ -805,8 +821,11 @@ export default function AstanaMapPage() {
     setNextInstruction(null);
     routeProgressRef.current = -1;
     setRouteOptions(items => items.slice());
+    if (typeof mapRef.current?.stopHeadingUp === "function") mapRef.current.stopHeadingUp();
+    if (typeof mapRef.current?.setBearing === "function") mapRef.current.setBearing(navigationBearingRef.current || 0);
     setMapType(navigationMapTypeRef.current || "map");
     navigationMapTypeRef.current = null;
+    navigationBearingRef.current = 0;
   }
 
   function openSearchFromNavigation() {
