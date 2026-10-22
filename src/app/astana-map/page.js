@@ -744,7 +744,7 @@ export default function AstanaMapPage() {
   );
   const selectedCategory = useMemo(() => placeCategory(selectedPlace), [selectedPlace]);
   const isHomeScreen = !searchActive && !query.trim() && !showResultsPanel && !destination && !route;
-  const showMapUtilityControls = Boolean(route);
+  const showMapUtilityControls = Boolean(route && navigating);
   const showPlaceMapControls = Boolean(destination && !route && selectedPlace);
 
   function openHomeSearch() {
