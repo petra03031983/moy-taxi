@@ -1163,7 +1163,7 @@ const styles = `
 .astana-route-controls .astana-speed-limit span,.astana-route-controls .astana-speed-now span{color:#6e7b84}
 .astana-route-controls .astana-speed-now{border:0}
 .astana-route-controls button:nth-last-child(2),.astana-route-controls button:nth-last-child(3){background:rgba(255,255,255,.97);color:#27313a}
-.astana-route-quick-actions{position:fixed;left:12px;right:12px;bottom:calc(min(455px, max(39dvh, 375px)) + 8px);z-index:20;display:flex;gap:7px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;padding:3px 2px 5px}
+.astana-route-quick-actions{position:fixed;left:12px;right:12px;bottom:calc(min(455px, max(39dvh, 375px)) - 45px);z-index:20;display:flex;gap:7px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;padding:3px 2px 5px}
 .astana-route-quick-actions::-webkit-scrollbar,.astana-route-option-track::-webkit-scrollbar,.astana-route-transport-strip::-webkit-scrollbar{display:none}
 .astana-route-quick-actions button{height:48px;flex:none;border:0;border-radius:13px;padding:0 15px;background:#fff;color:#222a30;box-shadow:0 2px 10px rgba(22,37,49,.14);font-size:15px;font-weight:700}
 .astana-route-quick-actions .astana-route-quick-icon{width:51px;padding:0;font-size:23px}
@@ -1209,7 +1209,7 @@ const styles = `
  .astana-route-controls{top:12%;right:8px;gap:7px}
  .astana-route-controls button,.astana-route-controls .astana-speed-now{width:47px;height:47px;min-height:47px;font-size:23px}
  .astana-route-controls .astana-speed-limit{width:52px;height:52px;min-height:52px}
- .astana-route-quick-actions{left:8px;right:8px;gap:6px;bottom:calc(min(455px, max(39dvh, 375px)) + 6px)}
+ .astana-route-quick-actions{left:8px;right:8px;gap:6px;bottom:calc(min(455px, max(39dvh, 375px)) - 45px)}
  .astana-route-quick-actions button{height:43px;padding:0 12px;font-size:13px}
  .astana-route-quick-actions .astana-route-quick-icon{width:43px;font-size:21px}
  .astana-route-card.astana-route-results{height:min(39dvh,455px);min-height:min(375px,43dvh);max-height:455px;padding-left:9px;padding-right:9px}
