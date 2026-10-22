@@ -118,10 +118,6 @@ function routeDistanceToIndex(points, startProgress, endIndex) {
   for (let i = segment + 1; i < Math.min(endIndex, points.length - 1); i += 1) {
     total += distanceBetween(points[i], points[i + 1]);
   }
-  const lastIndex = Math.max(segment + 1, Math.min(points.length - 1, endIndex));
-  if (endIndex < points.length - 1 && endIndex >= segment + 1) {
-    total -= distanceBetween(points[lastIndex], points[lastIndex + 1]);
-  }
   return Math.max(0, total);
 }
 
@@ -275,6 +271,9 @@ export default function AstanaMapPage() {
     setError("");
     const cacheKey = text.toLocaleLowerCase("ru-RU");
     if (searchCacheRef.current.has(cacheKey)) {
+      searchAbortRef.current?.abort();
+      searchRequestRef.current += 1;
+      setSearching(false);
       setResults(searchCacheRef.current.get(cacheKey));
       return;
     }
@@ -388,7 +387,7 @@ export default function AstanaMapPage() {
     } else if (destination) {
       mapRef.current.setView([destination.lat, destination.lng], 15);
     }
-  }, [leafletReady, destination?.lat, destination?.lng, route]); 
+  }, [leafletReady, destination?.lat, destination?.lng, route, navigating]); 
 
   useEffect(() => {
     if (!leafletReady || !locationLayerRef.current) return;
@@ -449,12 +448,13 @@ export default function AstanaMapPage() {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const q = `[out:json][timeout:7];way[highway][maxspeed](around:300,${queryLat},${queryLng});out tags center;`;
+        const point = positionRef.current || { lat: queryLat, lng: queryLng };
+        const q = `[out:json][timeout:7];way[highway][maxspeed](around:220,${point.lat},${point.lng});out tags center;`;
         const res = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, { signal: controller.signal });
         if (!res.ok) throw new Error("Speed-limit lookup failed");
         const data = await res.json();
         const ways = (data.elements || []).filter(x => x.center && x.tags?.maxspeed);
-        const distance = x => distanceBetween([queryLat, queryLng], [x.center.lat, x.center.lon]);
+        const distance = x => distanceBetween([point.lat, point.lng], [x.center.lat, x.center.lon]);
         ways.sort((a, b) => distance(a) - distance(b));
         const value = String(ways[0]?.tags?.maxspeed || "").match(/\d+/)?.[0];
         setSpeedLimit(value && Number(value) > 0 && Number(value) < 200 ? Number(value) : null);
@@ -597,7 +597,7 @@ export default function AstanaMapPage() {
         </div>
         {showSteps && <div className="astana-steps">{route.steps.slice(0, 12).map((step, i) => <div className="astana-step" key={i}><span>{i + 1}</span><div><b>{stepText(step)}</b><small>{formatDistance(step.distance)}</small></div></div>)}</div>}
         <button className="astana-go-button" onClick={() => { setShowSteps(false); setNavigating(true); if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17); }}>➤ В путь</button>
-        {navigating && <button className="astana-stop-button" onClick={() => { setNavigating(false); setNextInstruction(null); routeProgressRef.current = -1; }}>Завершить навигацию</button>}
+        {navigating && <button className="astana-stop-button" onClick={() => { setNavigating(false); setNextInstruction(null); routeProgressRef.current = -1; setRoute(value => value ? { ...value } : value); }}>Завершить навигацию</button>}
       </section>}
 
       {locating && <div className="astana-toast">Определяем местоположение…</div>}
