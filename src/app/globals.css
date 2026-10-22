@@ -2865,3 +2865,5 @@ html[data-moy-taxi-theme="system"] .app.driver-dashboard .driver-account-number-
   transition: transform .12s linear;
   pointer-events: none;
 }
+
+/* Trigger preview deployment after correcting Vercel Next.js configuration. */
