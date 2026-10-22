@@ -210,13 +210,23 @@ function routeDistanceToIndex(points, startProgress, endIndex) {
   return Math.max(0, total);
 }
 
+function nextTurnArrow(step) {
+  const maneuver = step?.maneuver || {};
+  const modifier = String(maneuver.modifier || "").toLowerCase();
+  if (maneuver.type === "roundabout" || maneuver.type === "rotary") return "↻";
+  if (modifier.includes("uturn") || maneuver.type === "uturn") return "↶";
+  if (modifier.includes("left")) return "←";
+  if (modifier.includes("right")) return "→";
+  return "↑";
+}
+
 function nextRouteInstruction(route, points, progress) {
-  if (!route?.steps?.length || points.length < 2) return null;
+  if (!route?.steps?.length || points.length < 2) return { distance: "", arrow: "↑" };
   let next = null;
   let nextIndex = Infinity;
   for (const step of route.steps) {
     const loc = step?.maneuver?.location;
-    if (!Array.isArray(loc) || !["turn", "roundabout", "fork", "merge", "arrive"].includes(step.maneuver?.type)) continue;
+    if (!Array.isArray(loc) || !["turn", "roundabout", "rotary", "fork", "merge", "arrive"].includes(step.maneuver?.type)) continue;
     let nearest = { index: 0, distance: Infinity };
     for (let i = 0; i < points.length; i += 1) {
       const d = (points[i][0] - loc[1]) ** 2 + (points[i][1] - loc[0]) ** 2;
@@ -227,8 +237,11 @@ function nextRouteInstruction(route, points, progress) {
       nextIndex = nearest.index;
     }
   }
-  if (!next) return { text: "Продолжайте движение по маршруту", distance: "" };
-  return { text: stepText(next), distance: formatDistance(routeDistanceToIndex(points, progress, nextIndex)) };
+  if (!next) return { distance: "", arrow: "↑" };
+  return {
+    distance: formatDistance(routeDistanceToIndex(points, progress, nextIndex)),
+    arrow: nextTurnArrow(next),
+  };
 }
 
 export default function AstanaMapPage() {
@@ -877,11 +890,10 @@ export default function AstanaMapPage() {
         </>}
       </div>}
 
-      {navigating && route && <div className="astana-nav-guidance">
-        <div className="astana-nav-guidance-symbol">{String(nextInstruction?.text || "").includes("налево") ? "↰" : String(nextInstruction?.text || "").includes("направо") ? "↱" : String(nextInstruction?.text || "").includes("развер") ? "↶" : "↑"}</div>
+      {navigating && route && <div className="astana-nav-guidance" aria-label="Следующий манёвр">
+        <div className="astana-nav-guidance-symbol">{nextInstruction?.arrow || "↑"}</div>
         <div className="astana-nav-guidance-copy">
-          <b>{nextInstruction?.distance || (nextInstruction?.text === "Вы отклонились от маршрута" ? "Вне маршрута" : "Далее")}</b>
-          <span>{nextInstruction?.text || "Продолжайте движение"}</span>
+          <b>{nextInstruction?.distance || "— м"}</b>
         </div>
       </div>}
 
@@ -1299,11 +1311,11 @@ const styles = `
 .astana-map-canvas-navigation .leaflet-tile-pane{filter:brightness(.38) saturate(.82) contrast(1.12)}
 .astana-map-canvas-navigation .leaflet-control-attribution{background:rgba(8,11,14,.72);color:#b9c2c9}
 .astana-map-canvas-navigation .leaflet-control-attribution a{color:#dce6ee}
-.astana-nav-guidance{position:fixed;left:12px;top:12px;z-index:28;width:min(calc(100vw - 112px),280px);min-height:0;box-sizing:border-box;display:flex;flex-direction:row;align-items:center;gap:8px;padding:10px 11px;border-radius:16px;background:rgba(9,12,15,.96);color:#fff;box-shadow:0 4px 15px #0007;overflow:hidden}
-.astana-nav-guidance-symbol{flex:none;color:#1680ff;font-size:31px;font-weight:900;line-height:1;width:31px;text-align:center}
-.astana-nav-guidance-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;overflow:hidden}
-.astana-nav-guidance-copy b{font-size:21px;line-height:1.05;white-space:normal;overflow-wrap:anywhere}
-.astana-nav-guidance-copy span{font-size:13px;line-height:1.2;font-weight:500;overflow-wrap:anywhere;white-space:normal}
+.astana-nav-guidance{position:fixed;left:12px;top:12px;z-index:28;width:auto;min-width:124px;max-width:calc(100vw - 104px);min-height:0;box-sizing:border-box;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:9px;padding:11px 14px;border-radius:15px;background:rgba(9,12,15,.96);color:#fff;box-shadow:0 4px 15px #0007;overflow:hidden}
+.astana-nav-guidance-symbol{flex:none;color:#1680ff;font-size:38px;font-weight:900;line-height:1;width:38px;text-align:center}
+.astana-nav-guidance-copy{display:flex;flex-direction:column;gap:0;min-width:0;flex:0 1 auto;overflow:hidden}
+.astana-nav-guidance-copy b{font-size:23px;line-height:1.05;white-space:nowrap;overflow-wrap:normal}
+.astana-nav-guidance-copy span{display:none}
 .astana-navigation-controls{position:fixed;top:14px;right:10px;z-index:28;display:flex;flex-direction:column;align-items:center;gap:8px}
 .astana-navigation-controls button{border:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .astana-nav-speed-limit{width:61px;height:61px;border-radius:50%;border:5px solid #df2638;background:#090b0d;color:#fff;display:flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:0 2px 8px #0008}
@@ -1330,10 +1342,10 @@ const styles = `
 .astana-nav-menu .astana-step small{color:#aeb6bd}
 .astana-nav-menu>button{height:45px;flex:none;border:0;border-radius:13px;background:#272c31;color:#fff;font-weight:800}
 @media(max-width:520px){
- .astana-nav-guidance{top:10px;left:9px;width:min(calc(100vw - 100px),270px);min-height:0;padding:9px 10px;gap:7px;border-radius:14px}
- .astana-nav-guidance-symbol{font-size:29px;width:29px}
- .astana-nav-guidance-copy b{font-size:19px;line-height:1.05}
- .astana-nav-guidance-copy span{font-size:12px;line-height:1.15}
+ .astana-nav-guidance{top:10px;left:9px;width:auto;min-width:112px;max-width:calc(100vw - 92px);min-height:0;padding:8px 10px;gap:7px;border-radius:13px}
+ .astana-nav-guidance-symbol{font-size:34px;width:34px}
+ .astana-nav-guidance-copy b{font-size:21px;line-height:1.05}
+ .astana-nav-guidance-copy span{display:none}
  .astana-navigation-controls{top:10px;right:7px;gap:7px}
  .astana-nav-speed-limit{width:53px;height:53px;border-width:4px}
  .astana-nav-speed-limit b{font-size:22px}
