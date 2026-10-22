@@ -81,6 +81,34 @@ function cleanName(item) {
   ].filter(Boolean);
   return parts.length ? parts.join(", ") : item?.display_name || "Место";
 }
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]);
+}
+
+function selectedPlaceTitle(item) {
+  if (!item) return "Выбранное место";
+  return item.name || item.display_name?.split(",")[0] || cleanName(item) || "Выбранное место";
+}
+
+function selectedPlaceAddress(item) {
+  return item?.display_name || cleanName(item) || "Адрес не указан";
+}
+
+function placeCategory(item) {
+  const key = `${item?.class || ""} ${item?.type || ""} ${item?.address?.amenity || ""}`.toLowerCase();
+  if (/apartments|residential|house|building|tower/.test(key)) return "Жилой дом";
+  if (/hospital|clinic|doctors|pharmacy/.test(key)) return "Медицина";
+  if (/restaurant|cafe|fast_food|food/.test(key)) return "Ресторан";
+  if (/shop|supermarket|convenience|mall/.test(key)) return "Магазин";
+  if (/school|university|college|kindergarten/.test(key)) return "Образование";
+  if (/hotel|hostel|guest_house/.test(key)) return "Гостиница";
+  if (/park|garden|nature_reserve/.test(key)) return "Парк";
+  if (/road|street|highway|residential_road/.test(key)) return "Адрес";
+  return "Место на карте";
+}
+
 function stepText(step) {
   const m = step?.maneuver || {};
   const road = step?.name || "дорога";
@@ -218,6 +246,8 @@ export default function AstanaMapPage() {
   const [listening, setListening] = useState(false);
   const [origin, setOrigin] = useState(null);
   const [destination, setDestination] = useState(null);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [route, setRoute] = useState(null);
   const [mode, setMode] = useState("car");
   const [mapType, setMapType] = useState("map");
@@ -475,7 +505,18 @@ export default function AstanaMapPage() {
     routeProgressRef.current = -1;
 
     if (destination) {
-      const icon = L.divIcon({ className: "moy-destination-icon", html: '<span>Б</span>', iconSize: [40, 46], iconAnchor: [20, 44] });
+      const title = selectedPlaceTitle(selectedPlace);
+      const rating = Number.isFinite(Number(selectedPlace?.rating)) && selectedPlace?.rating !== null && selectedPlace?.rating !== undefined
+        ? `<small>★ ${escapeHtml(Number(selectedPlace.rating).toFixed(1))}</small>`
+        : "";
+      const icon = L.divIcon({
+        className: route ? "moy-destination-icon" : "moy-selected-place",
+        html: route
+          ? '<span>Б</span>'
+          : `<span class="moy-selected-pin"></span><span class="moy-selected-label"><b>${escapeHtml(title)}</b>${rating}</span>`,
+        iconSize: route ? [40, 46] : [290, 58],
+        iconAnchor: route ? [20, 44] : [20, 38],
+      });
       L.marker([destination.lat, destination.lng], { icon, zIndexOffset: 900 }).addTo(group);
     }
 
@@ -496,7 +537,7 @@ export default function AstanaMapPage() {
     } else if (destination) {
       mapRef.current.setView([destination.lat, destination.lng], 15);
     }
-  }, [leafletReady, destination?.lat, destination?.lng, route, navigating]); 
+  }, [leafletReady, destination?.lat, destination?.lng, route, navigating, selectedPlace]); 
 
   useEffect(() => {
     if (!leafletReady || !locationLayerRef.current) return;
@@ -629,9 +670,12 @@ export default function AstanaMapPage() {
   function chooseResult(item) {
     const point = { lat: Number(item.lat), lng: Number(item.lon) };
     setDestination(point);
+    setSelectedPlace(item);
+    setIsFavorite(false);
     setQuery(cleanName(item));
     setResults([]);
     setShowResultsPanel(false);
+    setSearchActive(false);
     setRoute(null);
     setNavigating(false);
     setNextInstruction(null);
@@ -643,9 +687,18 @@ export default function AstanaMapPage() {
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
 
-  const selectedLabel = useMemo(() => query || "Куда едем?", [query]);
+  const selectedLabel = useMemo(
+    () => selectedPlace ? selectedPlaceTitle(selectedPlace) : query || "Куда едем?",
+    [selectedPlace, query]
+  );
+  const selectedAddress = useMemo(
+    () => selectedPlace ? selectedPlaceAddress(selectedPlace) : query,
+    [selectedPlace, query]
+  );
+  const selectedCategory = useMemo(() => placeCategory(selectedPlace), [selectedPlace]);
   const isHomeScreen = !searchActive && !query.trim() && !showResultsPanel && !destination && !route;
   const showMapUtilityControls = Boolean(route && navigating);
+  const showPlaceMapControls = Boolean(destination && !route && selectedPlace);
 
   function openHomeSearch() {
     setSearchActive(true);
@@ -658,7 +711,7 @@ export default function AstanaMapPage() {
 
 
 
-      <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : "astana-search-wrap-active"}`}>
+      <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
         {isHomeScreen && <div className="astana-home-handle"><span /></div>}
         <div className="astana-search-home-row">
           <div className="astana-search-box">
@@ -667,12 +720,12 @@ export default function AstanaMapPage() {
               ref={searchInputRef}
               value={query}
               onFocus={() => setSearchActive(true)}
-              onChange={e => { setQuery(e.target.value); setResults([]); setShowResultsPanel(false); setError(""); }}
+              onChange={e => { setQuery(e.target.value); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setNavigating(false); setError(""); }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); searchAddress(query); } }}
               placeholder="Поиск"
               aria-label="Поиск адреса"
             />
-            {query && <button className="astana-clear" onClick={() => { setQuery(""); setResults([]); setShowResultsPanel(false); setDestination(null); setRoute(null); setNavigating(false); setError(""); }}>×</button>}
+            {query && <button className="astana-clear" onClick={() => { setQuery(""); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
             <button className={`astana-mic${listening ? " listening" : ""}`} onClick={startVoiceSearch} aria-label="Голосовой поиск" title="Голосовой поиск">🎙</button>
           </div>
           {isHomeScreen && <button className="astana-home-menu" onClick={openHomeSearch} aria-label="Открыть поиск">☰</button>}
@@ -731,6 +784,62 @@ export default function AstanaMapPage() {
       </div>
 
       {navigating && route && <div className="astana-nav-guidance"><b>{nextInstruction?.distance || "Маршрут"}</b><span>{nextInstruction?.text || "Ведём по выбранному маршруту"}</span></div>}
+
+      {showPlaceMapControls && <div className="astana-place-map-controls" aria-label="Управление картой">
+        <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение" title="Моё местоположение">➤</button>
+        <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить" title="Приблизить">+</button>
+        <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить" title="Отдалить">−</button>
+        <button onClick={swapMapType} aria-label="Сменить карту" title="Сменить тип карты">◈</button>
+      </div>}
+
+      {destination && !route && <div className="astana-place-photos" aria-label="Фотографии места">
+        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=480&q=80" alt="Высотное здание" loading="lazy" /></div>
+        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=480&q=80" alt="Жилой комплекс" loading="lazy" /></div>
+        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=480&q=80" alt="Интерьер помещения" loading="lazy" /></div>
+        <div className="astana-place-photo"><img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=480&q=80" alt="Интерьер квартиры" loading="lazy" /></div>
+      </div>}
+
+      {destination && !route && <section className="astana-place-card">
+        <div className="astana-place-handle"><span /></div>
+        <div className="astana-place-heading">
+          <div className="astana-place-heading-copy">
+            <h2>{selectedLabel}</h2>
+            <span className="astana-place-category">{selectedCategory}</span>
+          </div>
+          <button className="astana-place-close" onClick={() => {
+            setDestination(null); setSelectedPlace(null); setRoute(null); setQuery("");
+            setResults([]); setShowResultsPanel(false); setSearchActive(false); setNavigating(false); setError("");
+          }} aria-label="Закрыть карточку места">×</button>
+        </div>
+
+        {selectedPlace?.rating !== undefined && selectedPlace?.rating !== null && Number.isFinite(Number(selectedPlace.rating)) &&
+          <div className="astana-place-rating"><span className="astana-stars">★★★★★</span><b>{Number(selectedPlace.rating).toFixed(1)}</b>{selectedPlace.review_count ? <span>{selectedPlace.review_count} оценок</span> : null}</div>
+        }
+
+        <p className="astana-place-address">{selectedAddress}</p>
+        <div className="astana-place-meta">
+          <span>{selectedPlace?.address?.city || selectedPlace?.address?.town || selectedPlace?.address?.village || selectedPlace?.address?.municipality || "Местоположение на карте"}</span>
+          <span className="astana-place-coordinates">{destination.lat.toFixed(5)}, {destination.lng.toFixed(5)}</span>
+        </div>
+
+        <div className="astana-place-tabs"><span className="active">Информация</span><span>Рядом</span><span>На карте</span></div>
+
+        <div className="astana-place-actions">
+          <button className="astana-place-route-button" onClick={() => buildRoute(mode)} disabled={routing || locating}>
+            {routing ? "Строим…" : <><span className="astana-place-route-arrow">➤</span> Маршрут</>}
+          </button>
+          <button className={`astana-place-icon-action ${isFavorite ? "saved" : ""}`} onClick={() => setIsFavorite(v => !v)} aria-label={isFavorite ? "Убрать из избранного" : "Добавить в избранное"} title="Избранное">{isFavorite ? "★" : "♧"}</button>
+          <button className="astana-place-icon-action" onClick={async () => {
+            const shareText = `${selectedLabel}\n${selectedAddress}`;
+            try {
+              if (navigator.share) await navigator.share({ title: selectedLabel, text: shareText, url: window.location.href });
+              else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(shareText); setError("Адрес скопирован."); }
+              else setError(shareText);
+            } catch {}
+          }} aria-label="Поделиться адресом" title="Поделиться">●</button>
+          <button className="astana-place-taxi-action" onClick={() => setError("Вызов такси пока не подключён к карте.")}><span>🚕</span><b>На такси</b></button>
+        </div>
+      </section>}
 
       {showMapUtilityControls && <div className="astana-map-right-controls">
         <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], navigating ? 17 : 16); }} title="Моё местоположение">◎</button>
@@ -904,6 +1013,72 @@ const styles = `
   .astana-home-briefcase{top:17px;right:12px;width:52px;height:52px;font-size:25px}
 }
 `;
+
+
+/* Selected place details — photo-led white panel matching the approved mockup. */
+.astana-search-wrap-selected{position:fixed;top:10px;left:10px;right:10px;bottom:auto;width:auto;max-width:none;margin:0;padding:0;z-index:30;border-radius:18px;background:transparent}
+.astana-search-wrap-selected .astana-search-home-row{display:block}
+.astana-search-wrap-selected .astana-search-box{height:56px;width:100%;box-sizing:border-box;border-radius:18px;background:rgba(255,255,255,.98);box-shadow:0 4px 22px rgba(20,38,50,.16);border:1px solid rgba(0,0,0,.04)}
+.astana-search-wrap-selected .astana-search-icon,.astana-search-wrap-selected .astana-clear,.astana-search-wrap-selected .astana-mic{color:#77828b}
+.astana-search-wrap-selected .astana-search-box input{font-size:17px;color:#20262c}
+.astana-search-wrap-selected .astana-search-box input::placeholder{color:#7b858d}
+.astana-search-wrap-selected .astana-home-menu,.astana-search-wrap-selected .astana-home-handle{display:none}
+.astana-search-wrap-selected .astana-results{background:#fff;color:#1f2529;box-shadow:0 8px 28px #12202c24}
+.astana-search-wrap-selected .astana-result{color:#1f2529;border-bottom-color:#edf0f2}
+.astana-search-wrap-selected .astana-result small{color:#78838c}
+.astana-search-wrap-selected .astana-search-cancel{display:none}
+.astana-place-map-controls{position:fixed;right:14px;top:27%;z-index:17;display:flex;flex-direction:column;align-items:center;gap:10px}
+.astana-place-map-controls button{width:58px;height:58px;border:0;border-radius:50%;background:rgba(255,255,255,.98);color:#222a30;box-shadow:0 3px 14px rgba(16,30,43,.18);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:500;cursor:pointer}
+.astana-place-map-controls button:first-child{font-size:26px;color:#087cf5}
+.astana-place-map-controls button:last-child{color:#64717b;font-size:24px}
+.astana-place-photos{position:fixed;left:12px;right:12px;bottom:calc(36dvh + 7px);z-index:19;height:112px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;overflow:hidden}
+.astana-place-photo{height:100%;overflow:hidden;border-radius:13px;background:linear-gradient(135deg,#dbe7ed,#9cafa9);box-shadow:0 2px 8px rgba(10,25,36,.15)}
+.astana-place-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.astana-place-card{position:fixed;left:0;right:0;bottom:0;z-index:21;height:36dvh;min-height:365px;max-height:510px;box-sizing:border-box;overflow-y:auto;padding:0 16px calc(12px + env(safe-area-inset-bottom,0px));border-radius:29px 29px 0 0;background:rgba(255,255,255,.99);color:#1e252a;box-shadow:0 -5px 28px rgba(25,45,58,.15);scrollbar-width:none}
+.astana-place-card::-webkit-scrollbar{display:none}
+.astana-place-handle{height:21px;display:flex;justify-content:center;align-items:center;margin-bottom:7px}
+.astana-place-handle span{width:52px;height:5px;border-radius:99px;background:#d9dde0}
+.astana-place-heading{display:flex;align-items:flex-start;gap:12px;justify-content:space-between}
+.astana-place-heading-copy{min-width:0;flex:1}
+.astana-place-heading h2{margin:0;color:#1e2429;font-size:23px;line-height:1.18;font-weight:800;letter-spacing:-.5px;overflow-wrap:anywhere}
+.astana-place-category{display:block;margin-top:5px;color:#7c858c;font-size:16px}
+.astana-place-close{flex:none;width:52px;height:52px;border:0;border-radius:15px;background:#f0f2f3;color:#48515a;font-size:31px;line-height:1}
+.astana-place-rating{display:flex;align-items:center;gap:8px;margin:12px 0 7px;font-size:15px}
+.astana-stars{color:#f6b900;font-size:22px;letter-spacing:-2px}
+.astana-place-rating b{color:#232a30;font-size:17px}
+.astana-place-rating span:last-child{color:#899198}
+.astana-place-address{margin:12px 0 8px;color:#222a30;font-size:17px;line-height:1.35;overflow-wrap:anywhere}
+.astana-place-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#899198;font-size:13px;line-height:1.25}
+.astana-place-coordinates{font-size:11px;color:#9aa2a8;white-space:nowrap}
+.astana-place-tabs{display:flex;gap:24px;align-items:center;margin:15px -1px 12px;padding-top:13px;border-top:1px solid #e7ebee;color:#7f8991;font-weight:700;font-size:14px;white-space:nowrap;overflow:auto}
+.astana-place-tabs .active{color:#252c31}
+.astana-place-actions{display:grid;grid-template-columns:minmax(0,1.5fr) 56px 56px minmax(100px,1.4fr);gap:8px;align-items:center;margin-bottom:4px}
+.astana-place-actions button{height:55px;border:0;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:700;min-width:0;white-space:nowrap}
+.astana-place-route-button{background:#12bc55;color:white;box-shadow:0 2px 5px #0c9d4526}
+.astana-place-route-button:disabled{opacity:.58}
+.astana-place-route-arrow{font-size:22px}
+.astana-place-icon-action{background:#f0f2f3;color:#171d21;font-size:24px!important}
+.astana-place-icon-action.saved{color:#11a94f;background:#e1f7e9}
+.astana-place-taxi-action{background:#f0f2f3;color:#262b2f;padding:0 10px}
+.astana-place-taxi-action span{font-size:21px}
+.moy-selected-place{background:none;border:0}
+.moy-selected-place .moy-selected-pin{display:inline-block;width:34px;height:34px;border:4px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#087df2;box-shadow:0 3px 10px #0004;box-sizing:border-box;flex:none}
+.moy-selected-place .moy-selected-label{display:flex;flex-direction:column;gap:2px;max-width:236px;margin-left:7px;margin-top:-2px;padding:9px 11px;border-radius:13px;background:rgba(255,255,255,.97);color:#20272d;box-shadow:0 3px 12px #0002;font-family:Arial,sans-serif;line-height:1.2}
+.moy-selected-place .moy-selected-label b{font-size:13px;font-weight:700;white-space:normal}
+.moy-selected-place .moy-selected-label small{color:#f3b500;font-size:12px;font-weight:800}
+@media(max-width:520px){
+ .astana-place-map-controls{right:10px;top:26%;gap:8px}
+ .astana-place-map-controls button{width:51px;height:51px;font-size:27px}
+ .astana-place-photos{left:10px;right:10px;height:94px;bottom:calc(36dvh + 6px);gap:6px}
+ .astana-place-card{height:36dvh;min-height:365px;max-height:500px;padding-left:14px;padding-right:14px}
+ .astana-place-heading h2{font-size:21px}
+ .astana-place-category{font-size:14px}
+ .astana-place-address{font-size:15px}
+ .astana-place-tabs{gap:20px;font-size:13px;margin-top:12px;margin-bottom:10px}
+ .astana-place-actions{grid-template-columns:minmax(0,1.4fr) 48px 48px minmax(94px,1.2fr);gap:6px}
+ .astana-place-actions button{height:50px;font-size:13px}
+}
+
 
 if (typeof document !== "undefined" && !document.getElementById("astana-map-styles")) {
   const style = document.createElement("style");
