@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const ASTANA = [51.1694, 71.4491];
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const PHOTON = "https://photon.komoot.io/api/";
 const ROUTERS = {
   car: "https://routing.openstreetmap.de/routed-car/route/v1/driving",
   walk: "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
@@ -21,6 +22,56 @@ function formatDuration(seconds) {
   const m = min % 60;
   return `${h} ч ${m} мин`;
 }
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/([A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі])(?=\d)/g, "$1 ")
+    .replace(/\bул\.?\s+/i, "улица ")
+    .replace(/\bпр\.?\s+/i, "проспект ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .trim();
+}
+
+function photonToAddress(feature) {
+  const properties = feature?.properties || {};
+  const coordinates = feature?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+  const lon = Number(coordinates[0]);
+  const lat = Number(coordinates[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const street = properties.street || properties.name || "";
+  const city = properties.city || properties.locality || properties.district || properties.county || "";
+  const address = {
+    road: properties.street || "",
+    pedestrian: properties.street || "",
+    house_number: properties.housenumber || "",
+    city: properties.city || "",
+    town: properties.locality || "",
+    village: properties.locality || "",
+    municipality: properties.district || "",
+    country: properties.country || "",
+  };
+  const display_name = [
+    properties.name,
+    properties.street && properties.name !== properties.street ? properties.street : "",
+    properties.housenumber,
+    city,
+    properties.state,
+    properties.country,
+  ].filter(Boolean).filter((part, index, all) => all.indexOf(part) === index).join(", ");
+  return {
+    place_id: `photon-${properties.osm_type || "place"}-${properties.osm_id || `${lat},${lon}`}`,
+    lat: String(lat),
+    lon: String(lon),
+    display_name: display_name || street || "Место на карте",
+    address,
+    type: properties.osm_value || properties.type || "place",
+    class: properties.osm_key || "place",
+    source: "photon",
+  };
+}
+
 function cleanName(item) {
   const a = item?.address || {};
   const parts = [
@@ -260,60 +311,105 @@ export default function AstanaMapPage() {
   }, [leafletReady]);
 
   async function searchAddress(value = query) {
-    const text = String(value || "").trim();
+    const text = normalizeSearchText(value);
     if (text.length < 2) {
       setResults([]);
       setShowResultsPanel(false);
       setSearching(false);
-      return;
-    }
-    setShowResultsPanel(true);
-    setError("");
-    const cacheKey = text.toLocaleLowerCase("ru-RU");
-    if (searchCacheRef.current.has(cacheKey)) {
-      searchAbortRef.current?.abort();
-      searchRequestRef.current += 1;
-      setSearching(false);
-      setResults(searchCacheRef.current.get(cacheKey));
+      setError("Введите хотя бы два символа адреса.");
       return;
     }
 
+    setQuery(text);
+    setShowResultsPanel(true);
+    setError("");
+    const cacheKey = text.toLocaleLowerCase("ru-RU");
     searchAbortRef.current?.abort();
     const controller = new AbortController();
     searchAbortRef.current = controller;
     const requestId = ++searchRequestRef.current;
-    const scheduledAt = Math.max(Date.now(), lastSearchAtRef.current + 1100);
-    lastSearchAtRef.current = scheduledAt;
+    const cached = searchCacheRef.current.get(cacheKey);
+    if (cached) {
+      setSearching(false);
+      setResults(cached);
+      return;
+    }
+
     setSearching(true);
+    setResults([]);
+    const timeout = window.setTimeout(() => controller.abort(), 18000);
 
     try {
-      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, scheduledAt - Date.now())));
-      if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
-      const url = new URL(NOMINATIM);
-      url.searchParams.set("format", "jsonv2");
-      url.searchParams.set("addressdetails", "1");
-      url.searchParams.set("limit", "8");
-      url.searchParams.set("accept-language", "ru");
-      url.searchParams.set("countrycodes", "kz");
-      url.searchParams.set("q", text);
-      const res = await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
-      if (!res.ok) throw new Error("Поиск адреса временно недоступен");
-      const data = await res.json();
-      if (controller.signal.aborted || requestId !== searchRequestRef.current) return;
-      const found = Array.isArray(data) ? data : [];
-      searchCacheRef.current.set(cacheKey, found);
-      if (searchCacheRef.current.size > 40) {
-        const oldestKey = searchCacheRef.current.keys().next().value;
-        searchCacheRef.current.delete(oldestKey);
+      // Photon tolerates minor typos and supports location-biased geocoding.
+      try {
+        const photonUrl = new URL(PHOTON);
+        photonUrl.searchParams.set("q", text);
+        photonUrl.searchParams.set("limit", "8");
+        photonUrl.searchParams.set("lang", "ru");
+        photonUrl.searchParams.set("countrycode", "KZ");
+        const focus = positionRef.current || origin;
+        if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
+          photonUrl.searchParams.set("lat", String(focus.lat));
+          photonUrl.searchParams.set("lon", String(focus.lng));
+          photonUrl.searchParams.set("zoom", "13");
+        }
+        const response = await fetch(photonUrl.toString(), {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error("Photon HTTP " + response.status);
+        const data = await response.json();
+        const found = (Array.isArray(data.features) ? data.features : [])
+          .map(photonToAddress)
+          .filter(Boolean);
+        if (found.length && requestId === searchRequestRef.current && !controller.signal.aborted) {
+          searchCacheRef.current.set(cacheKey, found);
+          if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+          setResults(found);
+          return;
+        }
+      } catch (e) {
+        if (e?.name === "AbortError") throw e;
       }
-      setResults(found);
+
+      // Nominatim is the fallback. The viewbox is a preference, not a hard boundary,
+      // so the search can still return settlements and villages outside Astana.
+      const nominatimUrl = new URL(NOMINATIM);
+      nominatimUrl.searchParams.set("format", "jsonv2");
+      nominatimUrl.searchParams.set("addressdetails", "1");
+      nominatimUrl.searchParams.set("limit", "8");
+      nominatimUrl.searchParams.set("accept-language", "ru");
+      nominatimUrl.searchParams.set("countrycodes", "kz");
+      nominatimUrl.searchParams.set("q", text);
+      const focus = positionRef.current || origin;
+      if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
+        const span = 0.45;
+        nominatimUrl.searchParams.set("viewbox", [
+          focus.lng - span, focus.lat + span, focus.lng + span, focus.lat - span
+        ].join(","));
+        nominatimUrl.searchParams.set("bounded", "0");
+      }
+      const response = await fetch(nominatimUrl.toString(), {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error("Nominatim HTTP " + response.status);
+      const data = await response.json();
+      const found = Array.isArray(data) ? data : [];
+      if (requestId === searchRequestRef.current && !controller.signal.aborted) {
+        searchCacheRef.current.set(cacheKey, found);
+        if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+        setResults(found);
+        if (!found.length) setError("Адрес не найден. Попробуйте добавить номер дома или название города/посёлка.");
+      }
     } catch (e) {
       if (e?.name !== "AbortError" && requestId === searchRequestRef.current) {
         setResults([]);
-        setError(e?.message || "Не удалось выполнить поиск");
+        setError("Поиск временно недоступен. Проверьте интернет и попробуйте снова.");
       }
     } finally {
-      if (requestId === searchRequestRef.current && !controller.signal.aborted) setSearching(false);
+      window.clearTimeout(timeout);
+      if (requestId === searchRequestRef.current) setSearching(false);
     }
   }
 
