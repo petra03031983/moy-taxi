@@ -736,16 +736,25 @@ export default function AstanaMapPage() {
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
 
-  function startNavigation() {
-    if (!route) return;
+  function startNavigation(nextRoute = route) {
+    const activeRoute = nextRoute || route;
+    if (!activeRoute?.geometry?.length) {
+      setError("Сначала построй маршрут, затем нажми «В путь».");
+      return;
+    }
+    setRoute(activeRoute);
     if (navigationMapTypeRef.current === null) navigationMapTypeRef.current = mapType;
-    setMapType("dark");
     setShowSteps(false);
     setNavigationMenuOpen(false);
     routeProgressRef.current = -1;
+    setNextInstruction(nextRouteInstruction(activeRoute, activeRoute.geometry.map(p => [p[1], p[0]]), 0));
     setNavigating(true);
     const current = routeOrigin || origin;
-    if (current) mapRef.current?.setView([current.lat, current.lng], 17, { animate: true });
+    if (current && mapRef.current) {
+      mapRef.current.setView([current.lat, current.lng], 17, { animate: true });
+      window.requestAnimationFrame(() => mapRef.current?.invalidateSize());
+    }
+    setMapType("dark");
   }
 
   function stopNavigation() {
@@ -983,7 +992,7 @@ export default function AstanaMapPage() {
           {(routeOptions.length ? routeOptions : [route]).map((option, index) => <article key={option.id || index} className={`astana-route-option-card ${option === route ? "selected" : ""}`}>
             <div className="astana-route-option-top">
               <div><strong>{formatDuration(option.duration)}</strong><span className="astana-route-arrival">→ {formatArrivalTime(option.duration)}</span></div>
-              {option === route && <button className="astana-route-start-button" onClick={startNavigation}>В путь</button>}
+              {option === route && <button type="button" className="astana-route-start-button" onClick={() => startNavigation(option)} aria-label="Начать навигацию по выбранному маршруту">В путь</button>}
             </div>
             <p>{formatDistance(option.distance)} · {index === 0 ? "Лучший маршрут" : "Альтернативный маршрут"}</p>
             <div className="astana-route-turns"><span>◉</span> Повороты · {routeTurnCount(option)}</div>
@@ -1247,7 +1256,7 @@ const styles = `
 .astana-route-option-top>div{display:flex;align-items:baseline;gap:7px;min-width:0;flex-wrap:wrap}
 .astana-route-option-top strong{font-size:25px;line-height:1.05;color:#1d252b;white-space:nowrap}
 .astana-route-arrival{font-size:15px;color:#7e878e;white-space:nowrap}
-.astana-route-start-button{height:46px;flex:none;padding:0 18px;border:0;border-radius:12px;background:#16b850;color:#fff;font-size:16px;font-weight:800;box-shadow:0 2px 6px rgba(15,163,72,.18)}
+.astana-route-start-button{position:relative;z-index:40;pointer-events:auto;touch-action:manipulation;height:46px;flex:none;padding:0 18px;border:0;border-radius:12px;background:#16b850;color:#fff;font-size:16px;font-weight:800;box-shadow:0 2px 6px rgba(15,163,72,.18)}
 .astana-route-option-card p{margin:0;color:#828b92;font-size:14px}
 .astana-route-turns{display:flex;align-items:center;gap:8px;color:#414b52;font-size:14px}
 .astana-route-turns span{color:#efad00;font-size:19px}
