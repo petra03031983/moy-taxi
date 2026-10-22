@@ -22,6 +22,16 @@ function formatDuration(seconds) {
   const m = min % 60;
   return `${h} ч ${m} мин`;
 }
+
+function formatArrivalTime(seconds) {
+  const date = new Date(Date.now() + Math.max(0, Number(seconds || 0)) * 1000);
+  return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function routeTurnCount(route) {
+  return (route?.steps || []).filter(step => ["turn", "roundabout", "fork", "merge"].includes(step?.maneuver?.type)).length;
+}
+
 function normalizeSearchText(value) {
   return String(value || "")
     .normalize("NFKC")
@@ -249,6 +259,8 @@ export default function AstanaMapPage() {
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [route, setRoute] = useState(null);
+  const [routeOptions, setRouteOptions] = useState([]);
+  const [routeOrigin, setRouteOrigin] = useState(null);
   const [mode, setMode] = useState("car");
   const [mapType, setMapType] = useState("map");
   const [speed, setSpeed] = useState(0);
@@ -521,11 +533,37 @@ export default function AstanaMapPage() {
     }
 
     if (route?.geometry?.length > 1) {
+      const allOptions = routeOptions.length ? routeOptions : [route];
+      const boundsPoints = [];
+      allOptions.filter(option => option && option !== route && option.geometry?.length > 1).forEach(option => {
+        const alternativeLine = option.geometry.map(p => [p[1], p[0]]);
+        boundsPoints.push(...alternativeLine);
+        L.polyline(alternativeLine, {
+          color: "#3985f6",
+          weight: 6,
+          opacity: 0.82,
+          lineCap: "round",
+          lineJoin: "round",
+          dashArray: "9 7",
+          interactive: false,
+        }).addTo(group);
+        const middle = alternativeLine[Math.floor(alternativeLine.length / 2)];
+        if (middle) {
+          const altIcon = L.divIcon({
+            className: "moy-alt-route-label",
+            html: '<span>' + escapeHtml(formatDuration(option.duration)) + '<small>' + escapeHtml(formatDistance(option.distance)) + '</small></span>',
+            iconSize: [88, 44],
+            iconAnchor: [44, 22],
+          });
+          L.marker(middle, { icon: altIcon, interactive: false, zIndexOffset: 600 }).addTo(group);
+        }
+      });
       const line = route.geometry.map(p => [p[1], p[0]]);
+      boundsPoints.push(...line);
       routePointsRef.current = line;
-      routeRef.current = L.polyline(line, { color: "#22d300", weight: 8, opacity: 0.98, lineCap: "round", lineJoin: "round" }).addTo(group);
-      const bounds = L.latLngBounds(line);
-      mapRef.current.fitBounds(bounds, { paddingTopLeft: [24, navigating ? 150 : 100], paddingBottomRight: [24, 230], maxZoom: 16 });
+      routeRef.current = L.polyline(line, { color: "#20c943", weight: 8, opacity: 0.98, lineCap: "round", lineJoin: "round" }).addTo(group);
+      const bounds = L.latLngBounds(boundsPoints.length ? boundsPoints : line);
+      mapRef.current.fitBounds(bounds, { paddingTopLeft: [18, navigating ? 115 : 80], paddingBottomRight: [18, navigating ? 280 : 300], maxZoom: 16 });
       if (route.steps?.length) {
         route.steps.filter(s => ["turn", "roundabout", "fork"].includes(s.maneuver?.type)).forEach(step => {
           const c = step.maneuver?.location;
@@ -537,7 +575,7 @@ export default function AstanaMapPage() {
     } else if (destination) {
       mapRef.current.setView([destination.lat, destination.lng], 15);
     }
-  }, [leafletReady, destination?.lat, destination?.lng, route, navigating, selectedPlace]); 
+  }, [leafletReady, destination?.lat, destination?.lng, route, routeOptions, navigating, selectedPlace]); 
 
   useEffect(() => {
     if (!leafletReady || !locationLayerRef.current) return;
@@ -632,8 +670,12 @@ export default function AstanaMapPage() {
     setNextInstruction(null);
     setError("");
     try {
+      const fromPoint = routeOrigin || origin;
+      if (!fromPoint) throw new Error("Не удалось определить начальную точку маршрута.");
+      if (!routeOrigin) setRouteOrigin(fromPoint);
       const router = nextMode === "walk" ? ROUTERS.walk : ROUTERS.car;
-      const url = `${router}/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson&steps=true&annotations=true`;
+      const alternatives = nextMode === "car" ? "&alternatives=true" : "";
+      const url = `${router}/${fromPoint.lng},${fromPoint.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson&steps=true&annotations=true${alternatives}`;
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 22000);
       let res;
@@ -648,14 +690,17 @@ export default function AstanaMapPage() {
       if (!res.ok) throw new Error("Маршрутизатор временно недоступен");
       const data = await res.json();
       if (data.code !== "Ok" || !data.routes?.[0]) throw new Error("По этим точкам маршрут не найден");
-      const r = data.routes[0];
-      setRoute({
+      const options = data.routes.slice(0, 3).map((r, index) => ({
+        id: nextMode + "-" + index + "-" + Math.round(r.distance) + "-" + Math.round(r.duration),
         geometry: r.geometry.coordinates,
         distance: r.distance,
         duration: r.duration,
         steps: r.legs?.flatMap(l => l.steps || []) || [],
         mode: nextMode,
-      });
+        optionIndex: index,
+      }));
+      setRouteOptions(options);
+      setRoute(options[0]);
       setMode(nextMode);
       setShowSteps(false);
       setNavigating(false);
@@ -670,6 +715,8 @@ export default function AstanaMapPage() {
   function chooseResult(item) {
     const point = { lat: Number(item.lat), lng: Number(item.lon) };
     setDestination(point);
+    setRouteOrigin(null);
+    setRouteOptions([]);
     setSelectedPlace(item);
     setIsFavorite(false);
     setQuery(cleanName(item));
@@ -697,7 +744,7 @@ export default function AstanaMapPage() {
   );
   const selectedCategory = useMemo(() => placeCategory(selectedPlace), [selectedPlace]);
   const isHomeScreen = !searchActive && !query.trim() && !showResultsPanel && !destination && !route;
-  const showMapUtilityControls = Boolean(route && navigating);
+  const showMapUtilityControls = Boolean(route);
   const showPlaceMapControls = Boolean(destination && !route && selectedPlace);
 
   function openHomeSearch() {
@@ -711,7 +758,7 @@ export default function AstanaMapPage() {
 
 
 
-      <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
+      {!route && <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
         {isHomeScreen && <div className="astana-home-handle"><span /></div>}
         <div className="astana-search-home-row">
           <div className="astana-search-box">
@@ -720,12 +767,12 @@ export default function AstanaMapPage() {
               ref={searchInputRef}
               value={query}
               onFocus={() => setSearchActive(true)}
-              onChange={e => { setQuery(e.target.value); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setNavigating(false); setError(""); }}
+              onChange={e => { setQuery(e.target.value); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setError(""); }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); searchAddress(query); } }}
               placeholder="Поиск"
               aria-label="Поиск адреса"
             />
-            {query && <button className="astana-clear" onClick={() => { setQuery(""); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
+            {query && <button className="astana-clear" onClick={() => { setQuery(""); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
             <button className={`astana-mic${listening ? " listening" : ""}`} onClick={startVoiceSearch} aria-label="Голосовой поиск" title="Голосовой поиск">🎙</button>
           </div>
           {isHomeScreen && <button className="astana-home-menu" onClick={openHomeSearch} aria-label="Открыть поиск">☰</button>}
@@ -781,7 +828,7 @@ export default function AstanaMapPage() {
             </div>
           </section>
         </>}
-      </div>
+      </div>}
 
       {navigating && route && <div className="astana-nav-guidance"><b>{nextInstruction?.distance || "Маршрут"}</b><span>{nextInstruction?.text || "Ведём по выбранному маршруту"}</span></div>}
 
@@ -800,7 +847,7 @@ export default function AstanaMapPage() {
             <span className="astana-place-category">{selectedCategory}</span>
           </div>
           <button className="astana-place-close" onClick={() => {
-            setDestination(null); setSelectedPlace(null); setRoute(null); setQuery("");
+            setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setQuery("");
             setResults([]); setShowResultsPanel(false); setSearchActive(false); setNavigating(false); setError("");
           }} aria-label="Закрыть карточку места">×</button>
         </div>
@@ -843,20 +890,76 @@ export default function AstanaMapPage() {
         <button onClick={swapMapType} title="Карта / спутник">▱</button>
       </div>}
 
-      {route && <section className="astana-route-card">
-        <div className="astana-route-summary">
-          <div><strong>{formatDuration(route.duration)}</strong><small>в пути</small></div>
-          <div><strong>{formatDistance(route.distance)}</strong><small>расстояние</small></div>
-          <button onClick={() => setShowSteps(v => !v)}>{showSteps ? "Скрыть" : "Команды"}</button>
+      {route && <div className="astana-route-quick-actions">
+        <button className="astana-route-quick-icon" onClick={() => setShowSteps(v => !v)} aria-label="Параметры маршрута" title="Параметры маршрута">☷</button>
+        <button className="astana-route-quick-icon" onClick={async () => {
+          const shareText = "Маршрут до " + selectedLabel + "\n" + formatDistance(route.distance) + ", " + formatDuration(route.duration);
+          try {
+            if (navigator.share) await navigator.share({ title: "Маршрут", text: shareText, url: window.location.href });
+            else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(shareText); setError("Маршрут скопирован."); }
+            else setError(shareText);
+          } catch {}
+        }} aria-label="Поделиться маршрутом" title="Поделиться маршрутом">♧</button>
+        <button onClick={() => setError("Добавление промежуточных остановок пока не подключено.")}>Заехать</button>
+        <button onClick={() => {
+          if (mapRef.current && routeOptions.length) {
+            const points = routeOptions.flatMap(option => (option.geometry || []).map(p => [p[1], p[0]]));
+            if (points.length) mapRef.current.fitBounds(window.L.latLngBounds(points), { padding: [30, 320] });
+          }
+        }}>К подъезду</button>
+        <button onClick={() => setError("Данные парковок пока не подключены.")}>На парковку</button>
+      </div>}
+
+      {route && <section className="astana-route-card astana-route-results">
+        <div className="astana-route-handle"><span /></div>
+        <div className="astana-route-endpoints">
+          <div className="astana-route-endpoint-list">
+            <div className="astana-route-endpoint"><span className="astana-endpoint-dot astana-origin-dot" /><span>Моё местоположение</span></div>
+            <div className="astana-route-endpoint"><span className="astana-endpoint-dot astana-destination-dot" /><span>{selectedLabel}</span></div>
+          </div>
+          <div className="astana-route-endpoint-actions">
+            <button aria-label="Поменять точки местами" title="Поменять точки местами" onClick={() => {
+              const oldStart = routeOrigin || origin;
+              if (!oldStart || !destination) return;
+              setRouteOrigin(destination);
+              setDestination(oldStart);
+              setSelectedPlace({ name: "Моё местоположение", display_name: "Моё местоположение", address: { city: "Астана" }, lat: oldStart.lat, lon: oldStart.lng, type: "place" });
+              setQuery("Моё местоположение");
+              setRoute(null); setRouteOptions([]); setNavigating(false); setNextInstruction(null); setError("");
+            }}>↕</button>
+            <button aria-label="Закрыть маршрут" title="Закрыть маршрут" onClick={() => {
+              setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setNextInstruction(null); setShowSteps(false); setError("");
+              if (destination) mapRef.current?.setView([destination.lat, destination.lng], 15);
+            }}>×</button>
+          </div>
         </div>
-        <div className="astana-route-modes">
-          <button className={route.mode === "car" ? "active" : ""} onClick={() => buildRoute("car")}>🚗 {route.mode === "car" ? formatDuration(route.duration) : "Авто"}</button>
-          <button className={route.mode === "bus" ? "active" : ""} onClick={() => buildRoute("bus")}>🚌 Автобус</button>
-          <button className={route.mode === "walk" ? "active" : ""} onClick={() => buildRoute("walk")}>🚶 {route.mode === "walk" ? formatDuration(route.duration) : "Пешком"}</button>
+
+        <div className="astana-route-option-track">
+          {(routeOptions.length ? routeOptions : [route]).map((option, index) => <article key={option.id || index} className={`astana-route-option-card ${option === route ? "selected" : ""}`}>
+            <div className="astana-route-option-top">
+              <div><strong>{formatDuration(option.duration)}</strong><span className="astana-route-arrival">→ {formatArrivalTime(option.duration)}</span></div>
+              {option === route && <button className="astana-route-start-button" onClick={() => { setShowSteps(false); setNavigating(true); routeProgressRef.current = -1; if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }}>В путь</button>}
+            </div>
+            <p>{formatDistance(option.distance)} · {index === 0 ? "Лучший маршрут" : "Альтернативный маршрут"}</p>
+            <div className="astana-route-turns"><span>◉</span> Повороты · {routeTurnCount(option)}</div>
+            <button className="astana-step-by-step" onClick={() => { setRoute(option); setMode(option.mode); setShowSteps(v => !v); }}>
+              <span>↔</span> {showSteps && option === route ? "Скрыть команды" : "Шаг за шагом"}
+            </button>
+          </article>)}
         </div>
-        {showSteps && <div className="astana-steps">{route.steps.slice(0, 12).map((step, i) => <div className="astana-step" key={i}><span>{i + 1}</span><div><b>{stepText(step)}</b><small>{formatDistance(step.distance)}</small></div></div>)}</div>}
-        <button className="astana-go-button" onClick={() => { setShowSteps(false); setNavigating(true); if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17); }}>➤ В путь</button>
-        {navigating && <button className="astana-stop-button" onClick={() => { setNavigating(false); setNextInstruction(null); routeProgressRef.current = -1; setRoute(value => value ? { ...value } : value); }}>Завершить навигацию</button>}
+
+        {showSteps && <div className="astana-steps astana-route-step-list">
+          {route.steps.slice(0, 12).map((step, i) => <div className="astana-step" key={i}><span>{i + 1}</span><div><b>{stepText(step)}</b><small>{formatDistance(step.distance)}</small></div></div>)}
+        </div>}
+
+        <div className="astana-route-transport-strip">
+          <button className={route.mode === "car" ? "active" : ""} onClick={() => buildRoute("car")}><span>🚘</span><b>{route.mode === "car" ? formatDuration(route.duration) : "Авто"}</b></button>
+          <button onClick={() => buildRoute("bus")}><span>🚌</span><b>Автобус</b><small>—</small></button>
+          <button className={route.mode === "walk" ? "active" : ""} onClick={() => buildRoute("walk")}><span>🚶</span><b>{route.mode === "walk" ? formatDuration(route.duration) : "Пешком"}</b></button>
+          <button disabled title="Вызов такси пока не подключён"><span>🚕</span><b>Такси</b><small>—</small></button>
+          <button disabled title="Данные для мотоцикла пока не подключены"><span>🏍</span><b>Мото</b><small>—</small></button>
+          <button disabled title="Данные для велосипеда пока не подключены"><span>🚲</span><b>Вело</b><small>—</small></button>
+        </div>
       </section>}
 
       {locating && <div className="astana-toast">Определяем местоположение…</div>}
@@ -1053,6 +1156,74 @@ const styles = `
  .astana-place-tabs{gap:20px;font-size:13px;margin-top:12px;margin-bottom:10px}
  .astana-place-actions{grid-template-columns:minmax(0,1.4fr) 48px 48px minmax(94px,1.2fr);gap:6px}
  .astana-place-actions button{height:50px;font-size:13px}
+}
+
+
+/* Route preview: map stays visible above a light route-planning sheet. */
+.astana-route-controls{z-index:18;top:14%;right:12px;gap:9px}
+.astana-route-controls button,.astana-route-controls .astana-speed-now{width:55px;height:55px;min-height:55px;border-radius:50%;background:rgba(255,255,255,.97);color:#27313a;box-shadow:0 3px 12px rgba(30,46,60,.18);font-size:27px}
+.astana-route-controls .astana-speed-limit{width:60px;height:60px;min-height:60px;border-radius:50%;background:#169e22;border:3px solid #fff;color:#fff}
+.astana-route-controls .astana-speed-limit span,.astana-route-controls .astana-speed-now span{color:#6e7b84}
+.astana-route-controls .astana-speed-now{border:0}
+.astana-route-controls button:nth-last-child(2),.astana-route-controls button:nth-last-child(3){background:rgba(255,255,255,.97);color:#27313a}
+.astana-route-quick-actions{position:fixed;left:12px;right:12px;bottom:calc(min(49dvh,560px) + 8px);z-index:20;display:flex;gap:7px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;padding:3px 2px 5px}
+.astana-route-quick-actions::-webkit-scrollbar,.astana-route-option-track::-webkit-scrollbar,.astana-route-transport-strip::-webkit-scrollbar{display:none}
+.astana-route-quick-actions button{height:48px;flex:none;border:0;border-radius:13px;padding:0 15px;background:#fff;color:#222a30;box-shadow:0 2px 10px rgba(22,37,49,.14);font-size:15px;font-weight:700}
+.astana-route-quick-actions .astana-route-quick-icon{width:51px;padding:0;font-size:23px}
+.astana-route-card.astana-route-results{position:fixed;left:0;right:0;bottom:0;height:min(49dvh,560px);min-height:min(405px,57dvh);max-height:560px;z-index:25;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;gap:0;padding:0 12px calc(7px + env(safe-area-inset-bottom,0px));border-radius:25px 25px 0 0;background:rgba(247,248,249,.985);color:#20282e;box-shadow:0 -4px 24px rgba(17,33,45,.15)}
+.astana-route-handle{height:20px;flex:none;display:flex;align-items:center;justify-content:center}
+.astana-route-handle span{display:block;width:52px;height:5px;border-radius:99px;background:#d5d9dc}
+.astana-route-endpoints{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 3px 11px;border-bottom:1px solid #e7eaed;flex:none}
+.astana-route-endpoint-list{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+.astana-route-endpoint{display:flex;align-items:center;gap:10px;min-width:0;color:#222a30;font-size:14px;font-weight:600}
+.astana-route-endpoint span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.astana-endpoint-dot{display:block;flex:none;width:13px;height:13px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 2px currentColor}
+.astana-origin-dot{background:#16b954;color:#16b954}
+.astana-destination-dot{background:#2183f5;color:#2183f5}
+.astana-route-endpoint-actions{display:flex;gap:7px;flex:none}
+.astana-route-endpoint-actions button{width:43px;height:43px;border:0;border-radius:13px;background:#e9ecef;color:#4a5660;font-size:25px;display:flex;align-items:center;justify-content:center}
+.astana-route-option-track{display:flex;align-items:stretch;gap:10px;overflow-x:auto;overflow-y:hidden;flex:1;min-height:0;padding:11px 2px 10px;scrollbar-width:none;scroll-snap-type:x mandatory}
+.astana-route-option-card{position:relative;display:flex;flex-direction:column;gap:8px;flex:0 0 min(78vw,360px);min-width:0;padding:15px;border:1px solid #e8ebed;border-radius:20px;background:#fff;color:#20272d;box-shadow:0 2px 10px rgba(16,38,51,.05);scroll-snap-align:start;box-sizing:border-box}
+.astana-route-option-card.selected{border-color:#e0e6e8;box-shadow:0 2px 9px rgba(16,38,51,.06)}
+.astana-route-option-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.astana-route-option-top>div{display:flex;align-items:baseline;gap:7px;min-width:0;flex-wrap:wrap}
+.astana-route-option-top strong{font-size:25px;line-height:1.05;color:#1d252b;white-space:nowrap}
+.astana-route-arrival{font-size:15px;color:#7e878e;white-space:nowrap}
+.astana-route-start-button{height:46px;flex:none;padding:0 18px;border:0;border-radius:12px;background:#16b850;color:#fff;font-size:16px;font-weight:800;box-shadow:0 2px 6px rgba(15,163,72,.18)}
+.astana-route-option-card p{margin:0;color:#828b92;font-size:14px}
+.astana-route-turns{display:flex;align-items:center;gap:8px;color:#414b52;font-size:14px}
+.astana-route-turns span{color:#efad00;font-size:19px}
+.astana-step-by-step{align-self:flex-start;display:flex;align-items:center;gap:9px;margin-top:auto;padding:10px 14px;border:0;border-radius:13px;background:#eef0f2;color:#29333a;font-size:14px;font-weight:700}
+.astana-step-by-step span{color:#14a94f;font-size:22px}
+.astana-route-step-list{flex:none;max-height:110px;overflow:auto;border-top:1px solid #e0e5e8;margin:0 3px 6px;color:#20272d}
+.astana-route-step-list .astana-step{border-bottom-color:#e6eaed;padding:6px 2px}
+.astana-route-step-list .astana-step>span{background:#2183f5}
+.astana-route-step-list .astana-step small{color:#78828a}
+.astana-route-transport-strip{flex:none;display:flex;align-items:stretch;gap:6px;overflow-x:auto;overflow-y:hidden;padding:2px 1px 1px;scrollbar-width:none;border-top:1px solid #e3e7ea}
+.astana-route-transport-strip button{display:flex;flex:1 0 61px;min-width:61px;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px 4px;border:1px solid transparent;border-radius:14px;background:transparent;color:#838c93}
+.astana-route-transport-strip button.active{background:#fff;border:2px solid #19b653;color:#263037}
+.astana-route-transport-strip button span{font-size:21px;line-height:1.1;filter:grayscale(.65)}
+.astana-route-transport-strip button.active span{filter:none}
+.astana-route-transport-strip button b{font-size:11px;font-weight:700;white-space:nowrap}
+.astana-route-transport-strip button small{font-size:10px}
+.astana-route-transport-strip button:disabled{opacity:.8}
+.moy-alt-route-label{background:transparent;border:0}
+.moy-alt-route-label span{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:72px;padding:5px 8px;border-radius:11px;background:rgba(44,49,54,.92);color:#fff;box-shadow:0 2px 7px rgba(0,0,0,.2);font-size:13px;font-weight:800;line-height:1.15;white-space:nowrap}
+.moy-alt-route-label small{font-size:10px;color:#e0e4e7;margin-top:2px}
+@media(max-width:520px){
+ .astana-route-controls{top:12%;right:8px;gap:7px}
+ .astana-route-controls button,.astana-route-controls .astana-speed-now{width:47px;height:47px;min-height:47px;font-size:23px}
+ .astana-route-controls .astana-speed-limit{width:52px;height:52px;min-height:52px}
+ .astana-route-quick-actions{left:8px;right:8px;gap:6px;bottom:calc(min(49dvh,560px) + 6px)}
+ .astana-route-quick-actions button{height:43px;padding:0 12px;font-size:13px}
+ .astana-route-quick-actions .astana-route-quick-icon{width:43px;font-size:21px}
+ .astana-route-card.astana-route-results{height:min(49dvh,560px);min-height:min(395px,58dvh);padding-left:9px;padding-right:9px}
+ .astana-route-endpoint{font-size:13px}
+ .astana-route-endpoint-actions button{width:38px;height:38px}
+ .astana-route-option-card{flex-basis:min(82vw,340px);padding:12px}
+ .astana-route-option-top strong{font-size:23px}
+ .astana-route-start-button{height:42px;padding:0 13px;font-size:15px}
+ .astana-route-transport-strip button{flex-basis:55px;min-width:55px}
 }
 
 `;
