@@ -645,6 +645,7 @@ export default function AstanaMapPage() {
 
   const selectedLabel = useMemo(() => query || "Куда едем?", [query]);
   const isHomeScreen = !searchActive && !query.trim() && !showResultsPanel && !destination && !route;
+  const showMapUtilityControls = Boolean(destination || route);
 
   function openHomeSearch() {
     setSearchActive(true);
@@ -731,7 +732,7 @@ export default function AstanaMapPage() {
 
       {navigating && route && <div className="astana-nav-guidance"><b>{nextInstruction?.distance || "Маршрут"}</b><span>{nextInstruction?.text || "Ведём по выбранному маршруту"}</span></div>}
 
-      {!isHomeScreen && <div className="astana-map-right-controls">
+      {showMapUtilityControls && <div className="astana-map-right-controls">
         <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], navigating ? 17 : 16); }} title="Моё местоположение">◎</button>
         <div className="astana-speed-limit"><b>{speedLimit || "—"}</b><span>км/ч</span></div>
         <div className="astana-speed-now"><b>{speed}</b><span>км/ч</span></div>
@@ -769,7 +770,7 @@ export default function AstanaMapPage() {
       {locating && <div className="astana-toast">Определяем местоположение…</div>}
       {error && <div className="astana-error">{error}</div>}
 
-      <div className={`astana-map-switch${isHomeScreen ? " astana-map-switch-home" : ""}`}><button className={mapType === "map" ? "active" : ""} onClick={() => setMapType("map")}>Карта</button><button className={mapType === "satellite" ? "active" : ""} onClick={() => setMapType("satellite")}>Спутник</button></div>
+      {showMapUtilityControls && <div className="astana-map-switch"><button className={mapType === "map" ? "active" : ""} onClick={() => setMapType("map")}>Карта</button><button className={mapType === "satellite" ? "active" : ""} onClick={() => setMapType("satellite")}>Спутник</button></div>}
       {isHomeScreen && <button className="astana-home-locate" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение">➤</button>}
       {isHomeScreen && <div className="astana-home-weather" aria-label="Погода"><span>☁️</span><b>Погода</b></div>}
       {isHomeScreen && <nav className="astana-home-bottom-nav" aria-label="Главное меню">
