@@ -282,7 +282,7 @@ export default function AstanaMapPage() {
       const L = window.L;
       const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(ASTANA, 12);
       const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
-      const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20, attribution: "© OpenStreetMap © CARTO" });
+      const dark = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
       const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "© Esri" });
       base.addTo(map);
       map._moyTiles = { base, dark, satellite };
@@ -880,7 +880,7 @@ export default function AstanaMapPage() {
       {navigating && route && <div className="astana-nav-guidance">
         <div className="astana-nav-guidance-symbol">{String(nextInstruction?.text || "").includes("налево") ? "↰" : String(nextInstruction?.text || "").includes("направо") ? "↱" : String(nextInstruction?.text || "").includes("развер") ? "↶" : "↑"}</div>
         <div className="astana-nav-guidance-copy">
-          <b>{nextInstruction?.distance || "Следуйте по маршруту"}</b>
+          <b>{nextInstruction?.distance || (nextInstruction?.text === "Вы отклонились от маршрута" ? "Вне маршрута" : "Далее")}</b>
           <span>{nextInstruction?.text || "Продолжайте движение"}</span>
         </div>
       </div>}
@@ -1296,11 +1296,14 @@ const styles = `
 
 /* Active navigation screen — dark map, turn instructions, speed widgets and compact HUD. */
 .astana-map-canvas-navigation{background:#11171c}
-.astana-nav-guidance{position:fixed;left:12px;top:12px;z-index:28;width:min(62vw,310px);min-height:82px;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:19px;background:rgba(9,12,15,.96);color:#fff;box-shadow:0 4px 15px #0007}
-.astana-nav-guidance-symbol{flex:none;color:#1680ff;font-size:43px;font-weight:900;line-height:1}
-.astana-nav-guidance-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
-.astana-nav-guidance-copy b{font-size:28px;line-height:1.05;white-space:nowrap}
-.astana-nav-guidance-copy span{font-size:16px;line-height:1.15;font-weight:500;overflow-wrap:anywhere}
+.astana-map-canvas-navigation .leaflet-tile-pane{filter:brightness(.38) saturate(.82) contrast(1.12)}
+.astana-map-canvas-navigation .leaflet-control-attribution{background:rgba(8,11,14,.72);color:#b9c2c9}
+.astana-map-canvas-navigation .leaflet-control-attribution a{color:#dce6ee}
+.astana-nav-guidance{position:fixed;left:12px;top:12px;z-index:28;width:min(calc(100vw - 112px),280px);min-height:0;box-sizing:border-box;display:flex;flex-direction:row;align-items:center;gap:8px;padding:10px 11px;border-radius:16px;background:rgba(9,12,15,.96);color:#fff;box-shadow:0 4px 15px #0007;overflow:hidden}
+.astana-nav-guidance-symbol{flex:none;color:#1680ff;font-size:31px;font-weight:900;line-height:1;width:31px;text-align:center}
+.astana-nav-guidance-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;overflow:hidden}
+.astana-nav-guidance-copy b{font-size:21px;line-height:1.05;white-space:normal;overflow-wrap:anywhere}
+.astana-nav-guidance-copy span{font-size:13px;line-height:1.2;font-weight:500;overflow-wrap:anywhere;white-space:normal}
 .astana-navigation-controls{position:fixed;top:14px;right:10px;z-index:28;display:flex;flex-direction:column;align-items:center;gap:8px}
 .astana-navigation-controls button{border:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .astana-nav-speed-limit{width:61px;height:61px;border-radius:50%;border:5px solid #df2638;background:#090b0d;color:#fff;display:flex;align-items:center;justify-content:center;box-sizing:border-box;box-shadow:0 2px 8px #0008}
@@ -1327,10 +1330,10 @@ const styles = `
 .astana-nav-menu .astana-step small{color:#aeb6bd}
 .astana-nav-menu>button{height:45px;flex:none;border:0;border-radius:13px;background:#272c31;color:#fff;font-weight:800}
 @media(max-width:520px){
- .astana-nav-guidance{top:10px;left:9px;width:min(59vw,275px);min-height:74px;padding:9px 11px;gap:8px;border-radius:16px}
- .astana-nav-guidance-symbol{font-size:37px}
- .astana-nav-guidance-copy b{font-size:25px}
- .astana-nav-guidance-copy span{font-size:14px}
+ .astana-nav-guidance{top:10px;left:9px;width:min(calc(100vw - 100px),270px);min-height:0;padding:9px 10px;gap:7px;border-radius:14px}
+ .astana-nav-guidance-symbol{font-size:29px;width:29px}
+ .astana-nav-guidance-copy b{font-size:19px;line-height:1.05}
+ .astana-nav-guidance-copy span{font-size:12px;line-height:1.15}
  .astana-navigation-controls{top:10px;right:7px;gap:7px}
  .astana-nav-speed-limit{width:53px;height:53px;border-width:4px}
  .astana-nav-speed-limit b{font-size:22px}
