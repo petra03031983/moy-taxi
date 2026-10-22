@@ -1314,8 +1314,6 @@ const styles = `
 .astana-nav-compass,.astana-nav-recenter{width:62px;height:62px;border-radius:50%;background:#090b0d;color:#fff;font-size:34px;box-shadow:0 3px 12px #0008}
 .astana-nav-compass{color:#eaf1f6;text-shadow:3px 0 #dc2337}
 .astana-nav-recenter{font-size:33px;color:#fff;border-radius:15px}
-.astana-route-quick-actions{display:none!important}
-.astana-route-card.astana-route-results{display:none!important}
 .astana-nav-parking-filter{position:fixed;left:16px;bottom:101px;z-index:28;border-radius:12px;background:rgba(8,10,12,.96);color:#fff;font-size:15px;padding:10px 14px;box-shadow:0 3px 12px #0007}
 .astana-nav-bottom-hud{position:fixed;left:12px;right:12px;bottom:11px;z-index:32;height:77px;box-sizing:border-box;display:grid;grid-template-columns:50px minmax(42px,1fr) minmax(74px,1.3fr) minmax(36px,.8fr) 50px;gap:4px;align-items:center;padding:7px 9px;border-radius:21px;background:rgba(9,11,13,.97);color:#fff;box-shadow:0 4px 18px #0008}
 .astana-nav-hud-icon{width:47px;height:50px;border:0;border-radius:13px;background:#1d2024;color:#fff;font-size:31px;display:flex;align-items:center;justify-content:center}
