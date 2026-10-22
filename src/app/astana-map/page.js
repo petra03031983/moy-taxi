@@ -747,14 +747,16 @@ export default function AstanaMapPage() {
     setShowSteps(false);
     setNavigationMenuOpen(false);
     routeProgressRef.current = -1;
-    setNextInstruction(nextRouteInstruction(activeRoute, activeRoute.geometry.map(p => [p[1], p[0]]), 0));
+    setNextInstruction(null);
     setNavigating(true);
+    setMapType("dark");
     const current = routeOrigin || origin;
     if (current && mapRef.current) {
       mapRef.current.setView([current.lat, current.lng], 17, { animate: true });
-      window.requestAnimationFrame(() => mapRef.current?.invalidateSize());
     }
-    setMapType("dark");
+    window.setTimeout(() => {
+      if (mapRef.current) mapRef.current.invalidateSize({ animate: false });
+    }, 80);
   }
 
   function stopNavigation() {
@@ -992,7 +994,7 @@ export default function AstanaMapPage() {
           {(routeOptions.length ? routeOptions : [route]).map((option, index) => <article key={option.id || index} className={`astana-route-option-card ${option === route ? "selected" : ""}`}>
             <div className="astana-route-option-top">
               <div><strong>{formatDuration(option.duration)}</strong><span className="astana-route-arrival">→ {formatArrivalTime(option.duration)}</span></div>
-              {option === route && <button type="button" className="astana-route-start-button" onClick={() => startNavigation(option)} aria-label="Начать навигацию по выбранному маршруту">В путь</button>}
+              {option === route && <button type="button" className="astana-route-start-button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); startNavigation(option); }} aria-label="Начать навигацию по выбранному маршруту">В путь</button>}
             </div>
             <p>{formatDistance(option.distance)} · {index === 0 ? "Лучший маршрут" : "Альтернативный маршрут"}</p>
             <div className="astana-route-turns"><span>◉</span> Повороты · {routeTurnCount(option)}</div>
