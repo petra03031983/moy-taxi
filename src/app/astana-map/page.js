@@ -401,8 +401,10 @@ export default function AstanaMapPage() {
       const data = await response.json();
       const found = Array.isArray(data) ? data : [];
       if (requestId === searchRequestRef.current && !controller.signal.aborted) {
-        searchCacheRef.current.set(cacheKey, found);
-        if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+        if (found.length) {
+          searchCacheRef.current.set(cacheKey, found);
+          if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+        }
         setResults(found);
         if (!found.length) setError("Адрес не найден. Попробуйте добавить номер дома или название города/посёлка.");
       }
@@ -415,7 +417,7 @@ export default function AstanaMapPage() {
       window.clearTimeout(timeout);
       if (requestId === searchRequestRef.current) {
         setSearching(false);
-        if (controller.signal.aborted && !error) {
+        if (controller.signal.aborted) {
           setError("Поиск занимает слишком много времени. Попробуйте ещё раз.");
         }
       }
