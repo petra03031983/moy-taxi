@@ -1012,9 +1012,6 @@ const styles = `
   .astana-home-city-mark{width:48px;height:48px}
   .astana-home-briefcase{top:17px;right:12px;width:52px;height:52px;font-size:25px}
 }
-`;
-
-
 /* Selected place details — photo-led white panel matching the approved mockup. */
 .astana-search-wrap-selected{position:fixed;top:10px;left:10px;right:10px;bottom:auto;width:auto;max-width:none;margin:0;padding:0;z-index:30;border-radius:18px;background:transparent}
 .astana-search-wrap-selected .astana-search-home-row{display:block}
@@ -1078,6 +1075,9 @@ const styles = `
  .astana-place-actions{grid-template-columns:minmax(0,1.4fr) 48px 48px minmax(94px,1.2fr);gap:6px}
  .astana-place-actions button{height:50px;font-size:13px}
 }
+
+`;
+
 
 
 if (typeof document !== "undefined" && !document.getElementById("astana-map-styles")) {
