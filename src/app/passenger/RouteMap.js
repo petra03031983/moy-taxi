@@ -5,8 +5,11 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
   const element = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
+  const positionRef = useRef(null);
+  const watchId = useRef(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [, redraw] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +78,8 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       if (loadTimer) window.clearTimeout(loadTimer);
       if (script && loadHandler) script.removeEventListener("load", loadHandler);
       if (script && errorHandler) script.removeEventListener("error", errorHandler);
+      if (watchId.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -89,7 +94,8 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
     const group = layers.current;
     group.clearLayers();
     const bounds = [];
-    const escapeHtml = value => String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    const escapeHtml = value => String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#39;");
+
     const marker = (point, letter, title, color, info) => {
       if (!point || !Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lng))) return;
       const latLng = [Number(point.lat), Number(point.lng)];
@@ -106,23 +112,75 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       });
       L.marker(latLng, { icon }).bindPopup(title).addTo(group);
     };
+
     marker(pickupPoint, "A", "Откуда забрать", "#367cf5", pickupInfo);
     marker(destinationPoint, "B", "Куда ехать", "#299958", destinationInfo);
-    if (Array.isArray(routeGeometry) && routeGeometry.length > 1) {
-      const line = routeGeometry
-        .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
-        .map(pair => [Number(pair[1]), Number(pair[0])]);
-      if (line.length > 1) {
-        L.polyline(line, { color: "#146b4b", weight: 5, opacity: 0.88 }).addTo(group);
-        line.forEach(point => bounds.push(point));
+
+    const line = Array.isArray(routeGeometry)
+      ? routeGeometry
+          .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
+          .map(pair => [Number(pair[1]), Number(pair[0])])
+      : [];
+
+    const nearestRouteIndex = (position, points) => {
+      if (!position || points.length < 2) return 0;
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      for (let i = 0; i < points.length; i += 1) {
+        const dLat = Number(points[i][0]) - position.lat;
+        const dLng = (Number(points[i][1]) - position.lng) * Math.cos(position.lat * Math.PI / 180);
+        const distance = dLat * dLat + dLng * dLng;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = i;
+        }
+      }
+      return bestIndex;
+    };
+
+    if (line.length > 1) {
+      const currentIndex = nearestRouteIndex(positionRef.current, line);
+      const remainingLine = line.slice(currentIndex);
+      const visibleLine = remainingLine.length > 1 ? remainingLine : line.slice(-2);
+
+      // Только оставшаяся часть маршрута. Уже пройденная зелёная линия больше не рисуется.
+      L.polyline(visibleLine, { color: "#146b4b", weight: 7, opacity: 0.94, lineCap: "round", lineJoin: "round" }).addTo(group);
+      visibleLine.forEach(point => bounds.push(point));
+
+      if (positionRef.current) {
+        const arrowPoint = [positionRef.current.lat, positionRef.current.lng];
+        const arrowIcon = L.divIcon({
+          className: "moy-route-moving-arrow-wrap",
+          html: '<span class="moy-route-moving-arrow" aria-label="Ваше положение"></span>',
+          iconSize: [12, 12],
+          iconAnchor: [6, 6]
+        });
+        L.marker(arrowPoint, { icon: arrowIcon, interactive: false, zIndexOffset: 1000 }).addTo(group);
       }
     }
+
     if (bounds.length > 1) {
       map.current.fitBounds(L.latLngBounds(bounds), { padding: (pickupInfo||destinationInfo) ? [24, 96] : [24, 24], maxZoom: 15 });
     } else if (bounds.length === 1) {
       map.current.setView(bounds[0], 14);
     }
   }, [ready, pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng, routeGeometry, pickupInfo?.timeText, pickupInfo?.distanceText, destinationInfo?.timeText, destinationInfo?.distanceText]);
+
+  useEffect(() => {
+    if (!ready || !routeGeometry?.length || !navigator.geolocation || watchId.current !== null) return;
+    watchId.current = navigator.geolocation.watchPosition(
+      position => {
+        positionRef.current = { lat: position.coords.latitude, lng: position.coords.longitude };
+        redraw(value => value + 1);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
+    );
+    return () => {
+      if (watchId.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+    };
+  }, [ready, routeGeometry?.length]);
 
   return (
     <section className="route-map-panel" aria-label="Карта маршрута">
