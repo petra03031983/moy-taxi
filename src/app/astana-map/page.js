@@ -942,9 +942,6 @@ export default function AstanaMapPage() {
             </div>
             <p>{formatDistance(option.distance)} · {index === 0 ? "Лучший маршрут" : "Альтернативный маршрут"}</p>
             <div className="astana-route-turns"><span>◉</span> Повороты · {routeTurnCount(option)}</div>
-            <button className="astana-step-by-step" onClick={() => { setRoute(option); setMode(option.mode); setShowSteps(v => !v); }}>
-              <span>↔</span> {showSteps && option === route ? "Скрыть команды" : "Шаг за шагом"}
-            </button>
           </article>)}
         </div>
 
@@ -1182,7 +1179,7 @@ const styles = `
 .astana-destination-dot{background:#2183f5;color:#2183f5}
 .astana-route-endpoint-actions{display:flex;gap:7px;flex:none}
 .astana-route-endpoint-actions button{width:43px;height:43px;border:0;border-radius:13px;background:#e9ecef;color:#4a5660;font-size:25px;display:flex;align-items:center;justify-content:center}
-.astana-route-option-track{display:flex;align-items:stretch;gap:10px;overflow-x:auto;overflow-y:hidden;flex:1;min-height:0;padding:11px 2px 10px;scrollbar-width:none;scroll-snap-type:x mandatory}
+.astana-route-option-track{display:flex;align-items:flex-start;gap:10px;overflow-x:auto;overflow-y:hidden;flex:1;min-height:0;padding:11px 2px 10px;scrollbar-width:none;scroll-snap-type:x mandatory}
 .astana-route-option-card{position:relative;display:flex;flex-direction:column;gap:8px;flex:0 0 min(78vw,360px);min-width:0;padding:15px;border:1px solid #e8ebed;border-radius:20px;background:#fff;color:#20272d;box-shadow:0 2px 10px rgba(16,38,51,.05);scroll-snap-align:start;box-sizing:border-box}
 .astana-route-option-card.selected{border-color:#e0e6e8;box-shadow:0 2px 9px rgba(16,38,51,.06)}
 .astana-route-option-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -1193,8 +1190,6 @@ const styles = `
 .astana-route-option-card p{margin:0;color:#828b92;font-size:14px}
 .astana-route-turns{display:flex;align-items:center;gap:8px;color:#414b52;font-size:14px}
 .astana-route-turns span{color:#efad00;font-size:19px}
-.astana-step-by-step{align-self:flex-start;display:flex;align-items:center;gap:9px;margin-top:auto;padding:10px 14px;border:0;border-radius:13px;background:#eef0f2;color:#29333a;font-size:14px;font-weight:700}
-.astana-step-by-step span{color:#14a94f;font-size:22px}
 .astana-route-step-list{flex:none;max-height:110px;overflow:auto;border-top:1px solid #e0e5e8;margin:0 3px 6px;color:#20272d}
 .astana-route-step-list .astana-step{border-bottom-color:#e6eaed;padding:6px 2px}
 .astana-route-step-list .astana-step>span{background:#2183f5}
