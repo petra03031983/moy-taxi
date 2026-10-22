@@ -293,7 +293,7 @@ export default function AstanaMapPage() {
     const load = () => {
       if (cancelled || !window.L || !mapEl.current || mapRef.current) return;
       const L = window.L;
-      const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true }).setView(ASTANA, 12);
+      const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true, rotate: true, touchRotate: true, dragRotate: true, rotateClockwise: true, shiftKeyRotate: false }).setView(ASTANA, 12);
       const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
       const dark = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
       const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "© Esri" });
@@ -312,7 +312,34 @@ export default function AstanaMapPage() {
       link.dataset.moyLeaflet = "1";
       document.head.appendChild(link);
     }
-    if (window.L) load();
+    const loadWithRotation = () => {
+      if (cancelled || !window.L) return;
+      if (typeof window.L.Map?.prototype?.setBearing === "function") {
+        load();
+        return;
+      }
+      let rotateScript = document.querySelector('script[data-moy-leaflet-rotate-js="1"]');
+      if (!rotateScript) {
+        rotateScript = document.createElement("script");
+        rotateScript.src = "https://unpkg.com/@tomickigrzegorz/leaflet-rotate@0.3.0/dist/leaflet-rotate.umd.min.js";
+        rotateScript.dataset.moyLeafletRotateJs = "1";
+        rotateScript.addEventListener("load", () => { if (!cancelled) load(); }, { once: true });
+        rotateScript.addEventListener("error", () => { if (!cancelled) load(); }, { once: true });
+        document.head.appendChild(rotateScript);
+        return;
+      }
+      if (typeof window.L.Map?.prototype?.setBearing === "function" || rotateScript.dataset.moyLeafletRotateLoaded === "true") {
+        load();
+        return;
+      }
+      rotateScript.addEventListener("load", () => {
+        rotateScript.dataset.moyLeafletRotateLoaded = "true";
+        if (!cancelled) load();
+      }, { once: true });
+      rotateScript.addEventListener("error", () => { if (!cancelled) load(); }, { once: true });
+    };
+
+    if (window.L) loadWithRotation();
     else {
       let script = document.querySelector('script[data-moy-leaflet-js="1"]');
       if (!script) {
@@ -321,7 +348,7 @@ export default function AstanaMapPage() {
         script.dataset.moyLeafletJs = "1";
         document.head.appendChild(script);
       }
-      script.addEventListener("load", load);
+      script.addEventListener("load", loadWithRotation, { once: true });
     }
     return () => {
       cancelled = true;
@@ -1062,7 +1089,7 @@ export default function AstanaMapPage() {
 
 const styles = `
 .astana-map-page{position:fixed;inset:0;overflow:hidden;background:#10171d;color:#fff;font-family:Arial,sans-serif;z-index:1}
-.astana-map-canvas{position:absolute;inset:0;z-index:0}
+.astana-map-canvas{position:absolute;inset:0;z-index:0;touch-action:pan-x pan-y}
 .astana-search-wrap{position:absolute;top:18px;left:18px;right:18px;z-index:20;max-width:760px;margin:auto}
 .astana-search-box{height:58px;border-radius:18px;background:rgba(28,31,34,.96);display:flex;align-items:center;gap:10px;padding:0 15px;box-shadow:0 5px 22px rgba(0,0,0,.35)}
 .astana-search-icon{font-size:31px;color:#aaa;line-height:1;background:none;border:0;padding:0;cursor:pointer;flex:none}.astana-search-box input{flex:1;background:none;border:0;outline:0;color:#fff;font-size:20px;min-width:0}.astana-search-box input::placeholder{color:#aaa}.astana-clear,.astana-mic{background:none;border:0;color:#ddd;font-size:25px;padding:6px;cursor:pointer;flex:none}.astana-mic.listening{color:#ff6262;animation:astana-pulse 1s infinite alternate}@keyframes astana-pulse{from{opacity:.65}to{opacity:1;transform:scale(1.08)}}.astana-results{margin-top:7px;border-radius:18px;overflow:hidden;background:rgba(28,31,34,.98);box-shadow:0 10px 28px rgba(0,0,0,.4);max-height:55vh;overflow-y:auto}.astana-result,.astana-result-loading{width:100%;border:0;border-bottom:1px solid #34383b;background:none;color:#fff;text-align:left;padding:15px;display:flex;gap:13px;align-items:flex-start}.astana-result:hover{background:#32363a}.astana-result-pin{font-size:23px;color:#36d56f}.astana-result b{display:block;font-size:16px}.astana-result small{display:block;color:#aeb4b8;font-size:13px;margin-top:5px;line-height:1.25}.astana-result-loading{color:#aaa}
