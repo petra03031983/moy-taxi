@@ -5,15 +5,8 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
   const element = useRef(null);
   const map = useRef(null);
   const layers = useRef(null);
-  const routeLineRef = useRef(null);
-  const movingArrowRef = useRef(null);
-  const routePointsRef = useRef([]);
-  const routeProgressRef = useRef(-1);
-  const positionRef = useRef(null);
-  const watchId = useRef(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [positionVersion, redraw] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,8 +75,6 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
       if (loadTimer) window.clearTimeout(loadTimer);
       if (script && loadHandler) script.removeEventListener("load", loadHandler);
       if (script && errorHandler) script.removeEventListener("error", errorHandler);
-      if (watchId.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current);
-      watchId.current = null;
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -97,10 +88,6 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
     const L = window.L;
     const group = layers.current;
     group.clearLayers();
-    routeLineRef.current = null;
-    movingArrowRef.current = null;
-    routePointsRef.current = [];
-    routeProgressRef.current = -1;
     const bounds = [];
     const escapeHtml = value => String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
     const marker = (point, letter, title, color, info) => {
@@ -121,117 +108,21 @@ export default function RouteMap({ pickupPoint, destinationPoint, routeGeometry,
     };
     marker(pickupPoint, "A", "Откуда забрать", "#367cf5", pickupInfo);
     marker(destinationPoint, "B", "Куда ехать", "#299958", destinationInfo);
-
-    const line = Array.isArray(routeGeometry)
-      ? routeGeometry
-          .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
-          .map(pair => [Number(pair[1]), Number(pair[0])])
-      : [];
-    routePointsRef.current = line;
-
-    if (line.length > 1) {
-      routeLineRef.current = L.polyline(line, {
-        color: "#146b4b",
-        weight: 7,
-        opacity: 0.94,
-        lineCap: "round",
-        lineJoin: "round"
-      }).addTo(group);
-      line.forEach(point => bounds.push(point));
+    if (Array.isArray(routeGeometry) && routeGeometry.length > 1) {
+      const line = routeGeometry
+        .filter(pair => Array.isArray(pair) && Number.isFinite(Number(pair[0])) && Number.isFinite(Number(pair[1])))
+        .map(pair => [Number(pair[1]), Number(pair[0])]);
+      if (line.length > 1) {
+        L.polyline(line, { color: "#146b4b", weight: 5, opacity: 0.88 }).addTo(group);
+        line.forEach(point => bounds.push(point));
+      }
     }
-
     if (bounds.length > 1) {
-      map.current.fitBounds(L.latLngBounds(bounds), { padding: (pickupInfo || destinationInfo) ? [24, 96] : [24, 24], maxZoom: 15 });
+      map.current.fitBounds(L.latLngBounds(bounds), { padding: (pickupInfo||destinationInfo) ? [24, 96] : [24, 24], maxZoom: 15 });
     } else if (bounds.length === 1) {
       map.current.setView(bounds[0], 14);
     }
   }, [ready, pickupPoint?.lat, pickupPoint?.lng, destinationPoint?.lat, destinationPoint?.lng, routeGeometry, pickupInfo?.timeText, pickupInfo?.distanceText, destinationInfo?.timeText, destinationInfo?.distanceText]);
-
-  useEffect(() => {
-    const L = window.L;
-    const points = routePointsRef.current;
-    if (!ready || !L || !map.current || !routeLineRef.current || points.length < 2) return;
-
-    const position = positionRef.current;
-    if (!position) {
-      routeLineRef.current.setLatLngs(points);
-      return;
-    }
-
-    // Snap the live GPS fix to the nearest route segment, so the arrow sits on the green line.
-    const cosLat = Math.max(0.2, Math.cos(position.lat * Math.PI / 180));
-    let best = { distance: Infinity, progress: 0 };
-    for (let i = 0; i < points.length - 1; i += 1) {
-      const a = points[i];
-      const b = points[i + 1];
-      const ax = (a[1] - position.lng) * 111320 * cosLat;
-      const ay = (a[0] - position.lat) * 111320;
-      const bx = (b[1] - position.lng) * 111320 * cosLat;
-      const by = (b[0] - position.lat) * 111320;
-      const dx = bx - ax;
-      const dy = by - ay;
-      const lengthSquared = dx * dx + dy * dy;
-      const t = lengthSquared > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSquared)) : 0;
-      const x = ax + t * dx;
-      const y = ay + t * dy;
-      const distance = Math.hypot(x, y);
-      if (distance < best.distance) best = { distance, progress: i + t };
-    }
-
-    // Keep progress monotonic to prevent GPS drift from bringing the travelled trail back.
-    if (routeProgressRef.current < 0 || best.progress > routeProgressRef.current) {
-      routeProgressRef.current = best.progress;
-    }
-    const progress = Math.min(points.length - 1, Math.max(0, routeProgressRef.current));
-    const segment = Math.min(points.length - 2, Math.floor(progress));
-    const fraction = progress >= points.length - 1 ? 1 : progress - segment;
-    const a = points[segment];
-    const b = points[segment + 1];
-    const lat = a[0] + (b[0] - a[0]) * fraction;
-    const lng = a[1] + (b[1] - a[1]) * fraction;
-
-    const remaining = progress >= points.length - 1
-      ? [points[points.length - 1]]
-      : [[lat, lng], ...points.slice(segment + 1)];
-    routeLineRef.current.setLatLngs(remaining);
-
-    const heading = Math.atan2((b[1] - a[1]) * Math.cos(lat * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI;
-    const arrowIcon = L.divIcon({
-      className: "moy-route-moving-arrow-wrap",
-      html: '<span class="moy-route-moving-arrow" aria-label="Ваше положение" style="--heading:' + heading + 'deg"></span>',
-      iconSize: [12, 12],
-      iconAnchor: [6, 6]
-    });
-    if (!movingArrowRef.current) {
-      movingArrowRef.current = L.marker([lat, lng], {
-        icon: arrowIcon,
-        interactive: false,
-        keyboard: false,
-        zIndexOffset: 1000
-      }).addTo(layers.current);
-    } else {
-      movingArrowRef.current.setLatLng([lat, lng]);
-      const element = movingArrowRef.current.getElement();
-      const arrow = element?.querySelector(".moy-route-moving-arrow");
-      if (arrow) arrow.style.setProperty("--heading", heading + "deg");
-    }
-  }, [ready, positionVersion, routeGeometry]); 
-
-  useEffect(() => {
-    if (!ready || !routeGeometry?.length || !navigator.geolocation || watchId.current !== null) return;
-    watchId.current = navigator.geolocation.watchPosition(
-      position => {
-        positionRef.current = { lat: position.coords.latitude, lng: position.coords.longitude };
-        redraw(value => value + 1);
-      },
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
-    );
-    return () => {
-      if (watchId.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchId.current);
-      watchId.current = null;
-    };
-  }, [ready, routeGeometry?.length]);
 
   return (
     <section className="route-map-panel" aria-label="Карта маршрута">
