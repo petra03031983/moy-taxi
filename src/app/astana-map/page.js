@@ -389,6 +389,10 @@ export default function AstanaMapPage() {
         ].join(","));
         nominatimUrl.searchParams.set("bounded", "0");
       }
+      const waitMs = Math.max(0, 1100 - (Date.now() - lastSearchAtRef.current));
+      if (waitMs) await new Promise(resolve => window.setTimeout(resolve, waitMs));
+      if (controller.signal.aborted || requestId !== searchRequestRef.current) return;
+      lastSearchAtRef.current = Date.now();
       const response = await fetch(nominatimUrl.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
@@ -409,7 +413,12 @@ export default function AstanaMapPage() {
       }
     } finally {
       window.clearTimeout(timeout);
-      if (requestId === searchRequestRef.current) setSearching(false);
+      if (requestId === searchRequestRef.current) {
+        setSearching(false);
+        if (controller.signal.aborted && !error) {
+          setError("Поиск занимает слишком много времени. Попробуйте ещё раз.");
+        }
+      }
     }
   }
 
