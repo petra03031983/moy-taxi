@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#063ca8"/><stop offset=".46" stop-color="#061d52"/><stop offset="1" stop-color="#020916"/></linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a8ffff"/><stop offset=".36" stop-color="#00c8ff"/><stop offset=".7" stop-color="#1765ff"/><stop offset="1" stop-color="#79eaff"/></linearGradient>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#218eff"/><stop offset="1" stop-color="#061c54"/></linearGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff3a1"/><stop offset=".48" stop-color="#ffbd28"/><stop offset="1" stop-color="#ff7a00"/></linearGradient>
+  <linearGradient id="pin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffb22f"/><stop offset=".36" stop-color="#ff3b20"/><stop offset="1" stop-color="#c9003f"/></linearGradient>
+  <linearGradient id="map" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffef6"/><stop offset="1" stop-color="#c9f2ff"/></linearGradient>
+  <linearGradient id="river" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00dfff"/><stop offset="1" stop-color="#0876ff"/></linearGradient>
+  <linearGradient id="whiteText" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#cfe6ff"/></linearGradient>
+  <filter id="shadow" x="-35%" y="-35%" width="170%" height="180%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#000" flood-opacity=".65"/></filter>
+  <filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="inner"><rect x="31" y="31" width="450" height="450" rx="68"/></clipPath>
+</defs>
+<rect x="14" y="14" width="484" height="484" rx="86" fill="url(#bg)" stroke="url(#rim)" stroke-width="9"/>
+<rect x="25" y="25" width="462" height="462" rx="76" fill="none" stroke="#78eeff" stroke-opacity=".3" stroke-width="2"/>
+<g clip-path="url(#inner)">
+  <rect x="30" y="30" width="452" height="210" fill="url(#sky)"/>
+  <circle cx="370" cy="82" r="74" fill="#46c5ff" opacity=".09"/>
+  <path d="M30 184 L53 184 53 139 67 139 67 117 84 117 84 184 101 184 101 158 121 158 121 129 139 129 139 184 159 184 159 119 180 119 180 145 196 145 196 184 216 184 216 119 241 119 241 90 255 90 255 184 276 184 276 145 295 145 295 184 317 184 317 120 339 120 339 103 359 103 359 184 382 184 382 145 400 145 400 115 420 115 420 184 443 184 443 137 462 137 462 190 482 190 482 244 30 244Z" fill="#071b3b" opacity=".92"/>
+  <g fill="#0d356b" stroke="#2e9cff" stroke-opacity=".55" stroke-width="1.5">
+    <rect x="47" y="133" width="26" height="62"/><rect x="79" y="157" width="19" height="38"/>
+    <rect x="114" y="144" width="27" height="51"/><rect x="145" y="112" width="20" height="83"/>
+    <rect x="198" y="116" width="25" height="79"/><rect x="229" y="139" width="21" height="56"/>
+    <rect x="272" y="110" width="27" height="85"/><rect x="306" y="145" width="21" height="50"/>
+    <rect x="350" y="126" width="24" height="69"/><rect x="378" y="101" width="26" height="94"/>
+    <rect x="411" y="142" width="22" height="53"/><rect x="439" y="121" width="25" height="74"/>
+  </g>
+  <g fill="#64d7ff" opacity=".72">
+    <path d="M52 145h7v4h-7zm0 13h7v4h-7zm32 8h6v4h-6zm35-11h8v4h-8zm31-29h6v4h-6zm55 5h7v4h-7zm33 17h7v4h-7zm42-18h8v4h-8zm36 22h7v4h-7zm43-14h8v4h-8zm35-17h7v4h-7zm34 32h7v4h-7z"/>
+  </g>
+  <g filter="url(#shadow)">
+    <path d="M172 198 L160 136 L174 136 L184 198Z" fill="#f3fbff" opacity=".9"/>
+    <path d="M155 197 L174 135 L193 197" fill="none" stroke="#c6f6ff" stroke-width="5"/>
+    <path d="M162 188L187 158M163 171L190 182M167 150L185 172" stroke="#fff" stroke-width="3" opacity=".9"/>
+    <path d="M148 198L174 130L200 198" fill="none" stroke="#fff" stroke-width="3"/>
+    <circle cx="174" cy="97" r="22" fill="url(#gold)" stroke="#fff6ba" stroke-width="3"/>
+    <circle cx="174" cy="97" r="13" fill="none" stroke="#fff2b5" stroke-width="2"/>
+    <path d="M174 75V55" stroke="#ffeaa4" stroke-width="3"/>
+  </g>
+  <path d="M27 218 Q125 188 218 221 T485 214 L485 389 L27 389Z" fill="#063977" opacity=".32"/>
+  <g transform="rotate(-4 256 296)" filter="url(#shadow)">
+    <rect x="38" y="213" width="436" height="170" rx="28" fill="url(#map)" stroke="#e4ffff" stroke-width="6"/>
+    <path d="M45 262 L130 236 L196 254 L259 225 L347 240 L467 225" fill="none" stroke="#d2dce6" stroke-width="6"/>
+    <path d="M48 328 L132 296 L183 319 L242 278 L322 300 L462 271" fill="none" stroke="#b8cce0" stroke-width="7"/>
+    <path d="M78 217L93 379M154 214L167 380M245 214L255 381M340 215L353 381M420 215L435 381" stroke="#d5dfeb" stroke-width="5"/>
+    <path d="M41 279L470 343M49 356L469 236" stroke="#eebf62" stroke-width="7"/>
+    <path d="M40 246L108 272L164 268L218 311L281 329L331 312L389 340L469 323" fill="none" stroke="url(#river)" stroke-width="20" stroke-linecap="round"/>
+    <path d="M40 246L108 272L164 268L218 311L281 329L331 312L389 340L433 330" fill="none" stroke="#087aff" stroke-width="8" stroke-linecap="round"/>
+    <g fill="#4ed75b" stroke="#c9ffc7" stroke-width="2">
+      <path d="M57 286l36-8 14 18-27 14-24-7z"/><path d="M202 232l32-7 15 19-20 10-25-8z"/>
+      <path d="M299 349l31-9 14 15-25 13-23-7z"/><path d="M376 250l31-7 15 19-28 14-21-10z"/>
+    </g>
+    <path d="M127 271l22-5-5 15z" fill="#fff" stroke="#0079ff" stroke-width="3"/>
+  </g>
+  <g filter="url(#shadow)">
+    <path d="M326 158 C291 158 267 184 267 216 C267 263 326 315 326 315 C326 315 385 263 385 216 C385 184 361 158 326 158Z" fill="#a60038" opacity=".5" transform="translate(0 8)"/>
+    <path d="M326 153 C291 153 266 179 266 212 C266 258 326 310 326 310 C326 310 386 258 386 212 C386 179 361 153 326 153Z" fill="url(#pin)" stroke="#ffb55a" stroke-width="5"/>
+    <circle cx="326" cy="211" r="27" fill="url(#whiteText)" stroke="#fff" stroke-width="4"/>
+    <circle cx="326" cy="211" r="15" fill="#087dff" opacity=".18"/>
+  </g>
+  <g filter="url(#shadow)" font-family="Arial, Helvetica, sans-serif" font-weight="900" text-anchor="middle">
+    <text x="256" y="420" font-size="66" fill="url(#whiteText)" stroke="#173c76" stroke-width="1">Карта</text>
+    <text x="256" y="472" font-size="53" fill="#07d7ff" stroke="#0051c8" stroke-width="1">Астана</text>
+  </g>
+</g>
+<rect x="22" y="22" width="468" height="468" rx="78" fill="none" stroke="url(#rim)" stroke-width="4" filter="url(#glow)" opacity=".88"/>
+</svg>

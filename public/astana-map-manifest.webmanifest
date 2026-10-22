@@ -1,0 +1,21 @@
+{
+  "id": "/astana-map",
+  "name": "Карта Астана",
+  "short_name": "Карта Астана",
+  "description": "Карта Астана — поиск адресов и построение маршрутов.",
+  "start_url": "/astana-map",
+  "scope": "/astana-map",
+  "display": "standalone",
+  "background_color": "#061633",
+  "theme_color": "#0757c8",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/astana-map-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
