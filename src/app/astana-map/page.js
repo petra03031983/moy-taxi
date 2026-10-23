@@ -290,6 +290,10 @@ function routeGeometryLength(points) {
   return total;
 }
 
+function angleDifferenceDegrees(a, b) {
+  return Math.abs(((Number(a) - Number(b) + 540) % 360) - 180);
+}
+
 function routePointAtProgress(points, progress) {
   if (!points?.length) return null;
   if (points.length === 1) return points[0];
@@ -535,6 +539,7 @@ export default function AstanaMapPage() {
   const arrowRef = useRef(null);
   const routePointsRef = useRef([]);
   const routeProgressRef = useRef(-1);
+  const lastAppliedNavigationHeadingRef = useRef(null);
   const rerouteRef = useRef({ inFlight: false, lastAttemptAt: 0, offRouteSince: 0, offRouteSamples: 0 });
   const positionRef = useRef(null);
   const watchRef = useRef(null);
@@ -592,10 +597,36 @@ export default function AstanaMapPage() {
     const load = () => {
       if (cancelled || !window.L || !mapEl.current || mapRef.current) return;
       const L = window.L;
-      const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true, rotate: true, touchRotate: true, dragRotate: true, rotateClockwise: true, shiftKeyRotate: false, preventPageGestures: true }).setView(ASTANA, 12);
-      const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
-      const dark = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" });
-      const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "© Esri" });
+      const map = L.map(mapEl.current, {
+        zoomControl: false,
+        attributionControl: true,
+        rotate: true,
+        touchRotate: true,
+        dragRotate: true,
+        rotateClockwise: true,
+        shiftKeyRotate: false,
+        preventPageGestures: true,
+        zoomAnimation: false,
+        fadeAnimation: false,
+      }).setView(ASTANA, 12);
+      const tileOptions = {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors",
+        keepBuffer: 4,
+        updateWhenIdle: true,
+        updateWhenZooming: false,
+        crossOrigin: true,
+      };
+      const base = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", tileOptions);
+      const dark = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", tileOptions);
+      const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        attribution: "© Esri",
+        keepBuffer: 4,
+        updateWhenIdle: true,
+        updateWhenZooming: false,
+        crossOrigin: true,
+      });
       base.addTo(map);
       map._moyTiles = { base, dark, satellite };
       layersRef.current = L.layerGroup().addTo(map);
@@ -909,7 +940,11 @@ export default function AstanaMapPage() {
       routePointsRef.current = line;
       routeRef.current = L.polyline(line, { color: "#20c943", weight: 8, opacity: 0.98, lineCap: "round", lineJoin: "round" }).addTo(group);
       const bounds = L.latLngBounds(boundsPoints.length ? boundsPoints : line);
-      mapRef.current.fitBounds(bounds, { paddingTopLeft: [18, navigating ? 115 : 80], paddingBottomRight: [18, navigating ? 280 : 300], maxZoom: 16 });
+      // During navigation, keep the current camera position and zoom. Fitting the entire route
+      // after an automatic reroute causes a visible jump and forces all map tiles to reload.
+      if (!navigating) {
+        mapRef.current.fitBounds(bounds, { paddingTopLeft: [18, 80], paddingBottomRight: [18, 300], maxZoom: 16 });
+      }
       if (route.steps?.length) {
         route.steps.filter(s => ["turn", "roundabout", "fork"].includes(s.maneuver?.type)).forEach(step => {
           const c = step.maneuver?.location;
@@ -1013,15 +1048,28 @@ export default function AstanaMapPage() {
           points[segment][0] + (points[segment + 1][0] - points[segment][0]) * fraction,
           points[segment][1] + (points[segment + 1][1] - points[segment][1]) * fraction,
         ];
-        heading = snapToRoute({ lat: point[0], lng: point[1] }, points).heading;
-        // Heading-up navigation: keep direction of travel at the top of the screen.
-        if (typeof mapRef.current?.setHeading === "function") {
-          mapRef.current.setHeading(heading, { ease: 0.16, deadzone: 1.5 });
+        // Use the heading from the same GPS-to-route snap that produced progress. Snapping a
+        // second time at a junction can pick a neighbouring segment and make the map swing.
+        heading = snapped.heading;
+        // Heading-up navigation: ignore small GPS heading noise and rotate only for a real turn.
+        if (Number.isFinite(heading) && typeof mapRef.current?.setHeading === "function") {
+          const previousHeading = lastAppliedNavigationHeadingRef.current;
+          if (previousHeading === null || angleDifferenceDegrees(heading, previousHeading) >= 6) {
+            mapRef.current.setHeading(heading, { ease: 0.32, deadzone: 5 });
+            lastAppliedNavigationHeadingRef.current = heading;
+          }
         }
         const remaining = progress >= points.length - 1 ? [points[points.length - 1]] : [point, ...points.slice(segment + 1)];
         routeRef.current?.setLatLngs(remaining);
         setNextInstruction(nextRouteInstruction(route, points, progress));
-        mapRef.current?.panTo(point, { animate: true, duration: 0.35 });
+        // Recentre only when the tracked position has drifted meaningfully from the view center.
+        // Avoid constantly interrupting an animated pan on every noisy GPS update.
+        const currentMap = mapRef.current;
+        const center = currentMap?.getCenter?.();
+        const centerError = center ? distanceBetween([center.lat, center.lng], point) : Infinity;
+        if (currentMap && centerError > 10) {
+          currentMap.panTo(point, { animate: true, duration: 0.5, easeLinearity: 0.3 });
+        }
         const icon = L.divIcon({
           className: "moy-nav-arrow",
           html: '<span class="moy-nav-arrow-shape" aria-hidden="true"><svg viewBox="0 0 48 48" role="presentation"><path d="M24 3 44 44 24 34 4 44Z" fill="#087cf5" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/><path d="M24 15V31" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/></svg></span>',
@@ -1473,6 +1521,7 @@ export default function AstanaMapPage() {
     setShowSteps(false);
     setNavigationMenuOpen(false);
     routeProgressRef.current = -1;
+    lastAppliedNavigationHeadingRef.current = null;
     cameraWarningRef.current = { routeId: activeRoute.id || null, announced: new Set() };
     setNextInstruction(null);
     voiceAnnouncementRef.current = { key: null, lastDistance: null, announced: new Set(), initialAnnounced: false };
@@ -1501,6 +1550,7 @@ export default function AstanaMapPage() {
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
     voiceAnnouncementRef.current = { key: null, lastDistance: null, announced: new Set(), initialAnnounced: false };
     routeProgressRef.current = -1;
+    lastAppliedNavigationHeadingRef.current = null;
     setRouteOptions(items => items.slice());
     if (typeof mapRef.current?.stopHeadingUp === "function") mapRef.current.stopHeadingUp();
     if (typeof mapRef.current?.setBearing === "function") mapRef.current.setBearing(navigationBearingRef.current || 0);
