@@ -306,6 +306,48 @@ function routePointAtProgress(points, progress) {
   ];
 }
 
+function routeHeadingAtProgress(points, progress, lookAheadMeters = 24) {
+  if (!points?.length || points.length < 2) return null;
+  const start = routePointAtProgress(points, progress);
+  if (!start) return null;
+
+  let cursorProgress = Math.max(0, Math.min(points.length - 1, Number(progress) || 0));
+  let remaining = lookAheadMeters;
+  let target = start;
+
+  while (cursorProgress < points.length - 1) {
+    const nextIndex = Math.min(points.length - 1, Math.floor(cursorProgress) + 1);
+    if (nextIndex <= cursorProgress) break;
+    const next = routePointAtProgress(points, nextIndex);
+    const segmentLength = distanceBetween(target, next);
+    if (segmentLength >= remaining && segmentLength > 0.1) {
+      const fraction = remaining / segmentLength;
+      target = [
+        target[0] + (next[0] - target[0]) * fraction,
+        target[1] + (next[1] - target[1]) * fraction,
+      ];
+      break;
+    }
+    remaining -= segmentLength;
+    target = next;
+    cursorProgress = nextIndex;
+  }
+
+  if (distanceBetween(start, target) < 0.5) target = points[points.length - 1];
+  if (!target || distanceBetween(start, target) < 0.5) return null;
+  return (Math.atan2(
+    (target[1] - start[1]) * Math.cos(start[0] * Math.PI / 180),
+    target[0] - start[0]
+  ) * 180 / Math.PI + 360) % 360;
+}
+
+function smoothHeading(previous, target, weight = 0.28) {
+  if (!Number.isFinite(target)) return previous;
+  if (!Number.isFinite(previous)) return ((target % 360) + 360) % 360;
+  const delta = ((target - previous + 540) % 360) - 180;
+  return ((previous + delta * weight) % 360 + 360) % 360;
+}
+
 function routeDistanceBetweenProgress(points, startProgress, endProgress) {
   if (!points?.length || points.length < 2 || endProgress <= startProgress) return 0;
   const start = Math.max(0, Math.min(points.length - 1, startProgress));
@@ -536,6 +578,7 @@ export default function AstanaMapPage() {
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const cameraWarningRef = useRef({ routeId: null, announced: new Set() });
   const routeRef = useRef(null);
+  const passedRouteRef = useRef(null);
   const arrowRef = useRef(null);
   const routePointsRef = useRef([]);
   const routeProgressRef = useRef(-1);
@@ -613,7 +656,8 @@ export default function AstanaMapPage() {
         maxZoom: 19,
         attribution: "© OpenStreetMap contributors",
         keepBuffer: 4,
-        updateWhenIdle: true,
+        updateWhenIdle: false,
+        updateInterval: 300,
         updateWhenZooming: false,
         crossOrigin: true,
       };
@@ -623,7 +667,8 @@ export default function AstanaMapPage() {
         maxZoom: 19,
         attribution: "© Esri",
         keepBuffer: 4,
-        updateWhenIdle: true,
+        updateWhenIdle: false,
+        updateInterval: 300,
         updateWhenZooming: false,
         crossOrigin: true,
       });
@@ -690,6 +735,7 @@ export default function AstanaMapPage() {
       locationLayerRef.current = null;
       roadObjectsLayerRef.current = null;
       roadObjectsRef.current = [];
+      passedRouteRef.current = null;
       roadObjectsRequestRef.current.controller?.abort();
       roadObjectsRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
       routeRef.current = null;
@@ -890,6 +936,7 @@ export default function AstanaMapPage() {
     const group = layersRef.current;
     group.clearLayers();
     routeRef.current = null;
+    passedRouteRef.current = null;
     routePointsRef.current = [];
     routeProgressRef.current = -1;
 
@@ -938,7 +985,22 @@ export default function AstanaMapPage() {
       const line = route.geometry.map(p => [p[1], p[0]]);
       boundsPoints.push(...line);
       routePointsRef.current = line;
-      routeRef.current = L.polyline(line, { color: "#20c943", weight: 8, opacity: 0.98, lineCap: "round", lineJoin: "round" }).addTo(group);
+      routeRef.current = L.polyline(line, {
+        color: "#20c943",
+        weight: 8,
+        opacity: 0.98,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      }).addTo(group);
+      passedRouteRef.current = L.polyline([line[0]], {
+        color: "#d7dfe4",
+        weight: 11,
+        opacity: 1,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      }).addTo(group);
       const bounds = L.latLngBounds(boundsPoints.length ? boundsPoints : line);
       // During navigation, keep the current camera position and zoom. Fitting the entire route
       // after an automatic reroute causes a visible jump and forces all map tiles to reload.
@@ -1048,27 +1110,35 @@ export default function AstanaMapPage() {
           points[segment][0] + (points[segment + 1][0] - points[segment][0]) * fraction,
           points[segment][1] + (points[segment + 1][1] - points[segment][1]) * fraction,
         ];
-        // Use the heading from the same GPS-to-route snap that produced progress. Snapping a
-        // second time at a junction can pick a neighbouring segment and make the map swing.
-        heading = snapped.heading;
-        // Heading-up navigation: ignore small GPS heading noise and rotate only for a real turn.
+        // Derive bearing from monotonic route progress rather than the closest GPS snap segment.
+        // A short look-ahead reduces small geometry wiggles and wrong turns at parallel roads.
+        heading = routeHeadingAtProgress(points, progress, 24);
         if (Number.isFinite(heading) && typeof mapRef.current?.setHeading === "function") {
           const previousHeading = lastAppliedNavigationHeadingRef.current;
-          if (previousHeading === null || angleDifferenceDegrees(heading, previousHeading) >= 6) {
-            mapRef.current.setHeading(heading, { ease: 0.32, deadzone: 5 });
-            lastAppliedNavigationHeadingRef.current = heading;
+          const smoothedHeading = smoothHeading(previousHeading, heading, 0.28);
+          if (previousHeading === null || angleDifferenceDegrees(smoothedHeading, previousHeading) >= 7) {
+            mapRef.current.setHeading(smoothedHeading, { ease: 0.5, deadzone: 4 });
+            lastAppliedNavigationHeadingRef.current = smoothedHeading;
           }
         }
-        const remaining = progress >= points.length - 1 ? [points[points.length - 1]] : [point, ...points.slice(segment + 1)];
-        routeRef.current?.setLatLngs(remaining);
+
+        // Keep the green route geometry fixed. Only the completed part grows behind the car,
+        // so GPS jitter cannot make the active green strip jump forward/back on screen.
+        const passedPoints = points.slice(0, segment + 1);
+        if (!passedPoints.length || distanceBetween(passedPoints[passedPoints.length - 1], point) > 0.5) {
+          passedPoints.push(point);
+        } else {
+          passedPoints[passedPoints.length - 1] = point;
+        }
+        passedRouteRef.current?.setLatLngs(passedPoints.length ? passedPoints : [point]);
+
         setNextInstruction(nextRouteInstruction(route, points, progress));
-        // Recentre only when the tracked position has drifted meaningfully from the view center.
-        // Avoid constantly interrupting an animated pan on every noisy GPS update.
+        // Avoid continuous pans from noisy GPS. A gentler, less frequent pan lets tile grids settle.
         const currentMap = mapRef.current;
         const center = currentMap?.getCenter?.();
         const centerError = center ? distanceBetween([center.lat, center.lng], point) : Infinity;
-        if (currentMap && centerError > 10) {
-          currentMap.panTo(point, { animate: true, duration: 0.5, easeLinearity: 0.3 });
+        if (currentMap && centerError > 18) {
+          currentMap.panTo(point, { animate: true, duration: 0.85, easeLinearity: 0.25 });
         }
         const icon = L.divIcon({
           className: "moy-nav-arrow",
@@ -1091,8 +1161,13 @@ export default function AstanaMapPage() {
         if (snapped.distance > 220 || (rerouteState.offRouteSamples >= 3 && now - rerouteState.offRouteSince >= 2500)) {
           rerouteFromCurrentLocation(origin);
         }
-        if (Number.isFinite(origin.heading) && (origin.speedMps || 0) > 1 && typeof mapRef.current?.setHeading === "function") {
-          mapRef.current.setHeading(origin.heading, { ease: 0.16, deadzone: 2 });
+        if (Number.isFinite(origin.heading) && (origin.speedMps || 0) > 3 && typeof mapRef.current?.setHeading === "function") {
+          const previousHeading = lastAppliedNavigationHeadingRef.current;
+          const smoothedHeading = smoothHeading(previousHeading, origin.heading, 0.18);
+          if (previousHeading === null || angleDifferenceDegrees(smoothedHeading, previousHeading) >= 10) {
+            mapRef.current.setHeading(smoothedHeading, { ease: 0.55, deadzone: 5 });
+            lastAppliedNavigationHeadingRef.current = smoothedHeading;
+          }
         }
         const icon = L.divIcon({ className: "moy-user-icon", html: '<span class="moy-user-dot"></span>', iconSize: [26, 26], iconAnchor: [13, 13] });
         L.marker(point, { icon, zIndexOffset: 2000 }).addTo(group);
@@ -1545,6 +1620,7 @@ export default function AstanaMapPage() {
 
   function stopNavigation() {
     setNavigating(false);
+    passedRouteRef.current?.setLatLngs([]);
     setNavigationMenuOpen(false);
     setNextInstruction(null);
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
