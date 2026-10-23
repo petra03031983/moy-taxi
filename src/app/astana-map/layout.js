@@ -1,3 +1,5 @@
+import "./astana-map.css";
+
 export const metadata = {
   title: "Карта Астана",
   description: "Карта Астана — поиск адресов и построение маршрутов.",
