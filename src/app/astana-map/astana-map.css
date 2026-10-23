@@ -341,4 +341,22 @@
  .astana-nav-menu{left:9px;right:9px;bottom:87px;max-height:49dvh}
 }
 
-
+/* MapLibre 3D buildings view; Leaflet remains the synchronized fallback/navigation controller. */
+.astana-map-3d-canvas{position:absolute;inset:0;z-index:2;display:none;background:#eaf0f5;overflow:hidden;touch-action:pan-x pan-y}
+.astana-map-3d-canvas.active{display:block}
+.astana-map-3d-canvas .maplibregl-map,.astana-map-3d-canvas .maplibregl-canvas-container,.astana-map-3d-canvas .maplibregl-canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important}
+.astana-map-3d-canvas .maplibregl-canvas{outline:none;left:0!important;top:0!important}
+.astana-map-3d-canvas .maplibregl-control-container{font-family:Arial,Helvetica,sans-serif}
+.astana-map-3d-canvas .maplibregl-ctrl-bottom-right{right:3px;bottom:82px}
+.astana-map-3d-canvas .maplibregl-ctrl-attrib{font-size:9px;line-height:1.3;background:rgba(255,255,255,.8);border-radius:5px;padding:2px 4px;max-width:calc(100vw - 24px)}
+.astana-map-canvas-3d-hidden{visibility:hidden!important;pointer-events:none!important}
+.astana-home-3d-toggle{position:absolute;top:76px;right:11px;z-index:23;width:48px;height:44px;border:1px solid #ffffff70;border-radius:14px;background:rgba(10,13,17,.92);color:#fff;font:900 15px Arial,sans-serif;box-shadow:0 3px 12px #0005}
+.astana-home-3d-toggle.active{background:#128f49;border-color:#88e6ac}
+.astana-place-map-controls button.astana-place-3d-toggle{font-size:14px;font-weight:900;background:#128f49;color:#fff}
+.astana-navigation-controls button.astana-nav-3d-toggle{width:54px;height:44px;min-height:44px;flex:none;border-radius:13px;background:rgba(10,13,17,.96);color:#fff;font-size:14px;font-weight:900;box-shadow:0 3px 12px #0008}
+.astana-navigation-controls button.astana-nav-3d-toggle.active{background:#128f49}
+@media(max-width:520px){
+ .astana-home-3d-toggle{top:72px;right:9px;width:44px;height:41px;border-radius:13px;font-size:14px}
+ .astana-map-3d-canvas .maplibregl-ctrl-bottom-right{bottom:76px}
+ .astana-navigation-controls button.astana-nav-3d-toggle{width:48px;height:41px;min-height:41px}
+}
