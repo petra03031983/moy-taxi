@@ -290,6 +290,90 @@ function routeGeometryLength(points) {
   return total;
 }
 
+function routePointAtProgress(points, progress) {
+  if (!points?.length) return null;
+  if (points.length === 1) return points[0];
+  const clamped = Math.max(0, Math.min(points.length - 1, Number(progress) || 0));
+  const segment = Math.min(points.length - 2, Math.floor(clamped));
+  const fraction = clamped >= points.length - 1 ? 1 : clamped - segment;
+  return [
+    points[segment][0] + (points[segment + 1][0] - points[segment][0]) * fraction,
+    points[segment][1] + (points[segment + 1][1] - points[segment][1]) * fraction,
+  ];
+}
+
+function routeDistanceBetweenProgress(points, startProgress, endProgress) {
+  if (!points?.length || points.length < 2 || endProgress <= startProgress) return 0;
+  const start = Math.max(0, Math.min(points.length - 1, startProgress));
+  const end = Math.max(start, Math.min(points.length - 1, endProgress));
+  if (end <= start) return 0;
+  let total = 0;
+  let cursor = routePointAtProgress(points, start);
+  let index = Math.floor(start);
+  while (index < points.length - 1 && index < end) {
+    const nextIndex = Math.min(index + 1, end);
+    const next = routePointAtProgress(points, nextIndex);
+    total += distanceBetween(cursor, next);
+    cursor = next;
+    index = nextIndex;
+  }
+  return total;
+}
+
+function sampleRouteForRoadObjects(points, startProgress = 0, maxDistanceMeters = 7000, maxPoints = 12) {
+  if (!points?.length) return [];
+  if (points.length === 1) return [points[0]];
+  const start = Math.max(0, Math.min(points.length - 1, Number(startProgress) >= 0 ? Number(startProgress) : 0));
+  const startIndex = Math.min(points.length - 2, Math.floor(start));
+  const startPoint = routePointAtProgress(points, start);
+  const samples = [startPoint];
+  const spacing = maxDistanceMeters / Math.max(1, maxPoints - 1);
+  let nextSampleAt = spacing;
+  let walked = 0;
+
+  for (let i = startIndex; i < points.length - 1 && walked < maxDistanceMeters && samples.length < maxPoints; i += 1) {
+    const a = i === startIndex ? startPoint : points[i];
+    const b = points[i + 1];
+    const segmentLength = distanceBetween(a, b);
+    if (segmentLength < 0.1) continue;
+
+    while (nextSampleAt <= walked + segmentLength && samples.length < maxPoints) {
+      const fraction = Math.max(0, Math.min(1, (nextSampleAt - walked) / segmentLength));
+      samples.push([
+        a[0] + (b[0] - a[0]) * fraction,
+        a[1] + (b[1] - a[1]) * fraction,
+      ]);
+      nextSampleAt += spacing;
+    }
+    walked += segmentLength;
+  }
+  const last = routePointAtProgress(points, Math.min(points.length - 1, start + 1));
+  if (samples.length === 1 && last) samples.push(last);
+  return samples;
+}
+
+function roadObjectKind(element) {
+  const tags = element?.tags || {};
+  const enforcement = String(tags.enforcement || tags["enforcement:type"] || "").toLowerCase();
+  const surveillanceType = String(tags["surveillance:type"] || "").toLowerCase();
+  const cameraType = String(tags["camera:type"] || "").toLowerCase();
+  if (
+    tags.highway === "speed_camera" ||
+    /maxspeed|average_speed|traffic_signals|red_light/.test(enforcement) ||
+    /speed|traffic|red_light/.test(surveillanceType) ||
+    /speed|traffic|red_light/.test(cameraType)
+  ) return "camera";
+  if (tags.highway === "traffic_signals") return "traffic-light";
+  return null;
+}
+
+function roadObjectIconHtml(kind) {
+  if (kind === "camera") {
+    return '<span class="moy-road-object-badge moy-road-object-camera" aria-label="Дорожная камера"><svg viewBox="0 0 32 32" role="presentation"><path d="M5 11.5h15.2a2 2 0 0 1 2 2v10.2H5z" fill="#fff"/><path d="m22 15 6-3v13l-6-3z" fill="#fff"/><circle cx="13" cy="17.8" r="4.1" fill="#d92c37"/><circle cx="13" cy="17.8" r="2.5" fill="#fff"/><path d="M10 8h6l2.4 3.5H8z" fill="#fff"/><path d="M15.5 23.5v4M10 27.5h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>';
+  }
+  return '<span class="moy-road-object-badge moy-road-object-signal" aria-label="Светофор"><i></i><i></i><i></i></span>';
+}
+
 function nextTurnArrow(step) {
   const maneuver = step?.maneuver || {};
   const modifier = String(maneuver.modifier || "").toLowerCase();
@@ -412,6 +496,10 @@ export default function AstanaMapPage() {
   const mapRef = useRef(null);
   const layersRef = useRef(null);
   const locationLayerRef = useRef(null);
+  const roadObjectsLayerRef = useRef(null);
+  const roadObjectsRef = useRef([]);
+  const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
+  const cameraWarningRef = useRef({ routeId: null, announced: new Set() });
   const routeRef = useRef(null);
   const arrowRef = useRef(null);
   const routePointsRef = useRef([]);
@@ -451,6 +539,7 @@ export default function AstanaMapPage() {
   const [nextInstruction, setNextInstruction] = useState(null);
   const [navigationStats, setNavigationStats] = useState({ routeId: null, remainingDistanceMeters: 0, remainingSeconds: 0 });
   const [navigationClock, setNavigationClock] = useState(Date.now());
+  const [roadObjectsRevision, setRoadObjectsRevision] = useState(0);
   const navigationStatsRef = useRef({
     routeId: null,
     remainingDistanceMeters: 0,
@@ -480,6 +569,7 @@ export default function AstanaMapPage() {
       map._moyTiles = { base, dark, satellite };
       layersRef.current = L.layerGroup().addTo(map);
       locationLayerRef.current = L.layerGroup().addTo(map);
+      roadObjectsLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       setLeafletReady(true);
       requestAnimationFrame(() => map.invalidateSize());
@@ -536,6 +626,10 @@ export default function AstanaMapPage() {
       mapRef.current = null;
       layersRef.current = null;
       locationLayerRef.current = null;
+      roadObjectsLayerRef.current = null;
+      roadObjectsRef.current = [];
+      roadObjectsRequestRef.current.controller?.abort();
+      roadObjectsRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
       routeRef.current = null;
       arrowRef.current = null;
     };
@@ -932,6 +1026,128 @@ export default function AstanaMapPage() {
   }, [leafletReady, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps, navigating, route]);
 
   useEffect(() => {
+    if (!leafletReady || !mapRef.current || !roadObjectsLayerRef.current) return;
+
+    let disposed = false;
+    const requestState = { inFlight: false, controller: null, lastRequestAt: 0 };
+    roadObjectsRequestRef.current.controller?.abort();
+    roadObjectsRequestRef.current = requestState;
+
+    const lookupAndDraw = async () => {
+      if (disposed || requestState.inFlight || Date.now() - requestState.lastRequestAt < (navigating ? 18000 : 45000)) return;
+
+      const currentRoutePoints = route?.geometry?.length
+        ? route.geometry.map(point => [point[1], point[0]])
+        : [];
+      const currentProgress = navigating && routeProgressRef.current >= 0 ? routeProgressRef.current : 0;
+      const livePosition = positionRef.current || origin;
+      const mapCenter = mapRef.current?.getCenter?.();
+      const anchor = livePosition && Number.isFinite(livePosition.lat) && Number.isFinite(livePosition.lng)
+        ? [livePosition.lat, livePosition.lng]
+        : mapCenter ? [mapCenter.lat, mapCenter.lng] : ASTANA;
+
+      // While following a route, ask for objects along the next 7 km of that route.
+      // On the general map, show nearby road objects around the visible/current location.
+      const routeQueryPoints = currentRoutePoints.length > 1
+        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 7000, 12)
+        : [anchor];
+      const coordinates = routeQueryPoints
+        .map(point => `${Number(point[0].toFixed(6))},${Number(point[1].toFixed(6))}`)
+        .join(",");
+      const radius = currentRoutePoints.length > 1 ? 180 : 2200;
+      const q = `[out:json][timeout:18];(
+        node(around:${radius},${coordinates})[highway=speed_camera];
+        node(around:${radius},${coordinates})[highway=traffic_signals];
+        node(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|traffic_signals|red_light"];
+        node(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"traffic|speed|red_light"];
+        node(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light"];
+      );out body;`;
+
+      const controller = new AbortController();
+      requestState.inFlight = true;
+      requestState.lastRequestAt = Date.now();
+      requestState.controller = controller;
+
+      try {
+        const response = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error("Road-object data unavailable");
+        const data = await response.json();
+        if (disposed || controller.signal.aborted || roadObjectsRequestRef.current !== requestState) return;
+
+        const unique = new Map();
+        for (const element of data.elements || []) {
+          const kind = roadObjectKind(element);
+          const lat = Number(element.lat ?? element.center?.lat);
+          const lng = Number(element.lon ?? element.center?.lon);
+          if (!kind || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          const id = `${element.type || "node"}-${element.id ?? `${lat.toFixed(6)},${lng.toFixed(6)}`}`;
+          if (!unique.has(id)) {
+            unique.set(id, {
+              id,
+              kind,
+              lat,
+              lng,
+              tags: element.tags || {},
+            });
+          }
+        }
+
+        const objects = Array.from(unique.values());
+        roadObjectsRef.current = objects;
+        const group = roadObjectsLayerRef.current;
+        if (!group) return;
+        group.clearLayers();
+
+        const L = window.L;
+        for (const item of objects) {
+          const isCamera = item.kind === "camera";
+          const title = isCamera ? "Камера контроля движения" : "Светофор";
+          const icon = L.divIcon({
+            className: "moy-road-object-icon",
+            html: roadObjectIconHtml(item.kind),
+            iconSize: isCamera ? [42, 42] : [32, 46],
+            iconAnchor: isCamera ? [21, 21] : [16, 23],
+          });
+          const marker = L.marker([item.lat, item.lng], {
+            icon,
+            title,
+            keyboard: false,
+            zIndexOffset: 2400,
+          });
+          const mappedLimit = parseSpeedLimitValue(item.tags.maxspeed);
+          const details = mappedLimit
+            ? `<div class="moy-road-object-popup-limit">Ограничение: ${mappedLimit} км/ч</div>`
+            : "";
+          marker.bindPopup(`<div class="moy-road-object-popup"><b>${escapeHtml(title)}</b>${details}</div>`);
+          marker.addTo(group);
+        }
+        setRoadObjectsRevision(value => value + 1);
+      } catch {
+        // Keep already-loaded objects visible when Overpass is temporarily unavailable.
+      } finally {
+        if (roadObjectsRequestRef.current === requestState) {
+          requestState.inFlight = false;
+          requestState.controller = null;
+        }
+      }
+    };
+
+    void lookupAndDraw();
+    const interval = window.setInterval(() => { void lookupAndDraw(); }, navigating ? 20000 : 50000);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      requestState.controller?.abort();
+      if (roadObjectsRequestRef.current === requestState) {
+        roadObjectsRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
+      }
+    };
+  }, [leafletReady, navigating, route?.id]);
+
+  useEffect(() => {
     if (!navigating || !voiceGuidanceEnabled || !nextInstruction || !Number.isFinite(nextInstruction.distanceMeters)) return;
     const instruction = nextInstruction;
     const distanceMeters = Math.max(0, instruction.distanceMeters);
@@ -963,6 +1179,36 @@ export default function AstanaMapPage() {
     voiceAnnouncementRef.current = state;
     if (phrase) speakRoutePrompt(phrase);
   }, [navigating, voiceGuidanceEnabled, nextInstruction?.maneuverKey, nextInstruction?.distanceMeters, nextInstruction?.maneuverType, nextInstruction?.modifier, nextInstruction?.exit, nextInstruction?.laneRight]);
+
+  useEffect(() => {
+    if (!navigating || !voiceGuidanceEnabled || !route?.geometry?.length || !origin) return;
+
+    const routeId = route.id || null;
+    if (cameraWarningRef.current.routeId !== routeId) {
+      cameraWarningRef.current = { routeId, announced: new Set() };
+    }
+    const points = routePointsRef.current.length > 1
+      ? routePointsRef.current
+      : route.geometry.map(point => [point[1], point[0]]);
+    if (points.length < 2 || routeProgressRef.current < 0) return;
+
+    let nearest = null;
+    for (const item of roadObjectsRef.current) {
+      if (item.kind !== "camera" || cameraWarningRef.current.announced.has(item.id)) continue;
+      const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
+      if (!Number.isFinite(snapped.distance) || snapped.distance > 65) continue;
+      if (snapped.progress < routeProgressRef.current - 0.1) continue;
+      const meters = routeDistanceBetweenProgress(points, routeProgressRef.current, snapped.progress);
+      if (meters < 0 || meters > 850) continue;
+      if (!nearest || meters < nearest.meters) nearest = { item, meters };
+    }
+    if (!nearest) return;
+
+    cameraWarningRef.current.announced.add(nearest.item.id);
+    const cameraLimit = parseSpeedLimitValue(nearest.item.tags?.maxspeed) || speedLimit || null;
+    const limitText = cameraLimit ? ` Ограничение ${cameraLimit} километров в час.` : "";
+    speakRoutePrompt(`Впереди камера контроля скорости.${limitText} Через ${voiceDistanceText(nearest.meters)}.`);
+  }, [navigating, voiceGuidanceEnabled, origin?.lat, origin?.lng, route, speedLimit, roadObjectsRevision]);
 
   useEffect(() => {
     if (!navigating || !route?.geometry?.length) {
@@ -1191,6 +1437,7 @@ export default function AstanaMapPage() {
     setShowSteps(false);
     setNavigationMenuOpen(false);
     routeProgressRef.current = -1;
+    cameraWarningRef.current = { routeId: activeRoute.id || null, announced: new Set() };
     setNextInstruction(null);
     voiceAnnouncementRef.current = { key: null, lastDistance: null, announced: new Set(), initialAnnounced: false };
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1754,6 +2001,19 @@ const styles = `
  .astana-route-transport-strip button{flex-basis:55px;min-width:55px}
 }
 
+
+/* Road object markers: vector silhouettes (no photographs). */
+.moy-road-object-icon{background:transparent;border:0}
+.moy-road-object-badge{display:flex;align-items:center;justify-content:center;box-sizing:border-box;filter:drop-shadow(0 2px 4px rgba(0,0,0,.38))}
+.moy-road-object-camera{width:40px;height:40px;border-radius:50%;background:#d92d3a;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.36)}
+.moy-road-object-camera svg{display:block;width:28px;height:28px}
+.moy-road-object-signal{width:25px;height:42px;flex-direction:column;gap:2px;border-radius:8px;background:#171a20;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.moy-road-object-signal i{display:block;width:8px;height:8px;border-radius:50%;background:#ff3b42;border:1px solid rgba(255,255,255,.25);box-sizing:border-box}
+.moy-road-object-signal i:nth-child(2){background:#ffc928}
+.moy-road-object-signal i:nth-child(3){background:#22d166}
+.moy-road-object-popup{font-family:Arial,sans-serif;font-size:14px;color:#20262c;line-height:1.35}
+.moy-road-object-popup b{font-weight:800}
+.moy-road-object-popup-limit{margin-top:4px;color:#c52e39;font-weight:700}
 
 /* Active navigation screen — dark map, turn instructions, speed widgets and compact HUD. */
 .astana-map-canvas-navigation{background:#f4f7fa}
