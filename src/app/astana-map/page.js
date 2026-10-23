@@ -621,6 +621,11 @@ function speakRoutePrompt(message) {
 
 export default function AstanaMapPage() {
   const mapEl = useRef(null);
+  const map3dEl = useRef(null);
+  const map3dRef = useRef(null);
+  const map3dSyncRef = useRef(false);
+  const map3dReadyRef = useRef(false);
+  const map3dEnabledRef = useRef(true);
   const mapRef = useRef(null);
   const layersRef = useRef(null);
   const locationLayerRef = useRef(null);
@@ -644,6 +649,8 @@ export default function AstanaMapPage() {
   const searchRequestRef = useRef(0);
   const lastSearchAtRef = useRef(0);
   const [leafletReady, setLeafletReady] = useState(false);
+  const [map3dReady, setMap3dReady] = useState(false);
+  const [map3dEnabled, setMap3dEnabled] = useState(true);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -686,6 +693,9 @@ export default function AstanaMapPage() {
   const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
   const navigationMapTypeRef = useRef(null);
   const navigationBearingRef = useRef(0);
+
+  map3dReadyRef.current = map3dReady;
+  map3dEnabledRef.current = map3dEnabled;
 
   useEffect(() => {
     let cancelled = false;
@@ -786,6 +796,14 @@ export default function AstanaMapPage() {
       locationLayerRef.current = L.layerGroup().addTo(map);
       roadObjectsLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
+      const sync3DCameraFromLeaflet = () => {
+        if (!map3dEnabledRef.current || !map3dReadyRef.current || map3dSyncRef.current || !map3dRef.current) return;
+        const center = map.getCenter();
+        map3dRef.current.jumpTo({ center: [center.lng, center.lat], zoom: map.getZoom() });
+      };
+      map.on("moveend", sync3DCameraFromLeaflet);
+      map.on("zoomend", sync3DCameraFromLeaflet);
+      map._moySync3DCamera = sync3DCameraFromLeaflet;
       setLeafletReady(true);
       requestAnimationFrame(() => map.invalidateSize());
     };
@@ -851,6 +869,347 @@ export default function AstanaMapPage() {
       arrowRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadTimer = null;
+    let mapInstance = null;
+
+    const failTo2D = () => {
+      if (cancelled) return;
+      setMap3dEnabled(false);
+      setMap3dReady(false);
+    };
+
+    const addLayerBeforeLabels = (map, layer, labelLayerId) => {
+      if (labelLayerId) map.addLayer(layer, labelLayerId);
+      else map.addLayer(layer);
+    };
+
+    const initialize3DMap = () => {
+      if (cancelled || !window.maplibregl || !map3dEl.current || map3dRef.current) return;
+      try {
+        const initialPosition = positionRef.current || { lat: ASTANA[0], lng: ASTANA[1] };
+        const map = new window.maplibregl.Map({
+          container: map3dEl.current,
+          style: "https://tiles.openfreemap.org/styles/liberty",
+          center: [initialPosition.lng, initialPosition.lat],
+          zoom: 15.5,
+          pitch: 52,
+          bearing: 0,
+          maxPitch: 65,
+          minZoom: 3,
+          maxZoom: 20,
+          attributionControl: true,
+          canvasContextAttributes: { antialias: true },
+        });
+        mapInstance = map;
+        map3dRef.current = map;
+
+        map.once("load", () => {
+          if (cancelled || map3dRef.current !== map) return;
+          try {
+            const styleLayers = map.getStyle().layers || [];
+            const labelLayer = styleLayers.find(layer => layer.type === "symbol" && layer.layout && layer.layout["text-field"]);
+            const labelLayerId = labelLayer ? labelLayer.id : null;
+            const emptyCollection = { type: "FeatureCollection", features: [] };
+
+            // OpenFreeMap publishes vector tiles without an API key; this source supplies real
+            // building footprints and height attributes for the 3D extrusion layer.
+            map.addSource("moy3d-buildings", {
+              type: "vector",
+              url: "https://tiles.openfreemap.org/planet",
+            });
+            addLayerBeforeLabels(map, {
+              id: "moy3d-building-extrusions",
+              type: "fill-extrusion",
+              source: "moy3d-buildings",
+              "source-layer": "building",
+              minzoom: 14.5,
+              filter: ["!=", ["get", "hide_3d"], true],
+              paint: {
+                "fill-extrusion-color": [
+                  "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 10],
+                  0, "#d7dde4",
+                  25, "#c5d0dc",
+                  80, "#9bafc2",
+                  180, "#869caf",
+                ],
+                "fill-extrusion-height": [
+                  "interpolate", ["linear"], ["zoom"],
+                  14.5, 0,
+                  16, ["coalesce", ["get", "render_height"], ["get", "height"], 10],
+                ],
+                "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], ["get", "min_height"], 0],
+                "fill-extrusion-opacity": 0.92,
+                "fill-extrusion-vertical-gradient": true,
+              },
+            }, labelLayerId);
+
+            map.addSource("moy3d-main-route", { type: "geojson", data: emptyCollection });
+            map.addSource("moy3d-alternative-routes", { type: "geojson", data: emptyCollection });
+            map.addSource("moy3d-location-points", { type: "geojson", data: emptyCollection });
+            map.addSource("moy3d-road-objects", { type: "geojson", data: emptyCollection });
+
+            addLayerBeforeLabels(map, {
+              id: "moy3d-alternative-route-lines",
+              type: "line",
+              source: "moy3d-alternative-routes",
+              layout: { "line-cap": "round", "line-join": "round" },
+              paint: { "line-color": "#3284f6", "line-width": 4, "line-opacity": 0.82, "line-dasharray": [2, 1.6] },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-main-route-outline",
+              type: "line",
+              source: "moy3d-main-route",
+              layout: { "line-cap": "round", "line-join": "round" },
+              paint: { "line-color": "#ffffff", "line-width": 9, "line-opacity": 0.88 },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-main-route-line",
+              type: "line",
+              source: "moy3d-main-route",
+              layout: { "line-cap": "round", "line-join": "round" },
+              paint: { "line-color": "#18bd56", "line-width": 5, "line-opacity": 0.98 },
+            }, labelLayerId);
+
+            addLayerBeforeLabels(map, {
+              id: "moy3d-current-position-glow",
+              type: "circle",
+              source: "moy3d-location-points",
+              filter: ["==", ["get", "kind"], "current"],
+              paint: { "circle-radius": 13, "circle-color": "#1385ff", "circle-opacity": 0.2 },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-current-position",
+              type: "circle",
+              source: "moy3d-location-points",
+              filter: ["==", ["get", "kind"], "current"],
+              paint: { "circle-radius": 7, "circle-color": "#087cf5", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-destination-pin",
+              type: "circle",
+              source: "moy3d-location-points",
+              filter: ["==", ["get", "kind"], "destination"],
+              paint: { "circle-radius": 8, "circle-color": "#16b957", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-destination-label",
+              type: "symbol",
+              source: "moy3d-location-points",
+              filter: ["==", ["get", "kind"], "destination"],
+              layout: {
+                "text-field": ["get", "title"],
+                "text-size": 13,
+                "text-offset": [0, 1.3],
+                "text-anchor": "top",
+                "text-max-width": 14,
+                "text-allow-overlap": true,
+              },
+              paint: {
+                "text-color": "#18232e",
+                "text-halo-color": "#ffffff",
+                "text-halo-width": 2,
+              },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-road-object-circles",
+              type: "circle",
+              source: "moy3d-road-objects",
+              paint: {
+                "circle-radius": ["case", ["==", ["get", "kind"], "camera"], 8, 6],
+                "circle-color": ["case", ["==", ["get", "kind"], "camera"], "#d92d3a", "#159b54"],
+                "circle-stroke-color": "#ffffff",
+                "circle-stroke-width": 2,
+              },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-road-object-labels",
+              type: "symbol",
+              source: "moy3d-road-objects",
+              layout: {
+                "text-field": ["case", ["==", ["get", "kind"], "camera"], "К", "С"],
+                "text-size": 10,
+                "text-font": ["Open Sans Regular"],
+                "text-allow-overlap": true,
+                "text-ignore-placement": true,
+              },
+              paint: {
+                "text-color": "#ffffff",
+                "text-halo-color": "#24303a",
+                "text-halo-width": 0.5,
+              },
+            }, labelLayerId);
+
+            map.on("moveend", () => {
+              if (cancelled || !map3dEnabledRef.current || map3dSyncRef.current || !mapRef.current) return;
+              const center = map.getCenter();
+              map3dSyncRef.current = true;
+              mapRef.current.setView([center.lat, center.lng], map.getZoom(), { animate: false });
+              requestAnimationFrame(() => { map3dSyncRef.current = false; });
+              navigationBearingRef.current = map.getBearing();
+            });
+
+            map.on("error", event => {
+              const message = String(event?.error?.message || "");
+              if (/webgl context lost|failed to initialize webgl|webgl not supported/i.test(message)) failTo2D();
+            });
+
+            if (loadTimer !== null) window.clearTimeout(loadTimer);
+            setMap3dReady(true);
+            map.resize();
+
+            // Start the 2D controller at the same camera position so existing search,
+            // route-building, GPS and navigation logic continues to use the same viewport.
+            if (mapRef.current) {
+              const center = map.getCenter();
+              map3dSyncRef.current = true;
+              mapRef.current.setView([center.lat, center.lng], map.getZoom(), { animate: false });
+              requestAnimationFrame(() => { map3dSyncRef.current = false; });
+            }
+          } catch {
+            failTo2D();
+          }
+        });
+
+        map.on("webglcontextlost", failTo2D);
+      } catch {
+        failTo2D();
+      }
+    };
+
+    const cssHref = "https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.css";
+    if (!document.querySelector('link[data-moy-maplibre-css="1"]')) {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = cssHref;
+      css.dataset.moyMaplibreCss = "1";
+      document.head.appendChild(css);
+    }
+
+    loadTimer = window.setTimeout(() => {
+      if (!map3dReadyRef.current) failTo2D();
+    }, 18000);
+
+    if (window.maplibregl) {
+      initialize3DMap();
+    } else {
+      let script = document.querySelector('script[data-moy-maplibre-js="1"]');
+      if (!script) {
+        script = document.createElement("script");
+        script.src = "https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.js";
+        script.dataset.moyMaplibreJs = "1";
+        document.head.appendChild(script);
+      }
+      script.addEventListener("load", initialize3DMap, { once: true });
+      script.addEventListener("error", failTo2D, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      if (loadTimer !== null) window.clearTimeout(loadTimer);
+      if (mapInstance) mapInstance.remove();
+      if (map3dRef.current === mapInstance) map3dRef.current = null;
+      setMap3dReady(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!map3dReady || !map3dRef.current) return;
+    const map = map3dRef.current;
+    const emptyCollection = { type: "FeatureCollection", features: [] };
+    const setGeoJson = (id, data) => {
+      const source = map.getSource(id);
+      if (source && typeof source.setData === "function") source.setData(data || emptyCollection);
+    };
+
+    const mainRoute = route?.geometry?.length > 1 ? {
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: route.geometry },
+    } : null;
+    setGeoJson("moy3d-main-route", {
+      type: "FeatureCollection",
+      features: mainRoute ? [mainRoute] : [],
+    });
+
+    const alternativeFeatures = (routeOptions || [])
+      .filter(option => option && option.geometry?.length > 1 && option.id !== route?.id)
+      .map(option => ({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates: option.geometry },
+      }));
+    setGeoJson("moy3d-alternative-routes", {
+      type: "FeatureCollection",
+      features: alternativeFeatures,
+    });
+
+    const locationFeatures = [];
+    if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+      locationFeatures.push({
+        type: "Feature",
+        properties: { kind: "current", title: "Моё местоположение" },
+        geometry: { type: "Point", coordinates: [origin.lng, origin.lat] },
+      });
+    }
+    if (destination && Number.isFinite(destination.lat) && Number.isFinite(destination.lng)) {
+      locationFeatures.push({
+        type: "Feature",
+        properties: { kind: "destination", title: String(selectedLabel || "Выбранный адрес") },
+        geometry: { type: "Point", coordinates: [destination.lng, destination.lat] },
+      });
+    }
+    setGeoJson("moy3d-location-points", {
+      type: "FeatureCollection",
+      features: locationFeatures,
+    });
+
+    const roadFeatures = (roadObjectsRef.current || [])
+      .filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng))
+      .map(item => ({
+        type: "Feature",
+        properties: { id: String(item.id || ""), kind: item.kind === "camera" ? "camera" : "traffic-light" },
+        geometry: { type: "Point", coordinates: [item.lng, item.lat] },
+      }));
+    setGeoJson("moy3d-road-objects", {
+      type: "FeatureCollection",
+      features: roadFeatures,
+    });
+  }, [map3dReady, route, routeOptions, destination, selectedLabel, origin?.lat, origin?.lng, roadObjectsRevision]);
+
+  useEffect(() => {
+    if (!map3dReady || !map3dRef.current || !map3dEnabled) return;
+    const map = map3dRef.current;
+    map.resize();
+    const current = mapRef.current?.getCenter?.();
+    const fallback = positionRef.current || origin || { lat: ASTANA[0], lng: ASTANA[1] };
+    const center = current ? [current.lng, current.lat] : [fallback.lng, fallback.lat];
+    const targetZoom = Math.max(15.2, Number(mapRef.current?.getZoom?.() || map.getZoom()));
+    map.jumpTo({
+      center,
+      zoom: targetZoom,
+      pitch: navigating ? 58 : 52,
+      bearing: navigating && Number.isFinite(origin?.heading) ? origin.heading : map.getBearing(),
+    });
+    requestAnimationFrame(() => map.resize());
+  }, [map3dEnabled, map3dReady]);
+
+  useEffect(() => {
+    if (!map3dReady || !map3dRef.current || !map3dEnabled || !navigating || !origin) return;
+    const map = map3dRef.current;
+    const bearing = Number.isFinite(origin.heading) && (origin.speedMps || 0) > 2.5
+      ? origin.heading
+      : map.getBearing();
+    map.easeTo({
+      center: [origin.lng, origin.lat],
+      zoom: Math.max(16.5, map.getZoom()),
+      pitch: 58,
+      bearing,
+      duration: 280,
+    });
+  }, [map3dReady, map3dEnabled, navigating, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps]);
 
   useEffect(() => {
     if (!leafletReady || !navigator.geolocation) {
@@ -1696,7 +2055,35 @@ export default function AstanaMapPage() {
     mapRef.current?.setView([point.lat, point.lng], 15);
   }
 
+  function toggle3DMap() {
+    if (!map3dReady || !map3dRef.current) {
+      setError("3D-карта ещё загружается. Попробуйте через несколько секунд.");
+      return;
+    }
+    const enabling = !map3dEnabled;
+    if (enabling) {
+      const center = mapRef.current?.getCenter?.();
+      const fallback = positionRef.current || origin || { lat: ASTANA[0], lng: ASTANA[1] };
+      map3dRef.current.jumpTo({
+        center: center ? [center.lng, center.lat] : [fallback.lng, fallback.lat],
+        zoom: Math.max(15.2, Number(mapRef.current?.getZoom?.() || map3dRef.current.getZoom())),
+        pitch: 52,
+        bearing: 0,
+      });
+    } else {
+      const center = map3dRef.current.getCenter();
+      if (mapRef.current) {
+        map3dSyncRef.current = true;
+        mapRef.current.setView([center.lat, center.lng], map3dRef.current.getZoom(), { animate: false });
+        requestAnimationFrame(() => { map3dSyncRef.current = false; });
+      }
+    }
+    setMap3dEnabled(enabling);
+    setError("");
+  }
+
   function swapMapType() {
+    if (map3dEnabled) setMap3dEnabled(false);
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
 
@@ -1810,7 +2197,9 @@ export default function AstanaMapPage() {
 
   return (
     <main className="astana-map-page">
-      <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}`} />
+      <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
+      <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
+      {isHomeScreen && <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>}
 
 
 
@@ -1898,6 +2287,7 @@ export default function AstanaMapPage() {
         <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить" title="Приблизить">+</button>
         <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить" title="Отдалить">−</button>
         <button onClick={swapMapType} aria-label="Сменить карту" title="Сменить тип карты">◈</button>
+        <button onClick={toggle3DMap} className="astana-place-3d-toggle" aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"} title={map3dEnabled ? "2D-карта" : "3D-карта"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
       </div>}
 
       {destination && !route && <section className="astana-place-card">
@@ -1950,6 +2340,7 @@ export default function AstanaMapPage() {
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
           <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить">−</button>
         </div>
+        <button className="astana-nav-3d-toggle" onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"} title={map3dEnabled ? "2D-карта" : "3D-карта"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
         <button className="astana-nav-recenter" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17, { animate: true }); }} aria-label="Моё местоположение">➤</button>
       </div>}
 
