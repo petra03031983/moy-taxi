@@ -448,6 +448,7 @@ function roadObjectKind(element) {
   const tags = element?.tags || {};
   const enforcement = String(tags.enforcement || tags["enforcement:type"] || "").toLowerCase();
   const surveillanceType = String(tags["surveillance:type"] || "").toLowerCase();
+  const surveillanceZone = String(tags["surveillance:zone"] || "").toLowerCase();
   const surveillance = String(tags.surveillance || "").toLowerCase();
   const cameraType = String(tags["camera:type"] || "").toLowerCase();
   // Classify traffic signals before surveillance/enforcement tags so a signal
@@ -455,8 +456,11 @@ function roadObjectKind(element) {
   if (tags.highway === "traffic_signals") return "traffic-light";
   if (
     tags.highway === "speed_camera" ||
+    tags.highway === "red_light_camera" ||
+    tags.man_made === "speed_camera" ||
     /maxspeed|average_speed|red_light|speed_camera|alpr|license_plate/.test(enforcement) ||
     /speed|traffic|red_light|enforcement|alpr|license_plate/.test(surveillanceType) ||
+    /traffic|road|red_light|speed|enforcement/.test(surveillanceZone) ||
     /speed|traffic|red_light|enforcement|alpr|license_plate/.test(surveillance) ||
     /speed|traffic|red_light|enforcement|alpr|license_plate/.test(cameraType)
   ) return "camera";
@@ -1263,9 +1267,12 @@ export default function AstanaMapPage() {
       const radius = currentRoutePoints.length > 1 ? 180 : 2200;
       const q = `[out:json][timeout:15];(
         nwr(around:${radius},${coordinates})[highway=speed_camera];
-        node(around:${radius},${coordinates})[highway=traffic_signals];
+        nwr(around:${radius},${coordinates})[highway=red_light_camera];
+        nwr(around:${radius},${coordinates})[man_made=speed_camera];
+        nwr(around:${radius},${coordinates})[highway=traffic_signals];
         nwr(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|red_light|speed_camera"];
-        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"traffic|speed|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"camera|traffic|speed|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:zone"~"traffic|road|red_light"];
         nwr(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate"];
         nwr(around:${radius},${coordinates})[surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate"];
         nwr(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light|enforcement|alpr|license_plate"];
