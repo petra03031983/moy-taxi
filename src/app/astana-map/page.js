@@ -962,7 +962,11 @@ export default function AstanaMapPage() {
               type: "line",
               source: "moy3d-main-route",
               layout: { "line-cap": "round", "line-join": "round" },
-              paint: { "line-color": "#ffffff", "line-width": 15, "line-opacity": 0.96 },
+              paint: {
+                "line-color": "#ffffff",
+                "line-width": ["interpolate", ["linear"], ["zoom"], 12, 18, 15, 23, 18, 28],
+                "line-opacity": 1,
+              },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
               id: "moy3d-main-route-line",
@@ -970,8 +974,8 @@ export default function AstanaMapPage() {
               source: "moy3d-main-route",
               layout: { "line-cap": "round", "line-join": "round" },
               paint: {
-                "line-color": "#12c653",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 12, 7, 15, 9, 18, 11],
+                "line-color": "#00e94f",
+                "line-width": ["interpolate", ["linear"], ["zoom"], 12, 10, 15, 14, 18, 18],
                 "line-opacity": 1,
               },
             }, labelLayerId);
@@ -981,18 +985,18 @@ export default function AstanaMapPage() {
               source: "moy3d-main-route",
               layout: {
                 "symbol-placement": "line",
-                "symbol-spacing": 150,
+                "symbol-spacing": 105,
                 "text-field": "➤",
-                "text-size": 19,
+                "text-size": 27,
                 "text-rotation-alignment": "map",
                 "text-keep-upright": false,
                 "text-allow-overlap": true,
                 "text-ignore-placement": true,
               },
               paint: {
-                "text-color": "#087d34",
-                "text-halo-color": "#ffffff",
-                "text-halo-width": 1.8,
+                "text-color": "#ffffff",
+                "text-halo-color": "#087d34",
+                "text-halo-width": 2.7,
               },
             }, labelLayerId);
 
@@ -1203,16 +1207,20 @@ export default function AstanaMapPage() {
       const routeCoordinates = navigating && route?.geometry?.length > 1
         ? route.geometry.map(point => [point[1], point[0]])
         : [];
-      const routeHeading = routeCoordinates.length > 1
-        ? snapToRoute(origin, routeCoordinates).heading
-        : null;
-      const heading = Number.isFinite(origin.heading)
-        ? origin.heading
-        : Number.isFinite(routeHeading) ? routeHeading : 0;
+      const snapped = routeCoordinates.length > 1 ? snapToRoute(origin, routeCoordinates) : null;
+      // GPS often places the icon beside the road. During navigation, pin it to
+      // the actual route line whenever the GPS fix is reasonably close.
+      const snapToGreenRoute = Boolean(snapped && Number.isFinite(snapped.distance) && snapped.distance <= 65);
+      const markerPosition = snapToGreenRoute ? snapped.point : [origin.lat, origin.lng];
+      const heading = snapToGreenRoute
+        ? snapped.heading
+        : Number.isFinite(origin.heading)
+          ? origin.heading
+          : Number.isFinite(snapped?.heading) ? snapped.heading : 0;
       locationFeatures.push({
         type: "Feature",
         properties: { kind: "current", title: "Моё местоположение", heading },
-        geometry: { type: "Point", coordinates: [origin.lng, origin.lat] },
+        geometry: { type: "Point", coordinates: [markerPosition[1], markerPosition[0]] },
       });
     }
     if (destination && Number.isFinite(destination.lat) && Number.isFinite(destination.lng)) {
