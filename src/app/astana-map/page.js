@@ -787,7 +787,7 @@ export default function AstanaMapPage() {
         if (!cancelled && mapRef.current === map && !map._moyHasLoadedBaseTile && !map.hasLayer(satellite)) {
           activateTileFallback(1);
         }
-      }, 6500);
+      }, 1800);
       map._moyTiles = { base, dark, satellite, carto, esriStreet };
       layersRef.current = L.layerGroup().addTo(map);
       locationLayerRef.current = L.layerGroup().addTo(map);
@@ -813,41 +813,66 @@ export default function AstanaMapPage() {
     }
     const loadWithRotation = () => {
       if (cancelled || !window.L) return;
-      if (typeof window.L.Map?.prototype?.setBearing === "function") {
-        load();
-        return;
-      }
+
+      // Do not make the whole map wait for the optional rotation plugin.
+      // Paint the street map immediately, while rotation support loads in parallel.
+      load();
+      if (typeof window.L.Map?.prototype?.setBearing === "function") return;
+
       let rotateScript = document.querySelector('script[data-moy-leaflet-rotate-js="1"]');
       if (!rotateScript) {
         rotateScript = document.createElement("script");
         rotateScript.src = "https://unpkg.com/@tomickigrzegorz/leaflet-rotate@0.3.0/dist/leaflet-rotate.umd.min.js";
         rotateScript.dataset.moyLeafletRotateJs = "1";
-        rotateScript.addEventListener("load", () => { if (!cancelled) load(); }, { once: true });
-        rotateScript.addEventListener("error", () => { if (!cancelled) load(); }, { once: true });
+        rotateScript.addEventListener("load", () => {
+          rotateScript.dataset.moyLeafletRotateLoaded = "true";
+        }, { once: true });
         document.head.appendChild(rotateScript);
-        return;
+      } else if (rotateScript.dataset.moyLeafletRotateLoaded !== "true") {
+        rotateScript.addEventListener("load", () => {
+          rotateScript.dataset.moyLeafletRotateLoaded = "true";
+        }, { once: true });
       }
-      if (typeof window.L.Map?.prototype?.setBearing === "function" || rotateScript.dataset.moyLeafletRotateLoaded === "true") {
-        load();
-        return;
-      }
-      rotateScript.addEventListener("load", () => {
-        rotateScript.dataset.moyLeafletRotateLoaded = "true";
-        if (!cancelled) load();
-      }, { once: true });
-      rotateScript.addEventListener("error", () => { if (!cancelled) load(); }, { once: true });
     };
 
     if (window.L) loadWithRotation();
     else {
       let script = document.querySelector('script[data-moy-leaflet-js="1"]');
-      if (!script) {
-        script = document.createElement("script");
-        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-        script.dataset.moyLeafletJs = "1";
-        document.head.appendChild(script);
+      if (window.L) {
+        loadWithRotation();
+      } else {
+        if (script && script.dataset.moyLeafletLoaded === "true") {
+          loadWithRotation();
+        } else {
+          if (!script) {
+            script = document.createElement("script");
+            script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+            script.dataset.moyLeafletJs = "1";
+            script.addEventListener("load", () => {
+              script.dataset.moyLeafletLoaded = "true";
+              loadWithRotation();
+            }, { once: true });
+            script.addEventListener("error", () => {
+              if (!cancelled) {
+                setLocating(false);
+                setError("Не удалось загрузить карту. Проверьте интернет и обновите страницу.");
+              }
+            }, { once: true });
+            document.head.appendChild(script);
+          } else {
+            script.addEventListener("load", () => {
+              script.dataset.moyLeafletLoaded = "true";
+              loadWithRotation();
+            }, { once: true });
+            script.addEventListener("error", () => {
+              if (!cancelled) {
+                setLocating(false);
+                setError("Не удалось загрузить карту. Проверьте интернет и обновите страницу.");
+              }
+            }, { once: true });
+          }
+        }
       }
-      script.addEventListener("load", loadWithRotation, { once: true });
     }
     return () => {
       cancelled = true;
