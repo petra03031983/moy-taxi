@@ -1156,9 +1156,12 @@ export default function AstanaMapPage() {
       });
     }
     if (destination && Number.isFinite(destination.lat) && Number.isFinite(destination.lng)) {
+      const destinationTitle = selectedPlace
+        ? selectedPlaceTitle(selectedPlace)
+        : String(query || "Выбранный адрес");
       locationFeatures.push({
         type: "Feature",
-        properties: { kind: "destination", title: String(selectedLabel || "Выбранный адрес") },
+        properties: { kind: "destination", title: destinationTitle },
         geometry: { type: "Point", coordinates: [destination.lng, destination.lat] },
       });
     }
@@ -1178,7 +1181,7 @@ export default function AstanaMapPage() {
       type: "FeatureCollection",
       features: roadFeatures,
     });
-  }, [map3dReady, route, routeOptions, destination, selectedLabel, origin?.lat, origin?.lng, roadObjectsRevision]);
+  }, [map3dReady, route, routeOptions, destination, selectedPlace, query, origin?.lat, origin?.lng, roadObjectsRevision]);
 
   useEffect(() => {
     if (!map3dReady || !map3dRef.current || !map3dEnabled) return;
