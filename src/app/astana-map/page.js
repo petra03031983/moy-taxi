@@ -962,14 +962,38 @@ export default function AstanaMapPage() {
               type: "line",
               source: "moy3d-main-route",
               layout: { "line-cap": "round", "line-join": "round" },
-              paint: { "line-color": "#ffffff", "line-width": 9, "line-opacity": 0.88 },
+              paint: { "line-color": "#ffffff", "line-width": 15, "line-opacity": 0.96 },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
               id: "moy3d-main-route-line",
               type: "line",
               source: "moy3d-main-route",
               layout: { "line-cap": "round", "line-join": "round" },
-              paint: { "line-color": "#18bd56", "line-width": 5, "line-opacity": 0.98 },
+              paint: {
+                "line-color": "#12c653",
+                "line-width": ["interpolate", ["linear"], ["zoom"], 12, 7, 15, 9, 18, 11],
+                "line-opacity": 1,
+              },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-main-route-direction-arrows",
+              type: "symbol",
+              source: "moy3d-main-route",
+              layout: {
+                "symbol-placement": "line",
+                "symbol-spacing": 150,
+                "text-field": "➤",
+                "text-size": 19,
+                "text-rotation-alignment": "map",
+                "text-keep-upright": false,
+                "text-allow-overlap": true,
+                "text-ignore-placement": true,
+              },
+              paint: {
+                "text-color": "#087d34",
+                "text-halo-color": "#ffffff",
+                "text-halo-width": 1.8,
+              },
             }, labelLayerId);
 
             addLayerBeforeLabels(map, {
@@ -985,6 +1009,26 @@ export default function AstanaMapPage() {
               source: "moy3d-location-points",
               filter: ["==", ["get", "kind"], "current"],
               paint: { "circle-radius": 7, "circle-color": "#087cf5", "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 },
+            }, labelLayerId);
+            addLayerBeforeLabels(map, {
+              id: "moy3d-current-direction-arrow",
+              type: "symbol",
+              source: "moy3d-location-points",
+              filter: ["==", ["get", "kind"], "current"],
+              layout: {
+                "text-field": "▲",
+                "text-size": 30,
+                "text-rotate": ["get", "heading"],
+                "text-rotation-alignment": "map",
+                "text-allow-overlap": true,
+                "text-ignore-placement": true,
+                "text-offset": [0, -0.1],
+              },
+              paint: {
+                "text-color": "#087cf5",
+                "text-halo-color": "#ffffff",
+                "text-halo-width": 3,
+              },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
               id: "moy3d-destination-pin",
@@ -1156,9 +1200,18 @@ export default function AstanaMapPage() {
 
     const locationFeatures = [];
     if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+      const routeCoordinates = navigating && route?.geometry?.length > 1
+        ? route.geometry.map(point => [point[1], point[0]])
+        : [];
+      const routeHeading = routeCoordinates.length > 1
+        ? snapToRoute(origin, routeCoordinates).heading
+        : null;
+      const heading = Number.isFinite(origin.heading)
+        ? origin.heading
+        : Number.isFinite(routeHeading) ? routeHeading : 0;
       locationFeatures.push({
         type: "Feature",
-        properties: { kind: "current", title: "Моё местоположение" },
+        properties: { kind: "current", title: "Моё местоположение", heading },
         geometry: { type: "Point", coordinates: [origin.lng, origin.lat] },
       });
     }
