@@ -9,7 +9,39 @@ const ROUTERS = {
   car: "https://routing.openstreetmap.de/routed-car/route/v1/driving",
   walk: "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
 };
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+async function fetchOverpassJSON(query, parentSignal) {
+  let lastError = null;
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    if (parentSignal?.aborted) throw new Error("Road data request was cancelled");
+    const controller = new AbortController();
+    const abortFromParent = () => controller.abort();
+    parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+    const timeoutId = setTimeout(() => controller.abort(), 6500);
+    try {
+      const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`OpenStreetMap data unavailable (${response.status})`);
+      const data = await response.json();
+      if (!Array.isArray(data?.elements)) throw new Error("Invalid OpenStreetMap response");
+      return data;
+    } catch (error) {
+      if (parentSignal?.aborted) throw error;
+      lastError = error;
+    } finally {
+      clearTimeout(timeoutId);
+      parentSignal?.removeEventListener("abort", abortFromParent);
+    }
+  }
+  throw lastError || new Error("OpenStreetMap road data unavailable");
+}
 
 function formatDistance(meters) {
   const n = Number(meters || 0);
@@ -216,8 +248,19 @@ function fallbackSpeedLimitForWay(tags = {}) {
   const zone = String(tags["zone:traffic"] || "").toLowerCase();
   const name = String(tags.name || "").toLowerCase();
 
-  // Kazakhstan's current default in built-up areas is 60 km/h; living streets and
-  // clearly identified courtyard/yard roads use 20 km/h. A numeric sign/tag wins.
+  // Use a numeric/sign-defined limit when the map source has one. A missing
+  // maxspeed tag is not proof that the posted limit is 60 km/h.
+  const taggedLimit =
+    parseSpeedLimitValue(tags.maxspeed) ??
+    parseSpeedLimitValue(tags["maxspeed:forward"]) ??
+    parseSpeedLimitValue(tags["maxspeed:backward"]) ??
+    parseSpeedLimitValue(tags["traffic_sign:maxspeed"]) ??
+    parseSpeedLimitValue(tags["maxspeed:type"]) ??
+    parseSpeedLimitValue(tags["zone:traffic"]);
+  if (taggedLimit !== null) return taggedLimit;
+
+  // Only use a conservative local-road fallback for clearly marked courtyard
+  // and living-street segments. For other untagged roads, report unknown.
   if (
     highway === "living_street" ||
     /living.?street|yard|courtyard|жил(ая|ой) зона|дворов/.test(zone) ||
@@ -225,7 +268,7 @@ function fallbackSpeedLimitForWay(tags = {}) {
     service === "parking_aisle" ||
     /двор|жил(ая|ой) зона/.test(name)
   ) return 20;
-  return 60;
+  return null;
 }
 
 function findSpeedLimitForRoute(position, routePoints, ways) {
@@ -243,9 +286,12 @@ function findSpeedLimitForRoute(position, routePoints, ways) {
     if (points.length < 2) continue;
 
     const snapped = snapToRoute(position, points);
-    if (!Number.isFinite(snapped.distance) || snapped.distance > 75) continue;
+    if (!Number.isFinite(snapped.distance) || snapped.distance > 45) continue;
 
-    let value = parseSpeedLimitValue(tags.maxspeed);
+    let value =
+      parseSpeedLimitValue(tags.maxspeed) ??
+      parseSpeedLimitValue(tags["traffic_sign:maxspeed"]) ??
+      parseSpeedLimitValue(tags["maxspeed:type"]);
     let directionDifference = 0;
     let score = snapped.distance;
     if (routeHeading !== null) {
@@ -402,16 +448,22 @@ function roadObjectKind(element) {
   const tags = element?.tags || {};
   const enforcement = String(tags.enforcement || tags["enforcement:type"] || "").toLowerCase();
   const surveillanceType = String(tags["surveillance:type"] || "").toLowerCase();
+  const surveillanceZone = String(tags["surveillance:zone"] || "").toLowerCase();
   const surveillance = String(tags.surveillance || "").toLowerCase();
   const cameraType = String(tags["camera:type"] || "").toLowerCase();
+  // Classify traffic signals before surveillance/enforcement tags so a signal
+  // is never accidentally rendered as a camera.
+  if (tags.highway === "traffic_signals") return "traffic-light";
   if (
     tags.highway === "speed_camera" ||
-    /maxspeed|average_speed|traffic_signals|red_light/.test(enforcement) ||
-    /speed|traffic|red_light/.test(surveillanceType) ||
-    /speed|traffic|red_light/.test(surveillance) ||
-    /speed|traffic|red_light/.test(cameraType)
+    tags.highway === "red_light_camera" ||
+    tags.man_made === "speed_camera" ||
+    /maxspeed|average_speed|red_light|speed_camera|alpr|license_plate/.test(enforcement) ||
+    /speed|traffic|red_light|enforcement|alpr|license_plate/.test(surveillanceType) ||
+    /traffic|road|red_light|speed|enforcement/.test(surveillanceZone) ||
+    /speed|traffic|red_light|enforcement|alpr|license_plate/.test(surveillance) ||
+    /speed|traffic|red_light|enforcement|alpr|license_plate/.test(cameraType)
   ) return "camera";
-  if (tags.highway === "traffic_signals") return "traffic-light";
   return null;
 }
 
@@ -577,6 +629,7 @@ export default function AstanaMapPage() {
   const roadObjectsRef = useRef([]);
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const cameraWarningRef = useRef({ routeId: null, announced: new Set() });
+  const speedWarningRef = useRef({ active: false, limit: null, lastSpokenAt: 0 });
   const routeRef = useRef(null);
   const passedRouteRef = useRef(null);
   const arrowRef = useRef(null);
@@ -1212,15 +1265,18 @@ export default function AstanaMapPage() {
         .map(point => `${Number(point[0].toFixed(6))},${Number(point[1].toFixed(6))}`)
         .join(",");
       const radius = currentRoutePoints.length > 1 ? 180 : 2200;
-      const q = `[out:json][timeout:18];(
-        node(around:${radius},${coordinates})[highway=speed_camera];
-        node(around:${radius},${coordinates})[highway=traffic_signals];
-        node(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|traffic_signals|red_light"];
-        node(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"traffic|speed|red_light"];
-        node(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light"];
-        node(around:${radius},${coordinates})[surveillance~"traffic|speed|red_light"];
-        node(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light"];
-      );out body;`;
+      const q = `[out:json][timeout:15];(
+        nwr(around:${radius},${coordinates})[highway=speed_camera];
+        nwr(around:${radius},${coordinates})[highway=red_light_camera];
+        nwr(around:${radius},${coordinates})[man_made=speed_camera];
+        nwr(around:${radius},${coordinates})[highway=traffic_signals];
+        nwr(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|red_light|speed_camera"];
+        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"camera|traffic|speed|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:zone"~"traffic|road|red_light"];
+        nwr(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})[surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light|enforcement|alpr|license_plate"];
+      );out tags center;`;
 
       const controller = new AbortController();
       requestState.inFlight = true;
@@ -1228,12 +1284,7 @@ export default function AstanaMapPage() {
       requestState.controller = controller;
 
       try {
-        const response = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, {
-          signal: controller.signal,
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok) throw new Error("Road-object data unavailable");
-        const data = await response.json();
+        const data = await fetchOverpassJSON(q, controller.signal);
         if (disposed || controller.signal.aborted || roadObjectsRequestRef.current !== requestState) return;
 
         const unique = new Map();
@@ -1378,8 +1429,7 @@ export default function AstanaMapPage() {
     }
 
     let disposed = false;
-    // Keep a numeric limit displayed even before the first map lookup returns.
-    setSpeedLimit(60);
+    // Do not show a guessed 60 km/h while the live road lookup is pending.
     const lookup = async () => {
       const requestState = speedLimitRequestRef.current;
       const now = Date.now();
@@ -1398,13 +1448,8 @@ export default function AstanaMapPage() {
       try {
         const lat = Number(current.lat.toFixed(6));
         const lng = Number(current.lng.toFixed(6));
-        const q = `[out:json][timeout:8];way(around:180,${lat},${lng})[highway];out tags geom;`;
-        const res = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, {
-          signal: controller.signal,
-          headers: { Accept: "application/json" },
-        });
-        if (!res.ok) throw new Error("Speed-limit lookup failed");
-        const data = await res.json();
+        const q = `[out:json][timeout:8];way(around:110,${lat},${lng})[highway];out tags geom;`;
+        const data = await fetchOverpassJSON(q, controller.signal);
         if (disposed || controller.signal.aborted) return;
 
         const activePoints = routePointsRef.current.length > 1
@@ -1433,6 +1478,32 @@ export default function AstanaMapPage() {
       speedLimitRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
     };
   }, [navigating, route]);
+
+  useEffect(() => {
+    const state = speedWarningRef.current;
+    if (!navigating || !voiceGuidanceEnabled || !Number.isFinite(speedLimit)) {
+      state.active = false;
+      state.limit = speedLimit ?? null;
+      return;
+    }
+
+    // Require a small margin above the limit to avoid GPS rounding noise.
+    if (speed <= speedLimit + 1) {
+      state.active = false;
+      state.limit = speedLimit;
+      return;
+    }
+    if (speed < speedLimit + 4) return;
+
+    const now = Date.now();
+    const newLimit = state.limit !== speedLimit;
+    if (!state.active || newLimit || now - state.lastSpokenAt >= 30000) {
+      speakRoutePrompt(`Внимание! Превышение скорости. Ограничение ${speedLimit} километров в час.`);
+      state.active = true;
+      state.limit = speedLimit;
+      state.lastSpokenAt = now;
+    }
+  }, [navigating, voiceGuidanceEnabled, speed, speedLimit]);
 
   async function rerouteFromCurrentLocation(currentPosition = origin) {
     const state = rerouteRef.current;
@@ -1605,6 +1676,9 @@ export default function AstanaMapPage() {
     const routePoints = activeRoute.geometry.map(p => [p[1], p[0]]);
     const initialHeading = current && routePoints.length > 1 ? snapToRoute(current, routePoints).heading : null;
     setNavigating(true);
+    setVoiceGuidanceEnabled(true);
+    speedWarningRef.current = { active: false, limit: null, lastSpokenAt: 0 };
+    speakRoutePrompt("Голосовые предупреждения включены.");
     // Keep the live-navigation map on the same light OSM tiles; avoid a dark-layer swap.
     setMapType("map");
     if (current && mapRef.current) {
@@ -1806,7 +1880,7 @@ export default function AstanaMapPage() {
 
       {showMapUtilityControls && <div className="astana-map-right-controls astana-navigation-controls">
         <button className={`astana-nav-voice-toggle ${voiceGuidanceEnabled ? "enabled" : ""}`} onClick={toggleVoiceGuidance} aria-label={voiceGuidanceEnabled ? "Выключить голосовые подсказки" : "Включить голосовые подсказки"} title={voiceGuidanceEnabled ? "Голосовые подсказки включены" : "Включить голосовые подсказки"}>{voiceGuidanceEnabled ? "🔊" : "🔇"}</button>
-        <div className="astana-nav-speed-limit" aria-label={`Ограничение скорости ${speedLimit ?? 60} километров в час`} title="Ограничение скорости"><b>{speedLimit ?? 60}</b></div>
+        <div className="astana-nav-speed-limit" aria-label={speedLimit !== null ? `Ограничение скорости ${speedLimit} километров в час` : "Ограничение скорости не определено"} title="Ограничение скорости"><b>{speedLimit ?? "—"}</b></div>
         <div className="astana-nav-speed-now"><b>{speed}</b></div>
         <div className="astana-nav-zoom">
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
