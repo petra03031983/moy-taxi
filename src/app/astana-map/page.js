@@ -336,6 +336,7 @@ export default function AstanaMapPage() {
   const arrowRef = useRef(null);
   const routePointsRef = useRef([]);
   const routeProgressRef = useRef(-1);
+  const rerouteRef = useRef({ inFlight: false, lastAttemptAt: 0, offRouteSince: 0, offRouteSamples: 0 });
   const positionRef = useRef(null);
   const watchRef = useRef(null);
   const searchAbortRef = useRef(null);
@@ -719,6 +720,8 @@ export default function AstanaMapPage() {
     if (navigating && route?.geometry?.length > 1 && points.length > 1) {
       const snapped = snapToRoute(origin, points);
       if (snapped.distance <= 85) {
+        rerouteRef.current.offRouteSince = 0;
+        rerouteRef.current.offRouteSamples = 0;
         if (routeProgressRef.current < 0 || snapped.progress > routeProgressRef.current) {
           routeProgressRef.current = snapped.progress;
         }
@@ -747,6 +750,18 @@ export default function AstanaMapPage() {
         arrowRef.current = L.marker(point, { icon, interactive: false, zIndexOffset: 2000 }).addTo(group);
       } else {
         setNextInstruction({ distance: "", arrow: "↑" });
+        const rerouteState = rerouteRef.current;
+        const now = Date.now();
+        if (!rerouteState.offRouteSince) {
+          rerouteState.offRouteSince = now;
+          rerouteState.offRouteSamples = 1;
+        } else {
+          rerouteState.offRouteSamples += 1;
+        }
+        // Recalculate only after persistent deviation, unless GPS places the driver far away.
+        if (snapped.distance > 220 || (rerouteState.offRouteSamples >= 3 && now - rerouteState.offRouteSince >= 2500)) {
+          rerouteFromCurrentLocation(origin);
+        }
         if (Number.isFinite(origin.heading) && (origin.speedMps || 0) > 1 && typeof mapRef.current?.setHeading === "function") {
           mapRef.current.setHeading(origin.heading, { ease: 0.16, deadzone: 2 });
         }
@@ -823,6 +838,59 @@ export default function AstanaMapPage() {
       controller.abort();
     };
   }, [speedLimitCell]);
+
+  async function rerouteFromCurrentLocation(currentPosition = origin) {
+    const state = rerouteRef.current;
+    const now = Date.now();
+    if (!navigating || !destination || !currentPosition || state.inFlight) return;
+    if (now - state.lastAttemptAt < 12000) return;
+    if (currentPosition.lat == null || currentPosition.lng == null) return;
+
+    state.inFlight = true;
+    state.lastAttemptAt = now;
+    try {
+      const router = mode === "walk" ? ROUTERS.walk : ROUTERS.car;
+      const alternatives = mode === "car" ? "&alternatives=true" : "";
+      const url = `${router}/${currentPosition.lng},${currentPosition.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson&steps=true&annotations=true${alternatives}`;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 18000);
+      let response;
+      try {
+        response = await fetch(url, { signal: controller.signal });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      if (!response.ok) throw new Error("Роутер временно недоступен");
+      const data = await response.json();
+      if (data.code !== "Ok" || !data.routes?.length || !data.routes[0]?.geometry?.coordinates?.length) {
+        throw new Error("Новый маршрут не найден");
+      }
+      const options = data.routes.slice(0, mode === "car" ? 3 : 1).map((item, index) => ({
+        id: `reroute-${Date.now()}-${index}`,
+        geometry: item.geometry.coordinates,
+        distance: item.distance,
+        duration: item.duration,
+        steps: item.legs?.flatMap(leg => leg.steps || []) || [],
+        mode,
+        optionIndex: index,
+      }));
+      setRouteOrigin({ lat: currentPosition.lat, lng: currentPosition.lng });
+      setRouteOptions(options);
+      setRoute(options[0]);
+      routeProgressRef.current = -1;
+      rerouteRef.current.offRouteSince = 0;
+      rerouteRef.current.offRouteSamples = 0;
+      setNextInstruction(null);
+      setError("");
+      if (voiceGuidanceEnabled) speakRoutePrompt("Маршрут перестроен.");
+    } catch {
+      // Keep the active route and navigation visible. Retry after the cooldown if still off-route.
+      rerouteRef.current.offRouteSince = Date.now();
+      rerouteRef.current.offRouteSamples = 0;
+    } finally {
+      rerouteRef.current.inFlight = false;
+    }
+  }
 
   async function buildRoute(nextMode = mode) {
     if (!origin || !destination) {
