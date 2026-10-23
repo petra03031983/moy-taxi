@@ -893,8 +893,10 @@ export default function AstanaMapPage() {
   }, []);
 
   useEffect(() => {
+    if (!leafletReady) return;
     let cancelled = false;
     let loadTimer = null;
+    let start3dTimer = null;
     let mapInstance = null;
 
     const failTo2D = () => {
@@ -1152,49 +1154,53 @@ export default function AstanaMapPage() {
       }
     };
 
-    // v6 is ESM-only and no longer exposes a global from a classic <script src>.
-    // The existing loader uses window.maplibregl, so use the supported v5 UMD bundle.
-    const cssHref = "https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css";
-    let css = document.querySelector('link[data-moy-maplibre-css="1"]');
-    if (!css) {
-      css = document.createElement("link");
-      css.rel = "stylesheet";
-      css.dataset.moyMaplibreCss = "1";
-      document.head.appendChild(css);
-    }
-    if (css.href !== cssHref) css.href = cssHref;
+    // Start 3D only after the normal map has mounted. This prevents WebGL/style downloads
+    // from competing with the first street tiles on a mobile connection.
+    const start3DResources = () => {
+      if (cancelled) return;
+      const cssHref = "https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css";
+      let css = document.querySelector('link[data-moy-maplibre-css="1"]');
+      if (!css) {
+        css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.dataset.moyMaplibreCss = "1";
+        document.head.appendChild(css);
+      }
+      if (css.href !== cssHref) css.href = cssHref;
 
-    loadTimer = window.setTimeout(() => {
-      if (!map3dReadyRef.current) failTo2D();
-    }, 18000);
+      loadTimer = window.setTimeout(() => {
+        if (!map3dReadyRef.current) failTo2D();
+      }, 18000);
 
-    if (window.maplibregl) {
-      initialize3DMap();
-    } else {
-      // If a previous incompatible/failed script tag remains, replace it instead of
-      // waiting forever on a load event that has already happened (or will never fire).
-      const oldScript = document.querySelector('script[data-moy-maplibre-js="1"]');
-      if (oldScript) oldScript.remove();
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js";
-      script.dataset.moyMaplibreJs = "1";
-      script.addEventListener("load", () => {
-        if (window.maplibregl) initialize3DMap();
-        else failTo2D();
-      }, { once: true });
-      script.addEventListener("error", failTo2D, { once: true });
-      document.head.appendChild(script);
-    }
+      if (window.maplibregl) {
+        initialize3DMap();
+      } else {
+        // Replace an old incompatible script so the global bundle can initialize properly.
+        const oldScript = document.querySelector('script[data-moy-maplibre-js="1"]');
+        if (oldScript) oldScript.remove();
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js";
+        script.dataset.moyMaplibreJs = "1";
+        script.addEventListener("load", () => {
+          if (window.maplibregl) initialize3DMap();
+          else failTo2D();
+        }, { once: true });
+        script.addEventListener("error", failTo2D, { once: true });
+        document.head.appendChild(script);
+      }
+    };
+    start3dTimer = window.setTimeout(start3DResources, 1600);
 
     return () => {
       cancelled = true;
       map3dReadyRef.current = false;
+      if (start3dTimer !== null) window.clearTimeout(start3dTimer);
       if (loadTimer !== null) window.clearTimeout(loadTimer);
       if (mapInstance) mapInstance.remove();
       if (map3dRef.current === mapInstance) map3dRef.current = null;
       setMap3dReady(false);
     };
-  }, []);
+  }, [leafletReady]);
 
   useEffect(() => {
     if (!map3dReady || !map3dRef.current) return;
@@ -1313,16 +1319,25 @@ export default function AstanaMapPage() {
       setLocating(false);
       return;
     }
+    // Never let GPS permission/location lookup hold the home screen in a loading state.
+    let locatingFallbackTimer = window.setTimeout(() => setLocating(false), 4500);
+    const finishLocating = () => {
+      if (locatingFallbackTimer !== null) {
+        window.clearTimeout(locatingFallbackTimer);
+        locatingFallbackTimer = null;
+      }
+      setLocating(false);
+    };
     navigator.geolocation.getCurrentPosition(
       pos => {
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, speedMps: Number.isFinite(pos.coords.speed) ? pos.coords.speed : 0 };
         positionRef.current = p;
         setOrigin(p);
         setSpeed(Math.max(0, Math.round((pos.coords.speed || 0) * 3.6)));
-        setLocating(false);
+        finishLocating();
         mapRef.current?.setView([p.lat, p.lng], 15);
       },
-      () => { setOrigin({ lat: ASTANA[0], lng: ASTANA[1] }); setLocating(false); },
+      () => { setOrigin({ lat: ASTANA[0], lng: ASTANA[1] }); finishLocating(); },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }
     );
     watchRef.current = navigator.geolocation.watchPosition(
@@ -1337,6 +1352,7 @@ export default function AstanaMapPage() {
       { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
     );
     return () => {
+      if (locatingFallbackTimer !== null) window.clearTimeout(locatingFallbackTimer);
       if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
       watchRef.current = null;
     };
