@@ -1,3 +1,27 @@
+/* Essential Leaflet layout rules are bundled locally so map tiles do not depend on a late CDN stylesheet. */
+.astana-map-canvas .leaflet-container{position:relative;width:100%;height:100%;overflow:hidden;outline:0;background:#f4f7fa;-webkit-tap-highlight-color:transparent}
+.astana-map-canvas .leaflet-pane,.astana-map-canvas .leaflet-tile,.astana-map-canvas .leaflet-marker-icon,.astana-map-canvas .leaflet-marker-shadow,.astana-map-canvas .leaflet-tile-container,.astana-map-canvas .leaflet-pane>svg,.astana-map-canvas .leaflet-pane>canvas,.astana-map-canvas .leaflet-zoom-box,.astana-map-canvas .leaflet-image-layer,.astana-map-canvas .leaflet-layer{position:absolute;left:0;top:0}
+.astana-map-canvas .leaflet-container img,.astana-map-canvas .leaflet-container .leaflet-tile,.astana-map-canvas .leaflet-container .leaflet-marker-pane img,.astana-map-canvas .leaflet-container .leaflet-shadow-pane img,.astana-map-canvas .leaflet-container .leaflet-image-layer{max-width:none!important;max-height:none!important;width:auto;padding:0}
+.astana-map-canvas .leaflet-tile{visibility:hidden}
+.astana-map-canvas .leaflet-tile-loaded{visibility:inherit}
+.astana-map-canvas .leaflet-pane{z-index:400}
+.astana-map-canvas .leaflet-tile-pane{z-index:200}
+.astana-map-canvas .leaflet-overlay-pane{z-index:400}
+.astana-map-canvas .leaflet-shadow-pane{z-index:500}
+.astana-map-canvas .leaflet-marker-pane{z-index:600}
+.astana-map-canvas .leaflet-tooltip-pane{z-index:650}
+.astana-map-canvas .leaflet-popup-pane{z-index:700}
+.astana-map-canvas .leaflet-map-pane canvas{z-index:100}
+.astana-map-canvas .leaflet-map-pane svg{z-index:200}
+.astana-map-canvas .leaflet-tile-container{pointer-events:none}
+.astana-map-canvas .leaflet-top,.astana-map-canvas .leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}
+.astana-map-canvas .leaflet-top{top:0}
+.astana-map-canvas .leaflet-right{right:0}
+.astana-map-canvas .leaflet-bottom{bottom:0}
+.astana-map-canvas .leaflet-left{left:0}
+.astana-map-canvas .leaflet-control{position:relative;z-index:800;pointer-events:auto}
+.astana-map-canvas .leaflet-control-attribution{margin:0 5px 5px 0;padding:0 5px;background:rgba(255,255,255,.8);color:#333;font:11px/1.5 Arial,sans-serif}
+.astana-map-canvas .leaflet-control-attribution a{color:#0078a8;text-decoration:none}
 .astana-map-page{position:fixed;inset:0;overflow:hidden;background:#10171d;color:#fff;font-family:Arial,sans-serif;z-index:1}
 .astana-map-canvas{position:absolute;inset:0;z-index:0;touch-action:none}
 .astana-map-canvas .leaflet-container{touch-action:none}
