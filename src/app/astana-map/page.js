@@ -694,9 +694,6 @@ export default function AstanaMapPage() {
   const navigationMapTypeRef = useRef(null);
   const navigationBearingRef = useRef(0);
 
-  map3dReadyRef.current = map3dReady;
-  map3dEnabledRef.current = map3dEnabled;
-
   useEffect(() => {
     let cancelled = false;
     let tileFallbackTimer = null;
@@ -877,6 +874,8 @@ export default function AstanaMapPage() {
 
     const failTo2D = () => {
       if (cancelled) return;
+      map3dEnabledRef.current = false;
+      map3dReadyRef.current = false;
       setMap3dEnabled(false);
       setMap3dReady(false);
     };
@@ -1057,6 +1056,7 @@ export default function AstanaMapPage() {
             });
 
             if (loadTimer !== null) window.clearTimeout(loadTimer);
+            map3dReadyRef.current = true;
             setMap3dReady(true);
             map.resize();
 
@@ -1108,6 +1108,7 @@ export default function AstanaMapPage() {
 
     return () => {
       cancelled = true;
+      map3dReadyRef.current = false;
       if (loadTimer !== null) window.clearTimeout(loadTimer);
       if (mapInstance) mapInstance.remove();
       if (map3dRef.current === mapInstance) map3dRef.current = null;
@@ -2078,12 +2079,16 @@ export default function AstanaMapPage() {
         requestAnimationFrame(() => { map3dSyncRef.current = false; });
       }
     }
+    map3dEnabledRef.current = enabling;
     setMap3dEnabled(enabling);
     setError("");
   }
 
   function swapMapType() {
-    if (map3dEnabled) setMap3dEnabled(false);
+    if (map3dEnabled) {
+      map3dEnabledRef.current = false;
+      setMap3dEnabled(false);
+    }
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
 
