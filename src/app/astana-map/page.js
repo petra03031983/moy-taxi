@@ -1399,12 +1399,10 @@ export default function AstanaMapPage() {
         <button className={`astana-nav-voice-toggle ${voiceGuidanceEnabled ? "enabled" : ""}`} onClick={toggleVoiceGuidance} aria-label={voiceGuidanceEnabled ? "Выключить голосовые подсказки" : "Включить голосовые подсказки"} title={voiceGuidanceEnabled ? "Голосовые подсказки включены" : "Включить голосовые подсказки"}>{voiceGuidanceEnabled ? "🔊" : "🔇"}</button>
         <div className="astana-nav-speed-limit" aria-label={`Ограничение скорости ${speedLimit ?? 60} километров в час`} title="Ограничение скорости"><b>{speedLimit ?? 60}</b></div>
         <div className="astana-nav-speed-now"><b>{speed}</b></div>
-        <button className="astana-nav-parking" title="Парковки" onClick={() => setError("Данные парковок пока не подключены.")}>P</button>
         <div className="astana-nav-zoom">
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
           <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить">−</button>
         </div>
-        <button className="astana-nav-compass" onClick={() => mapRef.current?.setView([origin?.lat || ASTANA[0], origin?.lng || ASTANA[1]], mapRef.current?.getZoom() || 17)} aria-label="Ориентировать карту">◢</button>
         <button className="astana-nav-recenter" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17, { animate: true }); }} aria-label="Моё местоположение">➤</button>
       </div>}
 
