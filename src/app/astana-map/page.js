@@ -1079,14 +1079,17 @@ export default function AstanaMapPage() {
       }
     };
 
-    const cssHref = "https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.css";
-    if (!document.querySelector('link[data-moy-maplibre-css="1"]')) {
-      const css = document.createElement("link");
+    // v6 is ESM-only and no longer exposes a global from a classic <script src>.
+    // The existing loader uses window.maplibregl, so use the supported v5 UMD bundle.
+    const cssHref = "https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.css";
+    let css = document.querySelector('link[data-moy-maplibre-css="1"]');
+    if (!css) {
+      css = document.createElement("link");
       css.rel = "stylesheet";
-      css.href = cssHref;
       css.dataset.moyMaplibreCss = "1";
       document.head.appendChild(css);
     }
+    if (css.href !== cssHref) css.href = cssHref;
 
     loadTimer = window.setTimeout(() => {
       if (!map3dReadyRef.current) failTo2D();
@@ -1095,15 +1098,19 @@ export default function AstanaMapPage() {
     if (window.maplibregl) {
       initialize3DMap();
     } else {
-      let script = document.querySelector('script[data-moy-maplibre-js="1"]');
-      if (!script) {
-        script = document.createElement("script");
-        script.src = "https://unpkg.com/maplibre-gl@6.15.0/dist/maplibre-gl.js";
-        script.dataset.moyMaplibreJs = "1";
-        document.head.appendChild(script);
-      }
-      script.addEventListener("load", initialize3DMap, { once: true });
+      // If a previous incompatible/failed script tag remains, replace it instead of
+      // waiting forever on a load event that has already happened (or will never fire).
+      const oldScript = document.querySelector('script[data-moy-maplibre-js="1"]');
+      if (oldScript) oldScript.remove();
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/maplibre-gl@5.12.0/dist/maplibre-gl.js";
+      script.dataset.moyMaplibreJs = "1";
+      script.addEventListener("load", () => {
+        if (window.maplibregl) initialize3DMap();
+        else failTo2D();
+      }, { once: true });
       script.addEventListener("error", failTo2D, { once: true });
+      document.head.appendChild(script);
     }
 
     return () => {
@@ -2061,7 +2068,7 @@ export default function AstanaMapPage() {
 
   function toggle3DMap() {
     if (!map3dReady || !map3dRef.current) {
-      setError("3D-карта ещё загружается. Попробуйте через несколько секунд.");
+      setError("3D-карта пока не загрузилась. Обычная карта остаётся доступной.");
       return;
     }
     const enabling = !map3dEnabled;
