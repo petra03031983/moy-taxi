@@ -482,14 +482,43 @@ function speakRoutePrompt(message) {
   utterance.rate = 0.9;
   utterance.pitch = 1;
   utterance.volume = 1;
-  const voices = speech.getVoices();
-  const russianVoices = voices.filter(voice => /^ru([_-]|$)/i.test(voice.lang));
-  const preferredVoice = russianVoices.find(voice => /google.*рус|google.*russian|yandex|яндекс|microsoft.*irina|irina|milena/i.test(voice.name))
-    || russianVoices.find(voice => /ru[-_]RU/i.test(voice.lang) && voice.localService)
-    || russianVoices.find(voice => /ru[-_]RU/i.test(voice.lang))
-    || russianVoices[0];
-  if (preferredVoice) utterance.voice = preferredVoice;
-  speech.speak(utterance);
+
+  const chooseRussianVoice = () => {
+    const voices = speech.getVoices();
+    const russianVoices = voices.filter(voice => /^ru([_-]|$)/i.test(voice.lang));
+    // Prefer Galina by name only if the phone/browser actually exposes such a voice.
+    // The Galina Yuzefovich package inside 2GIS is not automatically available to a web app.
+    const galinaVoice = russianVoices.find(voice => /galina|галин|yuzefovich|юзефович/i.test(voice.name));
+    const femaleRussianVoice = russianVoices.find(voice =>
+      /female|жен|irina|ирина|milena|милена|alena|алёна|elena|елена|anna|анна|svetlana|светлана|olga|ольга|tatiana|tatyana|татьяна|marina|марина|daria|darya|дарья/i.test(voice.name)
+    );
+    return galinaVoice
+      || femaleRussianVoice
+      || russianVoices.find(voice => /google.*рус|google.*russian|yandex|яндекс/i.test(voice.name))
+      || russianVoices.find(voice => /ru[-_]RU/i.test(voice.lang) && voice.localService)
+      || russianVoices.find(voice => /ru[-_]RU/i.test(voice.lang))
+      || russianVoices[0]
+      || null;
+  };
+
+  const preferredVoice = chooseRussianVoice();
+  if (preferredVoice) {
+    utterance.voice = preferredVoice;
+    speech.speak(utterance);
+  } else {
+    // Some Android browsers populate their TTS voice list asynchronously.
+    let finished = false;
+    const speakWithAvailableVoice = () => {
+      if (finished) return;
+      finished = true;
+      speech.removeEventListener?.("voiceschanged", speakWithAvailableVoice);
+      const availableVoice = chooseRussianVoice();
+      if (availableVoice) utterance.voice = availableVoice;
+      speech.speak(utterance);
+    };
+    speech.addEventListener?.("voiceschanged", speakWithAvailableVoice, { once: true });
+    window.setTimeout(speakWithAvailableVoice, 900);
+  }
   return true;
 }
 
