@@ -342,8 +342,8 @@
 }
 
 /* MapLibre 3D buildings view; Leaflet remains the synchronized fallback/navigation controller. */
-.astana-map-3d-canvas{position:absolute;inset:0;z-index:2;display:none;background:#eaf0f5;overflow:hidden;touch-action:pan-x pan-y}
-.astana-map-3d-canvas.active{display:block}
+.astana-map-3d-canvas{position:absolute;inset:0;z-index:2;display:block;visibility:hidden;pointer-events:none;background:#eaf0f5;overflow:hidden;touch-action:pan-x pan-y}
+.astana-map-3d-canvas.active{visibility:visible;pointer-events:auto}
 .astana-map-3d-canvas .maplibregl-map,.astana-map-3d-canvas .maplibregl-canvas-container,.astana-map-3d-canvas .maplibregl-canvas{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important}
 .astana-map-3d-canvas .maplibregl-canvas{outline:none;left:0!important;top:0!important}
 .astana-map-3d-canvas .maplibregl-control-container{font-family:Arial,Helvetica,sans-serif}
