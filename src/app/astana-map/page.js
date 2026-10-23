@@ -194,6 +194,57 @@ function snapToRoute(position, points) {
   return best;
 }
 
+function parseSpeedLimitValue(value) {
+  const choices = String(value ?? "").split(/[;|]/).map(part => part.trim()).filter(Boolean);
+  for (const choice of choices) {
+    // Require a numeric speed token. This intentionally ignores values such as "KZ:urban"
+    // rather than accidentally interpreting the country code as a speed.
+    const match = choice.match(/^(\d+(?:[.,]\d+)?)\s*(km\/?h|kmh|kph|mph|mi\/?h)?$/i);
+    if (!match) continue;
+    let speed = Number(match[1].replace(",", "."));
+    const unit = String(match[2] || "").toLowerCase();
+    if (unit === "mph" || unit === "mi/h") speed *= 1.609344;
+    if (Number.isFinite(speed) && speed > 0 && speed <= 250) return Math.round(speed);
+  }
+  return null;
+}
+
+function findSpeedLimitForRoute(position, routePoints, ways) {
+  const routeSnap = routePoints?.length > 1 ? snapToRoute(position, routePoints) : null;
+  const routeHeading = routeSnap && Number.isFinite(routeSnap.heading) ? routeSnap.heading : null;
+  let best = null;
+
+  for (const way of ways || []) {
+    const tags = way?.tags || {};
+    const rawGeometry = way?.geometry;
+    if (!Array.isArray(rawGeometry) || rawGeometry.length < 2) continue;
+    const points = rawGeometry
+      .filter(node => Number.isFinite(Number(node?.lat)) && Number.isFinite(Number(node?.lon)))
+      .map(node => [Number(node.lat), Number(node.lon)]);
+    if (points.length < 2) continue;
+
+    const snapped = snapToRoute(position, points);
+    if (!Number.isFinite(snapped.distance) || snapped.distance > 75) continue;
+
+    let value = parseSpeedLimitValue(tags.maxspeed);
+    let directionDifference = 0;
+    if (routeHeading !== null) {
+      const signedDifference = ((routeHeading - snapped.heading + 540) % 360) - 180;
+      directionDifference = Math.abs(signedDifference);
+      const orientationDifference = Math.min(directionDifference, 180 - directionDifference);
+      // Ignore clearly crossing streets when deciding which road the driver is on.
+      if (orientationDifference > 65) continue;
+      const directionalTag = directionDifference <= 90 ? tags["maxspeed:forward"] : tags["maxspeed:backward"];
+      value = parseSpeedLimitValue(directionalTag) ?? value;
+      const score = snapped.distance + orientationDifference * 0.45;
+      if (!best || score < best.score) best = { score, value };
+    } else if (!best || snapped.distance < best.score) {
+      best = { score: snapped.distance, value };
+    }
+  }
+  return best?.value ?? null;
+}
+
 function routeDistanceToIndex(points, startProgress, endIndex) {
   if (!points.length || endIndex <= startProgress) return 0;
   const clamped = Math.max(0, Math.min(points.length - 1, startProgress));
@@ -370,6 +421,7 @@ export default function AstanaMapPage() {
   const [mapType, setMapType] = useState("map");
   const [speed, setSpeed] = useState(0);
   const [speedLimit, setSpeedLimit] = useState(null);
+  const speedLimitRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const [locating, setLocating] = useState(true);
   const [routing, setRouting] = useState(false);
   const [error, setError] = useState("");
@@ -393,7 +445,6 @@ export default function AstanaMapPage() {
   const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
   const navigationMapTypeRef = useRef(null);
   const navigationBearingRef = useRef(0);
-  const speedLimitCell = useMemo(() => origin ? `${Math.round(origin.lat * 100)},${Math.round(origin.lng * 100)}` : "", [origin?.lat, origin?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -893,35 +944,67 @@ export default function AstanaMapPage() {
   }, [navigating, voiceGuidanceEnabled, nextInstruction?.maneuverKey, nextInstruction?.distanceMeters, nextInstruction?.maneuverType, nextInstruction?.modifier, nextInstruction?.exit, nextInstruction?.laneRight]);
 
   useEffect(() => {
-    if (!speedLimitCell) {
+    if (!navigating || !route?.geometry?.length) {
+      speedLimitRequestRef.current.controller?.abort();
+      speedLimitRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
       setSpeedLimit(null);
       return;
     }
-    const [latCell, lngCell] = speedLimitCell.split(",").map(Number);
-    const queryLat = latCell / 100;
-    const queryLng = lngCell / 100;
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
+
+    let disposed = false;
+    const lookup = async () => {
+      const requestState = speedLimitRequestRef.current;
+      const now = Date.now();
+      // Public Overpass is shared infrastructure; polling every 10 seconds limits traffic
+      // while allowing the badge to follow speed-limit zones during movement.
+      if (requestState.inFlight || now - requestState.lastRequestAt < 9500) return;
+
+      const current = positionRef.current || origin;
+      if (!current || !Number.isFinite(current.lat) || !Number.isFinite(current.lng)) return;
+
+      const controller = new AbortController();
+      requestState.inFlight = true;
+      requestState.lastRequestAt = now;
+      requestState.controller = controller;
+
       try {
-        const point = positionRef.current || { lat: queryLat, lng: queryLng };
-        const q = `[out:json][timeout:7];way[highway][maxspeed](around:220,${point.lat},${point.lng});out tags center;`;
-        const res = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, { signal: controller.signal });
+        const lat = Number(current.lat.toFixed(6));
+        const lng = Number(current.lng.toFixed(6));
+        const q = `[out:json][timeout:8];(way(around:180,${lat},${lng})[highway][maxspeed];way(around:180,${lat},${lng})[highway]["maxspeed:forward"];way(around:180,${lat},${lng})[highway]["maxspeed:backward"];);out tags geom;`;
+        const res = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
         if (!res.ok) throw new Error("Speed-limit lookup failed");
         const data = await res.json();
-        const ways = (data.elements || []).filter(x => x.center && x.tags?.maxspeed);
-        const distance = x => distanceBetween([point.lat, point.lng], [x.center.lat, x.center.lon]);
-        ways.sort((a, b) => distance(a) - distance(b));
-        const value = String(ways[0]?.tags?.maxspeed || "").match(/\d+/)?.[0];
-        setSpeedLimit(value && Number(value) > 0 && Number(value) < 200 ? Number(value) : null);
+        if (disposed || controller.signal.aborted) return;
+
+        const activePoints = routePointsRef.current.length > 1
+          ? routePointsRef.current
+          : route.geometry.map(point => [point[1], point[0]]);
+        const limit = findSpeedLimitForRoute(current, activePoints, data.elements || []);
+        // A successful lookup with no matched, tagged road means the source has no reliable
+        // speed limit for the current road. A temporary network/API error keeps the last value.
+        setSpeedLimit(limit);
       } catch {
-        if (!controller.signal.aborted) setSpeedLimit(null);
+        // Preserve the latest valid value on transient network or Overpass errors.
+      } finally {
+        if (speedLimitRequestRef.current.controller === controller) {
+          speedLimitRequestRef.current.inFlight = false;
+          speedLimitRequestRef.current.controller = null;
+        }
       }
-    }, 900);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
     };
-  }, [speedLimitCell]);
+
+    void lookup();
+    const interval = window.setInterval(() => { void lookup(); }, 10000);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      speedLimitRequestRef.current.controller?.abort();
+      speedLimitRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
+    };
+  }, [navigating, route, origin]);
 
   async function rerouteFromCurrentLocation(currentPosition = origin) {
     const state = rerouteRef.current;
