@@ -197,8 +197,9 @@ function snapToRoute(position, points) {
 function parseSpeedLimitValue(value) {
   const choices = String(value ?? "").split(/[;|]/).map(part => part.trim()).filter(Boolean);
   for (const choice of choices) {
-    // Require a numeric speed token. This intentionally ignores values such as "KZ:urban"
-    // rather than accidentally interpreting the country code as a speed.
+    // OpenStreetMap can use Kazakhstan's standard speed-zone tokens instead of a number.
+    if (/^KZ:urban$/i.test(choice)) return 60;
+    if (/^KZ:(living_street|yard|courtyard)$/i.test(choice)) return 20;
     const match = choice.match(/^(\d+(?:[.,]\d+)?)\s*(km\/?h|kmh|kph|mph|mi\/?h)?$/i);
     if (!match) continue;
     let speed = Number(match[1].replace(",", "."));
@@ -207,6 +208,24 @@ function parseSpeedLimitValue(value) {
     if (Number.isFinite(speed) && speed > 0 && speed <= 250) return Math.round(speed);
   }
   return null;
+}
+
+function fallbackSpeedLimitForWay(tags = {}) {
+  const highway = String(tags.highway || "").toLowerCase();
+  const service = String(tags.service || "").toLowerCase();
+  const zone = String(tags["zone:traffic"] || "").toLowerCase();
+  const name = String(tags.name || "").toLowerCase();
+
+  // Kazakhstan's current default in built-up areas is 60 km/h; living streets and
+  // clearly identified courtyard/yard roads use 20 km/h. A numeric sign/tag wins.
+  if (
+    highway === "living_street" ||
+    /living.?street|yard|courtyard|жил(ая|ой) зона|дворов/.test(zone) ||
+    service === "driveway" ||
+    service === "parking_aisle" ||
+    /двор|жил(ая|ой) зона/.test(name)
+  ) return 20;
+  return 60;
 }
 
 function findSpeedLimitForRoute(position, routePoints, ways) {
@@ -228,6 +247,7 @@ function findSpeedLimitForRoute(position, routePoints, ways) {
 
     let value = parseSpeedLimitValue(tags.maxspeed);
     let directionDifference = 0;
+    let score = snapped.distance;
     if (routeHeading !== null) {
       const signedDifference = ((routeHeading - snapped.heading + 540) % 360) - 180;
       directionDifference = Math.abs(signedDifference);
@@ -236,13 +256,14 @@ function findSpeedLimitForRoute(position, routePoints, ways) {
       if (orientationDifference > 65) continue;
       const directionalTag = directionDifference <= 90 ? tags["maxspeed:forward"] : tags["maxspeed:backward"];
       value = parseSpeedLimitValue(directionalTag) ?? value;
-      const score = snapped.distance + orientationDifference * 0.45;
-      if (!best || score < best.score) best = { score, value };
-    } else if (!best || snapped.distance < best.score) {
-      best = { score: snapped.distance, value };
+      score += orientationDifference * 0.45;
     }
+    if (!best || score < best.score) best = { score, value, tags };
   }
-  return best?.value ?? null;
+
+  // If the map has the road but no sign value, show the local default instead of a dash.
+  // If no road geometry was returned at all, the map is in Astana's built-up area by design.
+  return best?.value ?? fallbackSpeedLimitForWay(best?.tags || {});
 }
 
 function routeDistanceToIndex(points, startProgress, endIndex) {
@@ -952,6 +973,8 @@ export default function AstanaMapPage() {
     }
 
     let disposed = false;
+    // Keep a numeric limit displayed even before the first map lookup returns.
+    setSpeedLimit(60);
     const lookup = async () => {
       const requestState = speedLimitRequestRef.current;
       const now = Date.now();
@@ -970,7 +993,7 @@ export default function AstanaMapPage() {
       try {
         const lat = Number(current.lat.toFixed(6));
         const lng = Number(current.lng.toFixed(6));
-        const q = `[out:json][timeout:8];(way(around:180,${lat},${lng})[highway][maxspeed];way(around:180,${lat},${lng})[highway]["maxspeed:forward"];way(around:180,${lat},${lng})[highway]["maxspeed:backward"];);out tags geom;`;
+        const q = `[out:json][timeout:8];way(around:180,${lat},${lng})[highway];out tags geom;`;
         const res = await fetch(`${OVERPASS}?data=${encodeURIComponent(q)}`, {
           signal: controller.signal,
           headers: { Accept: "application/json" },
@@ -1374,7 +1397,7 @@ export default function AstanaMapPage() {
 
       {showMapUtilityControls && <div className="astana-map-right-controls astana-navigation-controls">
         <button className={`astana-nav-voice-toggle ${voiceGuidanceEnabled ? "enabled" : ""}`} onClick={toggleVoiceGuidance} aria-label={voiceGuidanceEnabled ? "Выключить голосовые подсказки" : "Включить голосовые подсказки"} title={voiceGuidanceEnabled ? "Голосовые подсказки включены" : "Включить голосовые подсказки"}>{voiceGuidanceEnabled ? "🔊" : "🔇"}</button>
-        <div className="astana-nav-speed-limit"><b>{speedLimit || "—"}</b></div>
+        <div className="astana-nav-speed-limit" aria-label={`Ограничение скорости ${speedLimit ?? 60} километров в час`} title="Ограничение скорости"><b>{speedLimit ?? 60}</b></div>
         <div className="astana-nav-speed-now"><b>{speed}</b></div>
         <button className="astana-nav-parking" title="Парковки" onClick={() => setError("Данные парковок пока не подключены.")}>P</button>
         <div className="astana-nav-zoom">
