@@ -255,8 +255,7 @@ function fallbackSpeedLimitForWay(tags = {}) {
     parseSpeedLimitValue(tags["maxspeed:forward"]) ??
     parseSpeedLimitValue(tags["maxspeed:backward"]) ??
     parseSpeedLimitValue(tags["traffic_sign:maxspeed"]) ??
-    parseSpeedLimitValue(tags["maxspeed:type"]) ??
-    parseSpeedLimitValue(tags["zone:traffic"]);
+    parseSpeedLimitValue(tags["maxspeed:type"]);
   if (taggedLimit !== null) return taggedLimit;
 
   // Only use a conservative local-road fallback for clearly marked courtyard
