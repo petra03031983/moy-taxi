@@ -257,15 +257,22 @@ function nextRouteInstruction(route, points, progress) {
   };
 }
 
-function voiceDistanceText(meters) {
+function voiceDistanceText(meters, forStraight = false) {
   const distance = Math.max(0, Number(meters) || 0);
   if (distance >= 1000) {
-    const km = Math.round(distance / 100) / 10;
-    if (!Number.isInteger(km)) return `${km.toLocaleString("ru-RU")} километра`;
-    const lastTwo = km % 100;
-    const last = km % 10;
-    const unit = lastTwo >= 11 && lastTwo <= 14 ? "километров" : last === 1 ? "километр" : last >= 2 && last <= 4 ? "километра" : "километров";
-    return `${km} ${unit}`;
+    const km = distance >= 5000 ? Math.round(distance / 1000) : Math.round(distance / 500) / 2;
+    if (Math.abs(km - 1.5) < 0.001) return "полтора километра";
+    if (Math.abs(km % 1 - 0.5) < 0.001) {
+      const whole = Math.floor(km);
+      const wholeWord = whole === 1 ? "один" : whole === 2 ? "два" : whole === 3 ? "три" : whole === 4 ? "четыре" : String(whole);
+      return `${wholeWord} с половиной километра`;
+    }
+    const rounded = Math.round(km);
+    const lastTwo = rounded % 100;
+    const last = rounded % 10;
+    const unit = rounded === 1 ? "километр" : lastTwo >= 11 && lastTwo <= 14 ? "километров" : last >= 2 && last <= 4 ? "километра" : "километров";
+    const number = forStraight && rounded === 1 ? "один" : String(rounded);
+    return `${number} ${unit}`;
   }
   const rounded = Math.max(50, Math.round(distance / 50) * 50);
   return `${rounded} метров`;
@@ -297,20 +304,26 @@ function voiceManeuverText(instruction) {
   if (modifier.includes("slight right")) return "Держитесь правее.";
   if (modifier.includes("left")) return "Поверните налево.";
   if (modifier.includes("right")) return "Поверните направо.";
-  return "Продолжайте прямо.";
+  return "Езжайте прямо.";
 }
 
 function speakRoutePrompt(message) {
   if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof window.SpeechSynthesisUtterance !== "function") return false;
-  window.speechSynthesis.cancel();
-  const utterance = new window.SpeechSynthesisUtterance(message);
+  const speech = window.speechSynthesis;
+  speech.cancel();
+  const utterance = new window.SpeechSynthesisUtterance(String(message).replace(/\s+/g, " ").trim());
   utterance.lang = "ru-RU";
-  utterance.rate = 0.96;
+  utterance.rate = 0.9;
   utterance.pitch = 1;
   utterance.volume = 1;
-  const russianVoice = window.speechSynthesis.getVoices().find(voice => /^ru(-|$)/i.test(voice.lang));
-  if (russianVoice) utterance.voice = russianVoice;
-  window.speechSynthesis.speak(utterance);
+  const voices = speech.getVoices();
+  const russianVoices = voices.filter(voice => /^ru([_-]|$)/i.test(voice.lang));
+  const preferredVoice = russianVoices.find(voice => /google.*рус|google.*russian|yandex|яндекс|microsoft.*irina|irina|milena/i.test(voice.name))
+    || russianVoices.find(voice => /ru[-_]RU/i.test(voice.lang) && voice.localService)
+    || russianVoices.find(voice => /ru[-_]RU/i.test(voice.lang))
+    || russianVoices[0];
+  if (preferredVoice) utterance.voice = preferredVoice;
+  speech.speak(utterance);
   return true;
 }
 
@@ -759,7 +772,7 @@ export default function AstanaMapPage() {
     let phrase = "";
     if (!state.initialAnnounced) {
       state.initialAnnounced = true;
-      if (distanceMeters >= 5000) phrase = `Продолжайте прямо ${voiceDistanceText(distanceMeters)}.`;
+      if (distanceMeters >= 5000) phrase = `Езжайте прямо ${voiceDistanceText(distanceMeters, true)}.`;
       else if (distanceMeters > 0) phrase = `Через ${voiceDistanceText(distanceMeters)} ${voiceManeuverText(instruction)}`;
       else phrase = voiceManeuverText(instruction);
     } else {
