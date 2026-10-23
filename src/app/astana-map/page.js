@@ -356,11 +356,13 @@ function roadObjectKind(element) {
   const tags = element?.tags || {};
   const enforcement = String(tags.enforcement || tags["enforcement:type"] || "").toLowerCase();
   const surveillanceType = String(tags["surveillance:type"] || "").toLowerCase();
+  const surveillance = String(tags.surveillance || "").toLowerCase();
   const cameraType = String(tags["camera:type"] || "").toLowerCase();
   if (
     tags.highway === "speed_camera" ||
     /maxspeed|average_speed|traffic_signals|red_light/.test(enforcement) ||
     /speed|traffic|red_light/.test(surveillanceType) ||
+    /speed|traffic|red_light/.test(surveillance) ||
     /speed|traffic|red_light/.test(cameraType)
   ) return "camera";
   if (tags.highway === "traffic_signals") return "traffic-light";
@@ -1042,9 +1044,12 @@ export default function AstanaMapPage() {
       const currentProgress = navigating && routeProgressRef.current >= 0 ? routeProgressRef.current : 0;
       const livePosition = positionRef.current || origin;
       const mapCenter = mapRef.current?.getCenter?.();
-      const anchor = livePosition && Number.isFinite(livePosition.lat) && Number.isFinite(livePosition.lng)
+      const anchor = navigating && livePosition && Number.isFinite(livePosition.lat) && Number.isFinite(livePosition.lng)
         ? [livePosition.lat, livePosition.lng]
-        : mapCenter ? [mapCenter.lat, mapCenter.lng] : ASTANA;
+        : mapCenter ? [mapCenter.lat, mapCenter.lng]
+        : livePosition && Number.isFinite(livePosition.lat) && Number.isFinite(livePosition.lng)
+          ? [livePosition.lat, livePosition.lng]
+          : ASTANA;
 
       // While following a route, ask for objects along the next 7 km of that route.
       // On the general map, show nearby road objects around the visible/current location.
@@ -1060,6 +1065,8 @@ export default function AstanaMapPage() {
         node(around:${radius},${coordinates})[highway=traffic_signals];
         node(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|traffic_signals|red_light"];
         node(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"traffic|speed|red_light"];
+        node(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light"];
+        node(around:${radius},${coordinates})[surveillance~"traffic|speed|red_light"];
         node(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light"];
       );out body;`;
 
