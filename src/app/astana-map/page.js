@@ -689,6 +689,7 @@ export default function AstanaMapPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let tileFallbackTimer = null;
     const load = () => {
       if (cancelled || !window.L || !mapEl.current || mapRef.current) return;
       const L = window.L;
@@ -724,8 +725,63 @@ export default function AstanaMapPage() {
         updateWhenZooming: false,
         crossOrigin: true,
       });
+      // Keep the street map visible even if the primary OSM tile host is slow or unreachable.
+      const carto = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        subdomains: "abcd",
+        maxZoom: 20,
+        attribution: "© OpenStreetMap contributors © CARTO",
+        keepBuffer: 4,
+        updateWhenIdle: false,
+        updateInterval: 300,
+        updateWhenZooming: false,
+        crossOrigin: true,
+      });
+      const esriStreet = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        attribution: "Tiles © Esri — Sources: Esri, HERE, Garmin, OpenStreetMap contributors, and the GIS User Community",
+        keepBuffer: 4,
+        updateWhenIdle: false,
+        updateInterval: 300,
+        updateWhenZooming: false,
+        crossOrigin: true,
+      });
+
+      map._moyTileFallbackLevel = 0;
+      map._moyHasLoadedBaseTile = false;
+      const activateTileFallback = level => {
+        if (cancelled || mapRef.current !== map || map.hasLayer(satellite)) return;
+        if ((map._moyTileFallbackLevel || 0) >= level) return;
+        map._moyTileFallbackLevel = level;
+        [base, dark, carto, esriStreet].forEach(layer => {
+          if (map.hasLayer(layer)) map.removeLayer(layer);
+        });
+        (level >= 2 ? esriStreet : carto).addTo(map);
+        map.invalidateSize(true);
+      };
+      const countTileError = layer => {
+        layer._moyTileErrors = (layer._moyTileErrors || 0) + 1;
+        if (layer._moyTileErrors < 4) return;
+        if (layer === base || layer === dark) activateTileFallback(1);
+        else if (layer === carto) activateTileFallback(2);
+      };
+      base.on("tileerror", () => countTileError(base));
+      dark.on("tileerror", () => countTileError(dark));
+      carto.on("tileerror", () => countTileError(carto));
+      base.on("tileload", () => {
+        map._moyHasLoadedBaseTile = true;
+        if (tileFallbackTimer !== null) {
+          window.clearTimeout(tileFallbackTimer);
+          tileFallbackTimer = null;
+        }
+      });
+
       base.addTo(map);
-      map._moyTiles = { base, dark, satellite };
+      tileFallbackTimer = window.setTimeout(() => {
+        if (!cancelled && mapRef.current === map && !map._moyHasLoadedBaseTile && !map.hasLayer(satellite)) {
+          activateTileFallback(1);
+        }
+      }, 6500);
+      map._moyTiles = { base, dark, satellite, carto, esriStreet };
       layersRef.current = L.layerGroup().addTo(map);
       locationLayerRef.current = L.layerGroup().addTo(map);
       roadObjectsLayerRef.current = L.layerGroup().addTo(map);
@@ -780,6 +836,7 @@ export default function AstanaMapPage() {
     }
     return () => {
       cancelled = true;
+      if (tileFallbackTimer !== null) window.clearTimeout(tileFallbackTimer);
       if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
       if (mapRef.current) mapRef.current.remove();
       mapRef.current = null;
@@ -979,7 +1036,15 @@ export default function AstanaMapPage() {
     const tiles = mapRef.current._moyTiles;
     if (!tiles) return;
     Object.values(tiles).forEach(layer => { if (mapRef.current.hasLayer(layer)) mapRef.current.removeLayer(layer); });
-    tiles[mapType === "satellite" ? "satellite" : mapType === "dark" ? "dark" : "base"].addTo(mapRef.current);
+    const fallbackLevel = mapRef.current._moyTileFallbackLevel || 0;
+    const activeTileKey = mapType === "satellite"
+      ? "satellite"
+      : fallbackLevel >= 2
+        ? "esriStreet"
+        : fallbackLevel >= 1
+          ? "carto"
+          : mapType === "dark" ? "dark" : "base";
+    tiles[activeTileKey].addTo(mapRef.current);
   }, [mapType, leafletReady]);
 
   useEffect(() => {
