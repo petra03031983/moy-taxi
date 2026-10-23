@@ -1004,7 +1004,7 @@ export default function AstanaMapPage() {
       speedLimitRequestRef.current.controller?.abort();
       speedLimitRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
     };
-  }, [navigating, route, origin]);
+  }, [navigating, route]);
 
   async function rerouteFromCurrentLocation(currentPosition = origin) {
     const state = rerouteRef.current;
