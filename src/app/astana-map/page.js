@@ -23,8 +23,8 @@ function formatDuration(seconds) {
   return `${h} ч ${m} мин`;
 }
 
-function formatArrivalTime(seconds) {
-  const date = new Date(Date.now() + Math.max(0, Number(seconds || 0)) * 1000);
+function formatArrivalTime(seconds, now = Date.now()) {
+  const date = new Date(now + Math.max(0, Number(seconds || 0)) * 1000);
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
@@ -210,6 +210,14 @@ function routeDistanceToIndex(points, startProgress, endIndex) {
   return Math.max(0, total);
 }
 
+function routeGeometryLength(points) {
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    total += distanceBetween(points[i], points[i + 1]);
+  }
+  return total;
+}
+
 function nextTurnArrow(step) {
   const maneuver = step?.maneuver || {};
   const modifier = String(maneuver.modifier || "").toLowerCase();
@@ -368,6 +376,18 @@ export default function AstanaMapPage() {
   const [showSteps, setShowSteps] = useState(false);
   const [navigating, setNavigating] = useState(false);
   const [nextInstruction, setNextInstruction] = useState(null);
+  const [navigationStats, setNavigationStats] = useState({ routeId: null, remainingDistanceMeters: 0, remainingSeconds: 0 });
+  const [navigationClock, setNavigationClock] = useState(Date.now());
+  const navigationStatsRef = useRef({
+    routeId: null,
+    remainingDistanceMeters: 0,
+    remainingSeconds: 0,
+    totalDistanceMeters: 0,
+    totalDurationSeconds: 0,
+    geometryLength: 0,
+    lastGpsPoint: null,
+    lastGpsAt: 0,
+  });
   const [voiceGuidanceEnabled, setVoiceGuidanceEnabled] = useState(false);
   const voiceAnnouncementRef = useRef({ key: null, lastDistance: null, announced: new Set(), initialAnnounced: false });
   const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
@@ -707,6 +727,36 @@ export default function AstanaMapPage() {
   }, [leafletReady, destination?.lat, destination?.lng, route, routeOptions, selectedPlace]); 
 
   useEffect(() => {
+    if (!navigating || !route) return;
+
+    const points = (route.geometry || []).map(point => [point[1], point[0]]);
+    const geometryLength = routeGeometryLength(points);
+    const totalDistanceMeters = Math.max(0, Number(route.distance) || geometryLength);
+    const totalDurationSeconds = Math.max(0, Number(route.duration) || 0);
+    const initialStats = {
+      routeId: route.id || null,
+      remainingDistanceMeters: totalDistanceMeters,
+      remainingSeconds: totalDurationSeconds,
+      totalDistanceMeters,
+      totalDurationSeconds,
+      geometryLength,
+      lastGpsPoint: null,
+      lastGpsAt: 0,
+    };
+    navigationStatsRef.current = initialStats;
+    setNavigationStats({
+      routeId: initialStats.routeId,
+      remainingDistanceMeters: totalDistanceMeters,
+      remainingSeconds: totalDurationSeconds,
+    });
+    setNavigationClock(Date.now());
+
+    // Refresh the arrival clock only on the active navigation screen.
+    const timer = window.setInterval(() => setNavigationClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [navigating, route]);
+
+  useEffect(() => {
     if (!leafletReady || !locationLayerRef.current) return;
     const L = window.L;
     const group = locationLayerRef.current;
@@ -726,6 +776,40 @@ export default function AstanaMapPage() {
           routeProgressRef.current = snapped.progress;
         }
         const progress = Math.max(0, Math.min(points.length - 1, routeProgressRef.current));
+
+        // Keep remaining distance tied to progress along the actual route geometry.
+        // ETA only consumes the time represented by distance genuinely travelled; while stopped,
+        // the remaining-time value holds steady and the displayed arrival time moves later.
+        const stats = navigationStatsRef.current;
+        if (stats.routeId === (route.id || null)) {
+          const geometryRemaining = routeDistanceToIndex(points, progress, points.length - 1);
+          const remainingDistanceMeters = stats.geometryLength > 0
+            ? Math.max(0, Math.min(stats.totalDistanceMeters, stats.totalDistanceMeters * geometryRemaining / stats.geometryLength))
+            : Math.max(0, stats.totalDistanceMeters - (stats.totalDistanceMeters * progress / Math.max(1, points.length - 1)));
+          const now = Date.now();
+          const previousGpsPoint = stats.lastGpsPoint;
+          const gpsDisplacement = previousGpsPoint ? distanceBetween(previousGpsPoint, [origin.lat, origin.lng]) : 0;
+          const elapsedSeconds = stats.lastGpsAt ? Math.max(0.1, (now - stats.lastGpsAt) / 1000) : 0;
+          const reportedSpeed = Math.max(0, Number(origin.speedMps) || 0);
+          const looksMoving = reportedSpeed >= 0.35 ||
+            (Boolean(previousGpsPoint) && gpsDisplacement >= Math.max(2.5, elapsedSeconds * 0.55));
+
+          stats.lastGpsPoint = [origin.lat, origin.lng];
+          stats.lastGpsAt = now;
+
+          const distanceDelta = Math.max(0, stats.remainingDistanceMeters - remainingDistanceMeters);
+          if (looksMoving && distanceDelta >= 0.5) {
+            stats.remainingDistanceMeters = remainingDistanceMeters;
+            const secondsPerMeter = stats.totalDurationSeconds / Math.max(1, stats.totalDistanceMeters);
+            stats.remainingSeconds = Math.max(0, stats.remainingSeconds - distanceDelta * secondsPerMeter);
+            setNavigationStats({
+              routeId: stats.routeId,
+              remainingDistanceMeters: stats.remainingDistanceMeters,
+              remainingSeconds: stats.remainingSeconds,
+            });
+          }
+        }
+
         const segment = Math.min(points.length - 2, Math.floor(progress));
         const fraction = progress >= points.length - 1 ? 1 : progress - segment;
         point = [
@@ -1060,6 +1144,11 @@ export default function AstanaMapPage() {
   const isHomeScreen = !searchActive && !query.trim() && !showResultsPanel && !destination && !route;
   const showMapUtilityControls = Boolean(route && navigating);
   const showPlaceMapControls = Boolean(destination && !route && selectedPlace);
+  const activeNavigationStats = navigationStats.routeId === (route?.id || null)
+    ? navigationStats
+    : { remainingDistanceMeters: Number(route?.distance) || 0, remainingSeconds: Number(route?.duration) || 0 };
+  const navigationDistanceKm = (Math.max(0, activeNavigationStats.remainingDistanceMeters) / 1000)
+    .toLocaleString("ru-RU", { maximumFractionDigits: 1, useGrouping: false });
 
   function openHomeSearch() {
     setSearchActive(true);
@@ -1292,9 +1381,9 @@ export default function AstanaMapPage() {
       </div>}
       {navigating && route && <div className="astana-nav-bottom-hud">
         <button className="astana-nav-hud-icon" onClick={openSearchFromNavigation} aria-label="Новый поиск">⌕</button>
-        <div className="astana-nav-hud-metric"><b>{formatDuration(route.duration)}</b><span>мин</span></div>
-        <div className="astana-nav-hud-metric"><b>{formatArrivalTime(route.duration)}</b><span>прибытие</span></div>
-        <div className="astana-nav-hud-metric"><b>{Math.round(Number(route.distance || 0) / 1000)}</b><span>км</span></div>
+        <div className="astana-nav-hud-metric"><b>{formatDuration(activeNavigationStats.remainingSeconds)}</b><span>мин</span></div>
+        <div className="astana-nav-hud-metric"><b>{formatArrivalTime(activeNavigationStats.remainingSeconds, navigationClock)}</b><span>прибытие</span></div>
+        <div className="astana-nav-hud-metric"><b>{navigationDistanceKm}</b><span>км</span></div>
         <button className="astana-nav-hud-icon" onClick={() => setNavigationMenuOpen(v => !v)} aria-label="Меню навигации">☰</button>
       </div>}
 
