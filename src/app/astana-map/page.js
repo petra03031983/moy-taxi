@@ -2526,15 +2526,19 @@ export default function AstanaMapPage() {
     };
   }, [map3dReady, map3dEnabled, map4dEnabled, gpsFixReady]);
 
-  async function toggleWeather() {
-    if (weatherOpen) {
+  async function toggleWeather(forceRefresh = false) {
+    if (!forceRefresh && weatherOpen) {
       setWeatherOpen(false);
       return;
+    }
+    if (forceRefresh) {
+      weatherFetchedAtRef.current = 0;
+      setWeatherData(null);
     }
     setWeatherOpen(true);
     setWeatherError("");
 
-    if (weatherData && Date.now() - weatherFetchedAtRef.current < 10 * 60 * 1000) return;
+    if (!forceRefresh && weatherData && Date.now() - weatherFetchedAtRef.current < 10 * 60 * 1000) return;
 
     weatherAbortRef.current?.abort();
     const controller = new AbortController();
@@ -2556,7 +2560,11 @@ export default function AstanaMapPage() {
         forecast_days: "1",
       }).toString();
 
-      const timeout = window.setTimeout(() => controller.abort(), 9000);
+      let timedOut = false;
+      const timeout = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 9000);
       let response;
       try {
         response = await fetch(url.toString(), {
@@ -2579,10 +2587,10 @@ export default function AstanaMapPage() {
       });
       weatherFetchedAtRef.current = Date.now();
     } catch (weatherFetchError) {
-      if (!controller.signal.aborted) {
-        setWeatherError(weatherFetchError?.name === "AbortError"
-          ? "Запрос погоды занял слишком много времени. Попробуйте ещё раз."
-          : weatherFetchError?.message || "Не удалось загрузить погоду. Проверьте интернет.");
+      if (timedOut) {
+        setWeatherError("Запрос погоды занял слишком много времени. Попробуйте ещё раз.");
+      } else if (!controller.signal.aborted) {
+        setWeatherError(weatherFetchError?.message || "Не удалось загрузить погоду. Проверьте интернет.");
       }
     } finally {
       if (weatherAbortRef.current === controller) {
@@ -3004,7 +3012,7 @@ export default function AstanaMapPage() {
         <div className="astana-weather-panel-head">
           <div><b>Погода</b><small>{weatherData?.locationLabel || (origin ? "Рядом с вами" : "Астана")}</small></div>
           <div className="astana-weather-panel-actions">
-            <button type="button" onClick={() => { weatherFetchedAtRef.current = 0; setWeatherData(null); void toggleWeather(); }} aria-label="Обновить погоду" title="Обновить">↻</button>
+            <button type="button" onClick={() => { void toggleWeather(true); }} aria-label="Обновить погоду" title="Обновить">↻</button>
             <button type="button" onClick={() => setWeatherOpen(false)} aria-label="Закрыть погоду">×</button>
           </div>
         </div>
