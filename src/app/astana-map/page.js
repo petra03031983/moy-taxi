@@ -1043,6 +1043,7 @@ export default function AstanaMapPage() {
   useEffect(() => {
     let cancelled = false;
     let tileFallbackTimer = null;
+    let libraryLoadWatchdog = null;
     const load = () => {
       if (cancelled || !window.L || !mapEl.current || mapRef.current) return;
       const L = window.L;
@@ -1139,6 +1140,11 @@ export default function AstanaMapPage() {
       locationLayerRef.current = L.layerGroup().addTo(map);
       roadObjectsLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
+      if (libraryLoadWatchdog !== null) {
+        window.clearTimeout(libraryLoadWatchdog);
+        libraryLoadWatchdog = null;
+      }
+      setError("");
       const sync3DCameraFromLeaflet = () => {
         if (!map3dEnabledRef.current || !map3dReadyRef.current || map3dSyncRef.current || !map3dRef.current) return;
         const center = map.getCenter();
@@ -1181,47 +1187,98 @@ export default function AstanaMapPage() {
       }
     };
 
-    if (window.L) loadWithRotation();
-    else {
-      let script = document.querySelector('script[data-moy-leaflet-js="1"]');
+    // Do not depend on a single CDN: mobile networks and embedded browsers can
+    // stall a script request without immediately firing an error event.
+    libraryLoadWatchdog = window.setTimeout(() => {
+      if (!cancelled && !mapRef.current) {
+        setLocating(false);
+        setError(previous => previous || "Карта долго загружается. Проверьте интернет и обновите страницу.");
+      }
+    }, 17000);
+
+    const loadLeafletFromFallbacks = () => {
+      if (cancelled) return;
       if (window.L) {
         loadWithRotation();
-      } else {
-        if (script && script.dataset.moyLeafletLoaded === "true") {
-          loadWithRotation();
-        } else {
-          if (!script) {
-            script = document.createElement("script");
-            script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-            script.dataset.moyLeafletJs = "1";
-            script.addEventListener("load", () => {
-              script.dataset.moyLeafletLoaded = "true";
-              loadWithRotation();
-            }, { once: true });
-            script.addEventListener("error", () => {
-              if (!cancelled) {
-                setLocating(false);
-                setError("Не удалось загрузить карту. Проверьте интернет и обновите страницу.");
-              }
-            }, { once: true });
-            document.head.appendChild(script);
-          } else {
-            script.addEventListener("load", () => {
-              script.dataset.moyLeafletLoaded = "true";
-              loadWithRotation();
-            }, { once: true });
-            script.addEventListener("error", () => {
-              if (!cancelled) {
-                setLocating(false);
-                setError("Не удалось загрузить карту. Проверьте интернет и обновите страницу.");
-              }
-            }, { once: true });
-          }
-        }
+        return;
       }
-    }
+
+      const sources = [
+        "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js",
+        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+      ];
+      let attempt = 0;
+
+      const tryNextSource = () => {
+        if (cancelled) return;
+        if (window.L) {
+          loadWithRotation();
+          return;
+        }
+        if (attempt >= sources.length) {
+          if (libraryLoadWatchdog !== null) {
+            window.clearTimeout(libraryLoadWatchdog);
+            libraryLoadWatchdog = null;
+          }
+          setLocating(false);
+          setError("Не удалось загрузить библиотеку карты. Проверьте интернет и нажмите «Обновить».");
+          return;
+        }
+
+        document.querySelectorAll('script[data-moy-leaflet-js="1"]').forEach(node => node.remove());
+        const script = document.createElement("script");
+        script.src = sources[attempt++];
+        script.dataset.moyLeafletJs = "1";
+        let settled = false;
+        let attemptTimer = null;
+        const cleanup = () => {
+          if (attemptTimer !== null) {
+            window.clearTimeout(attemptTimer);
+            attemptTimer = null;
+          }
+          script.onload = null;
+          script.onerror = null;
+        };
+
+        script.onload = () => {
+          if (settled || cancelled) return;
+          settled = true;
+          cleanup();
+          if (window.L) {
+            script.dataset.moyLeafletLoaded = "true";
+            loadWithRotation();
+          } else {
+            script.remove();
+            tryNextSource();
+          }
+        };
+        script.onerror = () => {
+          if (settled || cancelled) return;
+          settled = true;
+          cleanup();
+          script.remove();
+          tryNextSource();
+        };
+        attemptTimer = window.setTimeout(() => {
+          if (settled || cancelled) return;
+          settled = true;
+          cleanup();
+          script.remove();
+          tryNextSource();
+        }, 4500);
+        document.head.appendChild(script);
+      };
+
+      const existingLoadedScript = document.querySelector('script[data-moy-leaflet-js="1"][data-moy-leaflet-loaded="true"]');
+      if (existingLoadedScript && window.L) loadWithRotation();
+      else tryNextSource();
+    };
+
+    loadLeafletFromFallbacks();
     return () => {
       cancelled = true;
+      if (libraryLoadWatchdog !== null) window.clearTimeout(libraryLoadWatchdog);
       if (tileFallbackTimer !== null) window.clearTimeout(tileFallbackTimer);
       if (watchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(watchRef.current);
       if (mapRef.current) mapRef.current.remove();
