@@ -693,6 +693,7 @@ export default function AstanaMapPage() {
   const locationLayerRef = useRef(null);
   const roadObjectsLayerRef = useRef(null);
   const roadObjectsRef = useRef([]);
+  const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const cameraWarningRef = useRef({ routeId: null, announced: new Set() });
   const speedWarningRef = useRef({ active: false, limit: null, lastSpokenAt: 0 });
@@ -742,6 +743,7 @@ export default function AstanaMapPage() {
   const [navigationStats, setNavigationStats] = useState({ routeId: null, remainingDistanceMeters: 0, remainingSeconds: 0 });
   const [navigationClock, setNavigationClock] = useState(Date.now());
   const [roadObjectsRevision, setRoadObjectsRevision] = useState(0);
+  const [cameraCatalogRevision, setCameraCatalogRevision] = useState(0);
   const navigationStatsRef = useRef({
     routeId: null,
     remainingDistanceMeters: 0,
@@ -1876,6 +1878,74 @@ export default function AstanaMapPage() {
       L.marker(point, { icon, zIndexOffset: 1000 }).addTo(group);
     }
   }, [leafletReady, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps, navigating, route]);
+
+
+  useEffect(() => {
+    if (!leafletReady) return;
+    let cancelled = false;
+    let controller = null;
+
+    const refreshPublicCameraCatalog = async () => {
+      if (cancelled || Date.now() - publicCameraCatalogRef.current.fetchedAt < 30 * 60 * 1000) return;
+      controller = new AbortController();
+      try {
+        // Published directory only: this adds marked camera locations and source links,
+        // not live video or a proxy. The OSM map remains the primary source.
+        const response = await fetch("https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru", {
+          signal: controller.signal,
+          headers: { Accept: "application/geo+json, application/json" },
+        });
+        if (!response.ok) throw new Error("Public camera catalogue unavailable");
+        const collection = await response.json();
+        const items = (Array.isArray(collection?.features) ? collection.features : [])
+          .map(feature => {
+            const coordinates = feature?.geometry?.coordinates;
+            const properties = feature?.properties || {};
+            const lng = Number(coordinates?.[0]);
+            const lat = Number(coordinates?.[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 40 || lat > 56 || lng < 45 || lng > 90) return null;
+            const sourceUrl = String(properties.source_url || properties.url || "");
+            const safeSourceUrl = /^https:\/\/[^\s"'<>]+$/i.test(sourceUrl) ? sourceUrl : "";
+            const cameraId = properties.camera_id || feature.id || (String(lat.toFixed(6)) + "-" + String(lng.toFixed(6)));
+            return {
+              id: "qazgeo-" + String(cameraId),
+              kind: "camera",
+              title: String(properties.name || properties.name_ru || "Публичная камера"),
+              shortLabel: "К",
+              lat,
+              lng,
+              catalogSource: "qazgeo",
+              tags: {
+                source_url: safeSourceUrl,
+                rights_mode: String(properties.rights_mode || ""),
+                attribution: String(properties.attribution || ""),
+                owner: String(properties.owner?.name || properties.owner || ""),
+                checked_at: String(properties.checked_at || ""),
+              },
+            };
+          })
+          .filter(Boolean);
+
+        if (cancelled || controller.signal.aborted) return;
+        publicCameraCatalogRef.current = { items, fetchedAt: Date.now() };
+        setCameraCatalogRevision(value => value + 1);
+      } catch {
+        // This optional catalogue must never block the core map or OSM-backed layer.
+      }
+    };
+
+    void refreshPublicCameraCatalog();
+    const interval = window.setInterval(() => {
+      publicCameraCatalogRef.current.fetchedAt = 0;
+      void refreshPublicCameraCatalog();
+    }, 30 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      controller?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!leafletReady || !mapRef.current || !roadObjectsLayerRef.current) return;
