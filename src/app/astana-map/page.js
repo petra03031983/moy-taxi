@@ -288,8 +288,10 @@ function fallbackSpeedLimitForWay(tags = {}) {
     parseSpeedLimitValue(tags.maxspeed) ??
     parseSpeedLimitValue(tags["maxspeed:forward"]) ??
     parseSpeedLimitValue(tags["maxspeed:backward"]) ??
+    parseSpeedLimitValue(String(tags["maxspeed:lanes:forward"] || tags["maxspeed:lanes"] || "").split("|")[0]) ??
     parseSpeedLimitValue(tags["traffic_sign:maxspeed"]) ??
-    parseSpeedLimitValue(tags["maxspeed:type"]);
+    parseSpeedLimitValue(tags["maxspeed:type"]) ??
+    parseSpeedLimitValue(tags["source:maxspeed"]);
   if (taggedLimit !== null) return taggedLimit;
 
   // Only use a conservative local-road fallback for clearly marked courtyard
@@ -324,7 +326,11 @@ function findSpeedLimitForRoute(position, routePoints, ways) {
     let value =
       parseSpeedLimitValue(tags.maxspeed) ??
       parseSpeedLimitValue(tags["traffic_sign:maxspeed"]) ??
-      parseSpeedLimitValue(tags["maxspeed:type"]);
+      parseSpeedLimitValue(tags["maxspeed:forward"]) ??
+      parseSpeedLimitValue(tags["maxspeed:backward"]) ??
+      parseSpeedLimitValue(String(tags["maxspeed:lanes:forward"] || tags["maxspeed:lanes"] || "").split("|")[0]) ??
+      parseSpeedLimitValue(tags["maxspeed:type"]) ??
+      parseSpeedLimitValue(tags["source:maxspeed"]);
     let directionDifference = 0;
     let score = snapped.distance;
     if (routeHeading !== null) {
@@ -541,7 +547,8 @@ function roadObjectKind(element) {
     (tags.man_made === "surveillance" && surveillance === "public")
   ) return "camera";
 
-  if (/maxspeed|speed_limit/i.test(signTags) && postedSpeed !== null) return "speed-sign";
+  if ((element?.type === "node" && postedSpeed !== null) ||
+      (/maxspeed|speed_limit|KZ:3\.24|RU:3\.24|3\.24/i.test(signTags) && postedSpeed !== null)) return "speed-sign";
 
   if (
     highway === "construction" ||
@@ -2209,29 +2216,26 @@ export default function AstanaMapPage() {
 
       // While following a route, ask for objects along the next 7 km of that route.
       // On the general map, show nearby road objects around the visible/current location.
+      // Keep live requests small enough for public Overpass instances.
+      // Seven points cover the next 4.2 km without an excessive multi-filter query.
       const routeQueryPoints = currentRoutePoints.length > 1
-        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 7000, 12)
+        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 7)
         : [anchor];
       const coordinates = routeQueryPoints
         .map(point => `${Number(point[0].toFixed(6))},${Number(point[1].toFixed(6))}`)
         .join(",");
-      const radius = currentRoutePoints.length > 1 ? 180 : 2200;
-      const q = `[out:json][timeout:15];(
-        nwr(around:${radius},${coordinates})[highway=speed_camera];
-        nwr(around:${radius},${coordinates})[highway=red_light_camera];
-        nwr(around:${radius},${coordinates})[man_made=speed_camera];
+      const radius = currentRoutePoints.length > 1 ? 260 : 2200;
+      const q = `[out:json][timeout:12];(
         nwr(around:${radius},${coordinates})[highway=traffic_signals];
-        node(around:${radius},${coordinates})[traffic_sign~"maxspeed|speed_limit"];
-        node(around:${radius},${coordinates})["traffic_sign:forward"~"maxspeed|speed_limit"];
-        node(around:${radius},${coordinates})["traffic_sign:backward"~"maxspeed|speed_limit"];
-        node(around:${radius},${coordinates})["traffic_sign:maxspeed"];
-        node(around:${radius},${coordinates})[traffic_sign][maxspeed];
-        nwr(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|red_light|speed_camera"];
-        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"camera|traffic|speed|red_light|enforcement|alpr|license_plate"];
-        nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:zone"~"traffic|road|red_light"];
-        nwr(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate|public"];
-        nwr(around:${radius},${coordinates})["surveillance:type"~"traffic|speed|red_light|enforcement|alpr|license_plate"];
-        nwr(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})[highway~"speed_camera|red_light_camera"];
+        nwr(around:${radius},${coordinates})[man_made=speed_camera];
+        nwr(around:${radius},${coordinates})[traffic_sign];
+        nwr(around:${radius},${coordinates})[maxspeed];
+        nwr(around:${radius},${coordinates})[enforcement];
+        nwr(around:${radius},${coordinates})[man_made=surveillance];
+        nwr(around:${radius},${coordinates})["surveillance:type"];
+        nwr(around:${radius},${coordinates})["surveillance:zone"];
+        nwr(around:${radius},${coordinates})["camera:type"];
         nwr(around:${radius},${coordinates})["monitoring:traffic"=yes];
         nwr(around:${radius},${coordinates})[highway=construction];
         nwr(around:${radius},${coordinates})[construction];
@@ -2484,7 +2488,12 @@ export default function AstanaMapPage() {
       try {
         const lat = Number(current.lat.toFixed(6));
         const lng = Number(current.lng.toFixed(6));
-        const q = `[out:json][timeout:8];way(around:110,${lat},${lng})[highway];out tags geom;`;
+        const q = `[out:json][timeout:8];(
+          way(around:180,${lat},${lng})[highway];
+          node(around:180,${lat},${lng})[maxspeed];
+          node(around:180,${lat},${lng})[traffic_sign];
+          node(around:180,${lat},${lng})["traffic_sign:maxspeed"];
+        );out tags geom;`;
         const data = await fetchOverpassJSON(q, controller.signal);
         if (disposed || controller.signal.aborted) return;
 
