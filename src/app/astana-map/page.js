@@ -2416,6 +2416,20 @@ export default function AstanaMapPage() {
           const lat = Number(element.lat ?? element.center?.lat);
           const lng = Number(element.lon ?? element.center?.lon);
           if (!kind || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+          // The faster bbox query may return objects beside the selected road.
+          // Keep only markers near the map center or the active route corridor.
+          if (currentRoutePoints.length > 1) {
+            const snapped = snapToRoute({ lat, lng }, currentRoutePoints);
+            const metersAhead = snapped.progress >= currentProgress
+              ? routeDistanceBetweenProgress(currentRoutePoints, currentProgress, snapped.progress)
+              : -1;
+            if (!Number.isFinite(snapped.distance) || snapped.distance > 320 || metersAhead < 0 || metersAhead > 4800) continue;
+          } else {
+            const center = mapCenter ? [mapCenter.lat, mapCenter.lng] : anchor;
+            if (distanceBetween(center, [lat, lng]) > 1100) continue;
+          }
+
           const tags = element.tags || {};
           const id = `${element.type || "node"}-${element.id ?? `${lat.toFixed(6)},${lng.toFixed(6)}`}`;
           if (!unique.has(id)) {
