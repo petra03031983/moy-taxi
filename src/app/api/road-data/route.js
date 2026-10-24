@@ -120,9 +120,15 @@ function makeFallbackQuery(mode, points, radius) {
 
 function getOverpassState() {
   if (!globalThis.__astanaOverpassState) {
-    globalThis.__astanaOverpassState = { blockedUntil: 0, blockedHost: "", nextEndpointIndex: 0 };
+    globalThis.__astanaOverpassState = {
+      blockedUntilByHost: {},
+      nextEndpointIndex: 0,
+    };
   }
-  return globalThis.__astanaOverpassState;
+  const state = globalThis.__astanaOverpassState;
+  if (!state.blockedUntilByHost) state.blockedUntilByHost = {};
+  if (!Number.isFinite(state.nextEndpointIndex)) state.nextEndpointIndex = 0;
+  return state;
 }
 
 function retryAfterMs(response) {
@@ -138,6 +144,7 @@ function retryAfterMs(response) {
 async function postOverpass(endpoint, query) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const host = new URL(endpoint).host;
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -145,7 +152,7 @@ async function postOverpass(endpoint, query) {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         Accept: "application/json",
         "User-Agent": "AstanaGuide/1.0 (+https://astana-map-roads.vercel.app/)",
-        Referer: "https://astana-map-roads.vercel.app/",
+        "Referer": "https://astana-map-roads.vercel.app/",
       },
       body: new URLSearchParams({ data: query }).toString(),
       signal: controller.signal,
@@ -154,9 +161,8 @@ async function postOverpass(endpoint, query) {
     if (response.status === 429) {
       const waitMs = retryAfterMs(response);
       const state = getOverpassState();
-      state.blockedUntil = Date.now() + waitMs;
-      state.blockedHost = new URL(endpoint).host;
-      const error = new Error("HTTP 429; ждём " + Math.ceil(waitMs / 1000) + " с перед следующим запросом");
+      state.blockedUntilByHost[host] = Date.now() + waitMs;
+      const error = new Error("HTTP 429; источник временно ограничил запросы, пауза " + Math.ceil(waitMs / 1000) + " с");
       error.status = 429;
       throw error;
     }
@@ -173,40 +179,48 @@ async function postOverpass(endpoint, query) {
   }
 }
 
-// Query only one provider at a time. A 429 is a command to wait, not to retry
-// immediately against other public mirrors, which share limited capacity.
+// Try one provider per request. If it fails, the API route makes at most one
+// lighter retry on the next eligible provider; 429 cooldown is kept per host.
 async function fetchFromAnyOverpass(query, endpoints) {
   const state = getOverpassState();
-  const remainingMs = state.blockedUntil - Date.now();
-  if (remainingMs > 0) {
-    const error = new Error(
-      (state.blockedHost || "Overpass") + " is rate-limited; retry in " + Math.ceil(remainingMs / 1000) + " s"
-    );
+  const now = Date.now();
+  let selectedIndex = -1;
+  let earliestCooldown = Infinity;
+
+  for (let offset = 0; offset < endpoints.length; offset += 1) {
+    const index = (state.nextEndpointIndex + offset) % endpoints.length;
+    const host = new URL(endpoints[index]).host;
+    const blockedUntil = Number(state.blockedUntilByHost[host] || 0);
+    if (blockedUntil <= now) {
+      delete state.blockedUntilByHost[host];
+      selectedIndex = index;
+      break;
+    }
+    earliestCooldown = Math.min(earliestCooldown, blockedUntil);
+  }
+
+  if (selectedIndex < 0) {
+    const waitSeconds = Number.isFinite(earliestCooldown) ? Math.ceil((earliestCooldown - now) / 1000) : 60;
+    const error = new Error("Все публичные источники временно ограничили запросы; повтор через " + Math.max(1, waitSeconds) + " с");
     error.status = 429;
     throw error;
   }
 
-  const maxAttempts = Math.min(1, endpoints.length);
-  const startIndex = state.nextEndpointIndex % Math.max(1, endpoints.length);
-  const errors = [];
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const index = (startIndex + attempt) % endpoints.length;
-    const endpoint = endpoints[index];
-    try {
-      const payload = await postOverpass(endpoint, query);
-      state.nextEndpointIndex = (index + 1) % endpoints.length;
-      return payload;
-    } catch (error) {
-      const host = new URL(endpoint).host;
-      const message = host + ": " + (error && error.name === "AbortError"
-        ? "timeout"
-        : String(error && error.message || "request failed"));
-      errors.push(message);
-      if (error && error.status === 429) throw error;
-      state.nextEndpointIndex = (index + 1) % endpoints.length;
-    }
+  const endpoint = endpoints[selectedIndex];
+  const host = new URL(endpoint).host;
+  try {
+    const payload = await postOverpass(endpoint, query);
+    state.nextEndpointIndex = (selectedIndex + 1) % endpoints.length;
+    return payload;
+  } catch (error) {
+    state.nextEndpointIndex = (selectedIndex + 1) % endpoints.length;
+    const detail = error && error.name === "AbortError"
+      ? "timeout"
+      : String(error && error.message || "request failed");
+    const wrapped = new Error(host + ": " + detail);
+    if (error && Number.isFinite(error.status)) wrapped.status = error.status;
+    throw wrapped;
   }
-  throw new Error(errors.slice(0, 2).join("; ").slice(0, 220) || "all Overpass providers failed");
 }
 
 function summarizeRoadObjects(elements = []) {
@@ -516,20 +530,18 @@ export async function GET(request) {
     : Promise.resolve([]);
   let lastError = null;
 
-  const endpoints = OVERPASS_ENDPOINTS.slice(0, MAX_OVERPASS_ATTEMPTS);
+  const endpoints = OVERPASS_ENDPOINTS;
   let payload = null;
   let fallbackUsed = false;
   try {
     payload = await fetchFromAnyOverpass(query, endpoints);
   } catch (error) {
     lastError = error;
-    if (!(error && error.status === 429)) {
-      try {
-        fallbackUsed = true;
-        payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints);
-      } catch (fallbackError) {
-        lastError = fallbackError;
-      }
+    try {
+      fallbackUsed = true;
+      payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints);
+    } catch (fallbackError) {
+      lastError = fallbackError;
     }
   }
 
