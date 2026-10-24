@@ -47,8 +47,8 @@ async function fetchRoadDataFromServer(mode, args = {}, signal) {
   const params = new URLSearchParams({ mode: String(mode || "objects") });
   if (Array.isArray(args.points) && args.points.length) {
     params.set("points", args.points
-      .slice(0, 8)
-      .map(point => Number(point[0]).toFixed(5) + "," + Number(point[1]).toFixed(5))
+      .slice(0, 4)
+      .map(point => Number(point[0]).toFixed(3) + "," + Number(point[1]).toFixed(3))
       .join(";"));
   } else {
     if (Number.isFinite(args.lat)) params.set("lat", String(args.lat));
@@ -2355,7 +2355,7 @@ export default function AstanaMapPage() {
     roadObjectsRequestRef.current = requestState;
 
     const lookupAndDraw = async () => {
-      if (disposed || requestState.inFlight || Date.now() - requestState.lastRequestAt < (navigating ? 18000 : 45000)) return;
+      if (disposed || requestState.inFlight || Date.now() - requestState.lastRequestAt < (navigating ? 90000 : 300000)) return;
 
       const currentRoutePoints = route?.geometry?.length
         ? route.geometry.map(point => [point[1], point[0]])
@@ -2373,7 +2373,7 @@ export default function AstanaMapPage() {
       // Load road data through the same-origin cached API, not directly from the phone.
       // More route samples keep the lookup corridor following bends and intersections.
       const routeQueryPoints = currentRoutePoints.length > 1
-        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 8)
+        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 4)
         : [anchor];
       const radius = currentRoutePoints.length > 1 ? 240 : 1500;
 
@@ -2541,7 +2541,7 @@ export default function AstanaMapPage() {
     };
 
     void lookupAndDraw();
-    const interval = window.setInterval(() => { void lookupAndDraw(); }, navigating ? 20000 : 50000);
+    const interval = window.setInterval(() => { void lookupAndDraw(); }, navigating ? 90000 : 300000);
     return () => {
       disposed = true;
       window.clearInterval(interval);
