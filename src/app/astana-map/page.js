@@ -671,6 +671,7 @@ export default function AstanaMapPage() {
   const [speedLimit, setSpeedLimit] = useState(null);
   const speedLimitRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const [locating, setLocating] = useState(true);
+  const [gpsFixReady, setGpsFixReady] = useState(false);
   const [routing, setRouting] = useState(false);
   const [error, setError] = useState("");
   const [showSteps, setShowSteps] = useState(false);
@@ -1335,11 +1336,12 @@ export default function AstanaMapPage() {
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, speedMps: Number.isFinite(pos.coords.speed) ? pos.coords.speed : 0 };
         positionRef.current = p;
         setOrigin(p);
+        setGpsFixReady(true);
         setSpeed(Math.max(0, Math.round((pos.coords.speed || 0) * 3.6)));
         finishLocating();
         mapRef.current?.setView([p.lat, p.lng], 15);
       },
-      () => { setOrigin({ lat: ASTANA[0], lng: ASTANA[1] }); finishLocating(); },
+      () => { setGpsFixReady(false); setOrigin({ lat: ASTANA[0], lng: ASTANA[1] }); finishLocating(); },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 12000 }
     );
     watchRef.current = navigator.geolocation.watchPosition(
@@ -1347,10 +1349,11 @@ export default function AstanaMapPage() {
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, speedMps: Number.isFinite(pos.coords.speed) ? pos.coords.speed : 0 };
         positionRef.current = p;
         setOrigin(p);
+        setGpsFixReady(true);
         setSpeed(Math.max(0, Math.round((pos.coords.speed || 0) * 3.6)));
         if (routeRef.current && arrowRef.current) arrowRef.current.setLatLng([p.lat, p.lng]);
       },
-      () => {},
+      () => setGpsFixReady(false),
       { enableHighAccuracy: true, maximumAge: 1500, timeout: 10000 }
     );
     return () => {
@@ -2182,7 +2185,7 @@ export default function AstanaMapPage() {
       phase += 0.14;
       const wave = (Math.sin(phase) + 1) / 2;
       try {
-        if (map.getLayer("moy3d-current-position-glow")) {
+        if (gpsFixReady && map.getLayer("moy3d-current-position-glow")) {
           map.setPaintProperty("moy3d-current-position-glow", "circle-radius", 13 + wave * 11);
           map.setPaintProperty("moy3d-current-position-glow", "circle-opacity", 0.12 + wave * 0.32);
         }
@@ -2211,7 +2214,7 @@ export default function AstanaMapPage() {
         }
       } catch {}
     };
-  }, [map3dReady, map3dEnabled, map4dEnabled]);
+  }, [map3dReady, map3dEnabled, map4dEnabled, gpsFixReady]);
 
   function toggle4DMap() {
     if (!map3dReady || !map3dRef.current) {
@@ -2378,7 +2381,7 @@ export default function AstanaMapPage() {
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
       {isHomeScreen && <>
         <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
-        <button className={`astana-home-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"}>{map4dEnabled && map3dReady ? "LIVE" : "4D"}</button>
+        <button className={`astana-home-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"}>{map4dEnabled && map3dReady && gpsFixReady ? "LIVE" : "4D"}</button>
       </>}
 
 
@@ -2520,7 +2523,7 @@ export default function AstanaMapPage() {
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
           <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить">−</button>
         </div>
-        <button className={`astana-nav-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"} title={map4dEnabled ? "Живая динамика включена" : "Включить 4D"}>{map4dEnabled && map3dReady ? "LIVE" : "4D"}</button>
+        <button className={`astana-nav-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"} title={map4dEnabled ? "Живая динамика включена" : "Включить 4D"}>{map4dEnabled && map3dReady && gpsFixReady ? "LIVE" : "4D"}</button>
         <button className="astana-nav-3d-toggle" onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"} title={map3dEnabled ? "2D-карта" : "3D-карта"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
         <button className="astana-nav-recenter" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17, { animate: true }); }} aria-label="Моё местоположение">➤</button>
       </div>}
