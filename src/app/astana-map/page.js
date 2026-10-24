@@ -2248,7 +2248,10 @@ export default function AstanaMapPage() {
         if (cancelled || controller.signal.aborted) return;
         publicCameraCatalogRef.current = { items, fetchedAt: Date.now() };
         setCameraCatalogRevision(value => value + 1);
-      } catch {
+      } catch (error) {
+        console.warn("[Astana Guide] Public camera catalogue unavailable", {
+          message: String(error?.message || "Camera catalogue request failed"),
+        });
         // Optional public camera catalogue; OSM objects must continue to work if it is unavailable.
       }
     };
@@ -2308,6 +2311,13 @@ export default function AstanaMapPage() {
           radius,
         }, controller.signal);
         if (disposed || controller.signal.aborted || roadObjectsRequestRef.current !== requestState) return;
+
+        console.info("[Astana Guide] Road-data source response", {
+          source: data.source || "unknown",
+          count: Number(data.count ?? data.elements?.length ?? 0),
+          diagnostics: data.diagnostics || null,
+          partial: Boolean(data.partial),
+        });
 
         const unique = new Map();
         for (const element of data.elements || []) {
@@ -2418,7 +2428,10 @@ export default function AstanaMapPage() {
           marker.addTo(group);
         }
         setRoadObjectsRevision(value => value + 1);
-      } catch {
+      } catch (error) {
+        console.warn("[Astana Guide] Road-data request failed", {
+          message: String(error?.message || "Road-data request failed"),
+        });
         // Keep already-loaded objects visible when Overpass is temporarily unavailable.
       } finally {
         if (roadObjectsRequestRef.current === requestState) {
