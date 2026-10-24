@@ -3149,7 +3149,7 @@ export default function AstanaMapPage() {
         {roadDataDiagnostics?.fetchedAt && <div>Обновлено: {roadDataDiagnostics.fetchedAt}</div>}
         {roadDataDiagnostics?.partialReason && <div>Почему частично: {roadDataDiagnostics.partialReason}</div>}
         {roadDataDiagnostics?.roadError && <div>Ошибка: {roadDataDiagnostics.roadError}</div>}
-        {roadDataDiagnostics?.cameraError && <div>Камеры: {roadDataDiagnostics.cameraError}</div>
+        {roadDataDiagnostics?.cameraError && <div>Камеры: {roadDataDiagnostics.cameraError}</div>}
       </aside>}
       {isHomeScreen && <>
         <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
