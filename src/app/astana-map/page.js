@@ -551,15 +551,17 @@ function roadObjectKind(element) {
   const surveillance = String(tags.surveillance || "").toLowerCase();
   const cameraType = String(tags["camera:type"] || "").toLowerCase();
   const highway = String(tags.highway || "").toLowerCase();
+  const amenity = String(tags.amenity || "").toLowerCase();
   const construction = String(tags.construction || tags["construction:highway"] || tags.roadworks || "").toLowerCase();
   const barrier = String(tags.barrier || "").toLowerCase();
   const hazard = String(tags.hazard || tags["hazard:type"] || "").toLowerCase();
   const closure = String(tags["road:closed"] || tags.closed || tags.access || "").toLowerCase();
   const signTags = [tags.traffic_sign, tags["traffic_sign:forward"], tags["traffic_sign:backward"], tags["traffic_sign:maxspeed"]].filter(Boolean).join(" ");
+  const normalizedSignTags = signTags.toLowerCase();
   const postedSpeed = postedSpeedFromTags(tags);
 
-  // Classify signals and surveillance before generic road-event tags.
   if (highway === "traffic_signals") return "traffic-light";
+
   if (
     highway === "speed_camera" ||
     highway === "red_light_camera" ||
@@ -575,6 +577,27 @@ function roadObjectKind(element) {
 
   if ((element?.type === "node" && postedSpeed !== null) ||
       (/maxspeed|speed_limit|KZ:3\.24|RU:3\.24|3\.24/i.test(signTags) && postedSpeed !== null)) return "speed-sign";
+
+  if (
+    highway === "crossing" ||
+    Boolean(tags.crossing) ||
+    Boolean(tags["crossing:markings"]) ||
+    tags.footway === "crossing"
+  ) return "pedestrian-crossing";
+
+  if (highway === "stop" || /(^|[^a-z])(stop|KZ:2\.5|RU:2\.5)([^a-z]|$)/i.test(signTags)) return "stop-sign";
+  if (highway === "give_way" || /give.?way|yield|KZ:2\.4|RU:2\.4/i.test(signTags)) return "give-way-sign";
+  if (/(?:KZ|RU):?3\.(?:27)\b/i.test(signTags) || /no_stopping|no stopping/.test(normalizedSignTags)) return "no-stopping";
+  if (/(?:KZ|RU):?3\.(?:28|29|30)\b/i.test(signTags) || /no_parking|no parking/.test(normalizedSignTags)) return "no-parking";
+
+  if (
+    amenity === "parking" ||
+    Boolean(tags.parking) ||
+    Boolean(tags.parking_space) ||
+    Boolean(tags["parking:lane"])
+  ) return "parking";
+
+  if (signTags.trim()) return "traffic-sign";
 
   if (
     highway === "construction" ||
@@ -595,9 +618,29 @@ function roadObjectKind(element) {
   return null;
 }
 
+function isSpeedEnforcementCamera(tags = {}) {
+  const values = [
+    tags.highway,
+    tags.man_made,
+    tags.enforcement,
+    tags["enforcement:type"],
+    tags["camera:type"],
+    tags["surveillance:type"],
+    tags["surveillance:zone"],
+  ].map(value => String(value || "").toLowerCase()).join(" ");
+  return /speed_camera|red_light_camera|average_speed|maxspeed|speed enforcement|speed|red_light|alpr|license_plate/.test(values);
+}
+
 function roadObjectTitle(kind) {
-  if (kind === "camera") return "Камера дорожного наблюдения / контроля";
+  if (kind === "camera") return "Камера дорожного наблюдения";
   if (kind === "speed-sign") return "Знак ограничения скорости";
+  if (kind === "pedestrian-crossing") return "Пешеходный переход";
+  if (kind === "parking") return "Автомобильная парковка";
+  if (kind === "traffic-sign") return "Дорожный знак";
+  if (kind === "stop-sign") return "Знак СТОП";
+  if (kind === "give-way-sign") return "Знак «Уступите дорогу»";
+  if (kind === "no-stopping") return "Остановка запрещена";
+  if (kind === "no-parking") return "Стоянка запрещена";
   if (kind === "roadwork") return "Дорожные работы (отметка карты)";
   if (kind === "closure") return "Возможное перекрытие дороги (отметка карты)";
   if (kind === "hazard") return "Дорожная опасность (отметка карты)";
@@ -607,6 +650,13 @@ function roadObjectTitle(kind) {
 function roadObjectShortLabel(kind) {
   if (kind === "camera") return "К";
   if (kind === "speed-sign") return "";
+  if (kind === "pedestrian-crossing") return "П";
+  if (kind === "parking") return "P";
+  if (kind === "traffic-sign") return "З";
+  if (kind === "stop-sign") return "S";
+  if (kind === "give-way-sign") return "▽";
+  if (kind === "no-stopping") return "×";
+  if (kind === "no-parking") return "P̸";
   if (kind === "roadwork") return "Р";
   if (kind === "closure") return "З";
   if (kind === "hazard") return "!";
@@ -621,6 +671,13 @@ function roadObjectIconHtml(kind, speedLimit = null) {
   if (kind === "camera") {
     return '<span class="moy-road-object-badge moy-road-object-camera" aria-label="Дорожная камера"><svg viewBox="0 0 32 32" role="presentation"><path d="M5 11.5h15.2a2 2 0 0 1 2 2v10.2H5z" fill="#fff"/><path d="m22 15 6-3v13l-6-3z" fill="#fff"/><circle cx="13" cy="17.8" r="4.1" fill="#d92c37"/><circle cx="13" cy="17.8" r="2.5" fill="#fff"/><path d="M10 8h6l2.4 3.5H8z" fill="#fff"/><path d="M15.5 23.5v4M10 27.5h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>';
   }
+  if (kind === "parking") return '<span class="moy-road-object-badge moy-road-object-parking" aria-label="Автомобильная парковка">P</span>';
+  if (kind === "pedestrian-crossing") return '<span class="moy-road-object-badge moy-road-object-crossing" aria-label="Пешеходный переход">🚸</span>';
+  if (kind === "stop-sign") return '<span class="moy-road-object-badge moy-road-object-stop" aria-label="Знак СТОП">STOP</span>';
+  if (kind === "give-way-sign") return '<span class="moy-road-object-badge moy-road-object-giveway" aria-label="Уступите дорогу">▼</span>';
+  if (kind === "no-stopping") return '<span class="moy-road-object-badge moy-road-object-prohibition" aria-label="Остановка запрещена">×</span>';
+  if (kind === "no-parking") return '<span class="moy-road-object-badge moy-road-object-prohibition" aria-label="Стоянка запрещена">P̸</span>';
+  if (kind === "traffic-sign") return '<span class="moy-road-object-badge moy-road-object-generic-sign" aria-label="Дорожный знак">З</span>';
   if (kind === "roadwork") return '<span class="moy-road-object-badge moy-road-object-event moy-road-object-roadwork" aria-label="Дорожные работы">Р</span>';
   if (kind === "closure") return '<span class="moy-road-object-badge moy-road-object-event moy-road-object-closure" aria-label="Перекрытие дороги">З</span>';
   if (kind === "hazard") return '<span class="moy-road-object-badge moy-road-object-event moy-road-object-hazard" aria-label="Дорожная опасность">!</span>';
@@ -809,6 +866,7 @@ export default function AstanaMapPage() {
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const cameraWarningRef = useRef({ routeId: null, announced: new Set() });
+  const roadObjectWarningRef = useRef({ routeId: null, announced: new Set() });
   const speedWarningRef = useRef({ active: false, limit: null, lastSpokenAt: 0 });
   const routeRef = useRef(null);
   const passedRouteRef = useRef(null);
@@ -1352,9 +1410,9 @@ export default function AstanaMapPage() {
               type: "circle",
               source: "moy3d-road-objects",
               paint: {
-                "circle-radius": ["match", ["get", "kind"], "speed-sign", 15, "camera", 9, "roadwork", 9, "closure", 9, "hazard", 9, 7],
-                "circle-color": ["match", ["get", "kind"], "speed-sign", "#ffffff", "camera", "#d92d3a", "roadwork", "#f28c18", "closure", "#b62435", "hazard", "#8d5ad6", "#159b54"],
-                "circle-stroke-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#df2638", "#ffffff"],
+                "circle-radius": ["match", ["get", "kind"], "speed-sign", 15, "camera", 9, "roadwork", 9, "closure", 9, "hazard", 9, "parking", 10, "pedestrian-crossing", 9, "traffic-sign", 10, "stop-sign", 10, "give-way-sign", 10, "no-stopping", 10, "no-parking", 10, 7],
+                "circle-color": ["match", ["get", "kind"], "speed-sign", "#ffffff", "camera", "#d92d3a", "roadwork", "#f28c18", "closure", "#b62435", "hazard", "#8d5ad6", "parking", "#087cf5", "pedestrian-crossing", "#1275d4", "traffic-sign", "#f28c18", "stop-sign", "#d92d3a", "give-way-sign", "#e7e7e7", "no-stopping", "#ffffff", "no-parking", "#ffffff", "#159b54"],
+                "circle-stroke-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#df2638", ["match", ["get", "kind"], "no-stopping", "#df2638", "no-parking", "#df2638", "#ffffff"]],
                 "circle-stroke-width": ["case", ["==", ["get", "kind"], "speed-sign"], 4, 2.5],
               },
             }, labelLayerId);
@@ -1363,7 +1421,7 @@ export default function AstanaMapPage() {
               type: "symbol",
               source: "moy3d-road-objects",
               layout: {
-                "text-field": ["case", ["==", ["get", "kind"], "speed-sign"], ["to-string", ["get", "speedLimit"]], ["match", ["get", "kind"], "camera", "К", "roadwork", "Р", "closure", "З", "hazard", "!", "С"]],
+                "text-field": ["case", ["==", ["get", "kind"], "speed-sign"], ["to-string", ["get", "speedLimit"]], ["match", ["get", "kind"], "camera", "К", "roadwork", "Р", "closure", "З", "hazard", "!", "parking", "P", "pedestrian-crossing", "П", "traffic-sign", "З", "stop-sign", "S", "give-way-sign", "▽", "no-stopping", "×", "no-parking", "P̸", "С"]],
                 "text-size": ["case", ["==", ["get", "kind"], "speed-sign"], 13, 11],
                 "text-font": ["Open Sans Regular"],
                 "text-allow-overlap": true,
@@ -1397,6 +1455,11 @@ export default function AstanaMapPage() {
                 note.className = "moy-road-object-popup-caveat";
                 note.textContent = "Отметка OpenStreetMap; это не подтверждение текущего перекрытия или активных работ.";
                 content.appendChild(note);
+              }
+              if (String(props.catalogSource || "") === "astana-gis") {
+                const sourceNote = document.createElement("small");
+                sourceNote.textContent = "Источник: открытый геопортал города Астаны. Отметка показывает расположение парковки, а не наличие свободных мест.";
+                content.appendChild(sourceNote);
               }
               const sourceUrl = String(props.sourceUrl || "");
               if (sourceUrl && /^https:\/\/[^\s"'<>]+$/i.test(sourceUrl)) {
@@ -1615,7 +1678,7 @@ export default function AstanaMapPage() {
           label: item.shortLabel || roadObjectShortLabel(item.kind),
           title: item.title || roadObjectTitle(item.kind),
           speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
-          catalogSource: item.catalogSource || "",
+          catalogSource: item.catalogSource || (item.tags?.source === "astana-gis" ? "astana-gis" : ""),
           sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
         },
         geometry: { type: "Point", coordinates: [item.lng, item.lat] },
@@ -2158,48 +2221,35 @@ export default function AstanaMapPage() {
       if (cancelled || Date.now() - publicCameraCatalogRef.current.fetchedAt < 30 * 60 * 1000) return;
       controller = new AbortController();
       try {
-        // Published directory only: this adds marked camera locations and source links,
-        // not live video or a proxy. The OSM map remains the primary source.
-        const response = await fetch("https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru", {
-          signal: controller.signal,
-          headers: { Accept: "application/geo+json, application/json" },
-        });
-        if (!response.ok) throw new Error("Public camera catalogue unavailable");
-        const collection = await response.json();
-        const items = (Array.isArray(collection?.features) ? collection.features : [])
-          .map(feature => {
-            const coordinates = feature?.geometry?.coordinates;
-            const properties = feature?.properties || {};
-            const lng = Number(coordinates?.[0]);
-            const lat = Number(coordinates?.[1]);
+        // Proxy through our own API to avoid browser CORS failures and reuse the server-side cache.
+        const collection = await fetchRoadDataFromServer("cameras", {}, controller.signal);
+        const items = (Array.isArray(collection?.elements) ? collection.elements : [])
+          .map(camera => {
+            const lat = Number(camera?.lat);
+            const lng = Number(camera?.lon);
             if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 40 || lat > 56 || lng < 45 || lng > 90) return null;
-            const sourceUrl = String(properties.source_url || properties.url || "");
-            const safeSourceUrl = /^https:\/\/[^\s"'<>]+$/i.test(sourceUrl) ? sourceUrl : "";
-            const cameraId = properties.camera_id || feature.id || (String(lat.toFixed(6)) + "-" + String(lng.toFixed(6)));
+            const tags = camera?.tags || {};
             return {
-              id: "qazgeo-" + String(cameraId),
+              id: String(camera.id || ("qazgeo-" + lat.toFixed(6) + "-" + lng.toFixed(6))),
               kind: "camera",
-              title: String(properties.name || properties.name_ru || "Публичная камера"),
+              title: String(tags.name || "Публичная камера"),
               shortLabel: "К",
               lat,
               lng,
               catalogSource: "qazgeo",
               tags: {
-                source_url: safeSourceUrl,
-                rights_mode: String(properties.rights_mode || ""),
-                attribution: String(properties.attribution || ""),
-                owner: String(properties.owner?.name || properties.owner || ""),
-                checked_at: String(properties.checked_at || ""),
+                name: String(tags.name || "Публичная камера"),
+                source_url: String(tags.source_url || ""),
+                source: "qazgeo",
               },
             };
           })
           .filter(Boolean);
-
         if (cancelled || controller.signal.aborted) return;
         publicCameraCatalogRef.current = { items, fetchedAt: Date.now() };
         setCameraCatalogRevision(value => value + 1);
       } catch {
-        // This optional catalogue must never block the core map or OSM-backed layer.
+        // Optional public camera catalogue; OSM objects must continue to work if it is unavailable.
       }
     };
 
@@ -2277,6 +2327,7 @@ export default function AstanaMapPage() {
               lat,
               lng,
               tags,
+              catalogSource: tags.source === "astana-gis" ? "astana-gis" : "",
             });
           }
         }
@@ -2307,7 +2358,18 @@ export default function AstanaMapPage() {
           if (!duplicate) unique.set(item.id, item);
         }
 
-        const objects = Array.from(unique.values());
+        const deduplicatedObjects = [];
+        for (const item of unique.values()) {
+          const duplicateIndex = item.kind === "parking"
+            ? deduplicatedObjects.findIndex(existing =>
+                existing.kind === "parking" &&
+                distanceBetween([existing.lat, existing.lng], [item.lat, item.lng]) < 30
+              )
+            : -1;
+          if (duplicateIndex < 0) deduplicatedObjects.push(item);
+          else if (item.tags?.source === "astana-gis") deduplicatedObjects[duplicateIndex] = item;
+        }
+        const objects = deduplicatedObjects;
         roadObjectsRef.current = objects;
         const group = roadObjectsLayerRef.current;
         if (!group) return;
@@ -2318,13 +2380,15 @@ export default function AstanaMapPage() {
           const isSignal = item.kind === "traffic-light";
           const isCamera = item.kind === "camera";
           const isSpeedSign = item.kind === "speed-sign";
+          const isParking = item.kind === "parking";
+          const isCrossing = item.kind === "pedestrian-crossing";
           const isEvent = ["roadwork", "closure", "hazard"].includes(item.kind);
           const title = item.title || roadObjectTitle(item.kind);
           const icon = L.divIcon({
             className: "moy-road-object-icon",
             html: roadObjectIconHtml(item.kind, item.speedLimit),
-            iconSize: isCamera ? [42, 42] : isSignal ? [32, 46] : isSpeedSign ? [42, 42] : [38, 38],
-            iconAnchor: isCamera ? [21, 21] : isSignal ? [16, 23] : isSpeedSign ? [21, 21] : [19, 19],
+            iconSize: isCamera ? [42, 42] : isSignal ? [32, 46] : isSpeedSign || isParking || isCrossing ? [42, 42] : [38, 38],
+            iconAnchor: isCamera ? [21, 21] : isSignal ? [16, 23] : isSpeedSign || isParking || isCrossing ? [21, 21] : [19, 19],
           });
           const marker = L.marker([item.lat, item.lng], {
             icon,
@@ -2337,6 +2401,9 @@ export default function AstanaMapPage() {
           if (mappedLimit) detailParts.push('<div class="moy-road-object-popup-limit">Ограничение: ' + mappedLimit + ' км/ч</div>');
           const description = item.tags.description || item.tags["description:ru"] || item.tags.note || item.tags["note:ru"] || item.tags.construction || item.tags.hazard;
           if (description) detailParts.push('<div>' + escapeHtml(String(description).slice(0, 220)) + '</div>');
+          if (item.catalogSource === "astana-gis") {
+            detailParts.push('<small>Источник: открытый геопортал города Астаны. Отметка показывает расположение парковки, а не наличие свободных мест.</small>');
+          }
           if (item.catalogSource === "qazgeo") {
             detailParts.push('<small>Источник: публичный каталог QazGeo. Это ссылка на источник, а не видеопоток в реальном времени.</small>');
             const sourceUrl = String(item.tags.source_url || "");
@@ -2461,8 +2528,54 @@ export default function AstanaMapPage() {
     cameraWarningRef.current.announced.add(nearest.item.id);
     const cameraLimit = parseSpeedLimitValue(nearest.item.tags?.maxspeed) || speedLimit || null;
     const limitText = cameraLimit ? ` Ограничение ${cameraLimit} километров в час.` : "";
-    speakRoutePrompt(`Впереди камера контроля скорости.${limitText} Через ${voiceDistanceText(nearest.meters)}.`);
+    const cameraPhrase = isSpeedEnforcementCamera(nearest.item.tags || {})
+      ? "Впереди камера контроля скорости."
+      : "Впереди камера дорожного наблюдения.";
+    speakRoutePrompt(`${cameraPhrase}${limitText} Через ${voiceDistanceText(nearest.meters)}.`);
   }, [navigating, voiceGuidanceEnabled, origin?.lat, origin?.lng, route, speedLimit, roadObjectsRevision]);
+
+  useEffect(() => {
+    if (!navigating || !voiceGuidanceEnabled || !route?.geometry?.length || !origin) return;
+    const routeId = route.id || null;
+    let warningState = roadObjectWarningRef.current;
+    if (warningState.routeId !== routeId) {
+      warningState = { routeId, announced: new Set() };
+      roadObjectWarningRef.current = warningState;
+    }
+
+    const points = routePointsRef.current.length > 1
+      ? routePointsRef.current
+      : route.geometry.map(point => [point[1], point[0]]);
+    if (points.length < 2 || routeProgressRef.current < 0) return;
+
+    let nearest = null;
+    for (const item of roadObjectsRef.current) {
+      if (warningState.announced.has(item.id)) continue;
+      let phrase = "";
+      if (item.kind === "traffic-light") phrase = "Впереди светофор";
+      else if (item.kind === "pedestrian-crossing") phrase = "Впереди пешеходный переход";
+      else if (item.kind === "stop-sign") phrase = "Впереди знак СТОП";
+      else if (item.kind === "give-way-sign") phrase = "Впереди знак «Уступите дорогу»";
+      else if (item.kind === "no-stopping") phrase = "Впереди знак «Остановка запрещена»";
+      else if (item.kind === "no-parking") phrase = "Впереди знак «Стоянка запрещена»";
+      else if (item.kind === "speed-sign" && Number.isFinite(Number(item.speedLimit)) && Number(item.speedLimit) > 0) {
+        phrase = "Впереди ограничение скорости " + Math.round(Number(item.speedLimit)) + " километров в час";
+      }
+      if (!phrase) continue;
+
+      const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
+      if (!Number.isFinite(snapped.distance) || snapped.distance > 60) continue;
+      if (snapped.progress < routeProgressRef.current - 0.1) continue;
+      const meters = routeDistanceBetweenProgress(points, routeProgressRef.current, snapped.progress);
+      if (meters < 25 || meters > 450) continue;
+      if (!nearest || meters < nearest.meters) nearest = { item, meters, phrase };
+    }
+
+    if (nearest) {
+      warningState.announced.add(nearest.item.id);
+      speakRoutePrompt(nearest.phrase + ". Через " + voiceDistanceText(nearest.meters) + ".");
+    }
+  }, [navigating, voiceGuidanceEnabled, origin?.lat, origin?.lng, route, roadObjectsRevision, navigationClock]);
 
   useEffect(() => {
     if (!navigating || !route?.geometry?.length) {
