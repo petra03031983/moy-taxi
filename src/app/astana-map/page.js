@@ -47,7 +47,7 @@ async function fetchRoadDataFromServer(mode, args = {}, signal) {
   const params = new URLSearchParams({ mode: String(mode || "objects") });
   if (Array.isArray(args.points) && args.points.length) {
     params.set("points", args.points
-      .slice(0, 14)
+      .slice(0, 8)
       .map(point => Number(point[0]).toFixed(5) + "," + Number(point[1]).toFixed(5))
       .join(";"));
   } else {
@@ -63,7 +63,9 @@ async function fetchRoadDataFromServer(mode, args = {}, signal) {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || !Array.isArray(payload?.elements)) {
-    throw new Error(payload?.error || "Сервис дорожных данных временно недоступен");
+    const baseMessage = payload?.error || "Сервис дорожных данных временно недоступен";
+    const detail = String(payload?.details || "").trim();
+    throw new Error(detail ? `${baseMessage} — ${detail}` : baseMessage);
   }
   return payload;
 }
@@ -2371,7 +2373,7 @@ export default function AstanaMapPage() {
       // Load road data through the same-origin cached API, not directly from the phone.
       // More route samples keep the lookup corridor following bends and intersections.
       const routeQueryPoints = currentRoutePoints.length > 1
-        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 12)
+        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 8)
         : [anchor];
       const radius = currentRoutePoints.length > 1 ? 240 : 1500;
 
