@@ -496,6 +496,21 @@ function sampleRouteForRoadObjects(points, startProgress = 0, maxDistanceMeters 
   return samples;
 }
 
+function postedSpeedFromTags(tags = {}) {
+  const signTags = [
+    tags.traffic_sign,
+    tags["traffic_sign:forward"],
+    tags["traffic_sign:backward"],
+    tags["traffic_sign:maxspeed"],
+  ].filter(Boolean).join(" ");
+  const inlineValue = signTags.match(/maxspeed[:=]\s*(\d+(?:[.,]\d+)?)/i)?.[1];
+  return parseSpeedLimitValue(tags.maxspeed) ??
+    parseSpeedLimitValue(tags["traffic_sign:maxspeed"]) ??
+    parseSpeedLimitValue(tags["maxspeed:forward"]) ??
+    parseSpeedLimitValue(tags["maxspeed:backward"]) ??
+    parseSpeedLimitValue(inlineValue);
+}
+
 function roadObjectKind(element) {
   const tags = element?.tags || {};
   const enforcement = String(tags.enforcement || tags["enforcement:type"] || "").toLowerCase();
@@ -508,6 +523,8 @@ function roadObjectKind(element) {
   const barrier = String(tags.barrier || "").toLowerCase();
   const hazard = String(tags.hazard || tags["hazard:type"] || "").toLowerCase();
   const closure = String(tags["road:closed"] || tags.closed || tags.access || "").toLowerCase();
+  const signTags = [tags.traffic_sign, tags["traffic_sign:forward"], tags["traffic_sign:backward"], tags["traffic_sign:maxspeed"]].filter(Boolean).join(" ");
+  const postedSpeed = postedSpeedFromTags(tags);
 
   // Classify signals and surveillance before generic road-event tags.
   if (highway === "traffic_signals") return "traffic-light";
@@ -523,6 +540,8 @@ function roadObjectKind(element) {
     tags["monitoring:traffic"] === "yes" ||
     (tags.man_made === "surveillance" && surveillance === "public")
   ) return "camera";
+
+  if (/maxspeed|speed_limit/i.test(signTags) && postedSpeed !== null) return "speed-sign";
 
   if (
     highway === "construction" ||
@@ -545,6 +564,7 @@ function roadObjectKind(element) {
 
 function roadObjectTitle(kind) {
   if (kind === "camera") return "Камера дорожного наблюдения / контроля";
+  if (kind === "speed-sign") return "Знак ограничения скорости";
   if (kind === "roadwork") return "Дорожные работы (отметка карты)";
   if (kind === "closure") return "Возможное перекрытие дороги (отметка карты)";
   if (kind === "hazard") return "Дорожная опасность (отметка карты)";
@@ -553,13 +573,18 @@ function roadObjectTitle(kind) {
 
 function roadObjectShortLabel(kind) {
   if (kind === "camera") return "К";
+  if (kind === "speed-sign") return "";
   if (kind === "roadwork") return "Р";
   if (kind === "closure") return "З";
   if (kind === "hazard") return "!";
   return "С";
 }
 
-function roadObjectIconHtml(kind) {
+function roadObjectIconHtml(kind, speedLimit = null) {
+  if (kind === "speed-sign") {
+    const value = Number.isFinite(Number(speedLimit)) ? String(Math.round(Number(speedLimit))) : "!";
+    return '<span class="moy-road-object-badge moy-road-object-speed-sign" aria-label="Ограничение скорости ' + escapeHtml(value) + ' километров в час">' + escapeHtml(value) + '</span>';
+  }
   if (kind === "camera") {
     return '<span class="moy-road-object-badge moy-road-object-camera" aria-label="Дорожная камера"><svg viewBox="0 0 32 32" role="presentation"><path d="M5 11.5h15.2a2 2 0 0 1 2 2v10.2H5z" fill="#fff"/><path d="m22 15 6-3v13l-6-3z" fill="#fff"/><circle cx="13" cy="17.8" r="4.1" fill="#d92c37"/><circle cx="13" cy="17.8" r="2.5" fill="#fff"/><path d="M10 8h6l2.4 3.5H8z" fill="#fff"/><path d="M15.5 23.5v4M10 27.5h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>';
   }
@@ -604,6 +629,26 @@ function nextRouteInstruction(route, points, progress) {
   ).map(value => String(value).toLowerCase());
   const hasRightLane = indications.includes("right") || indications.includes("slight right");
   const hasStraightLane = indications.includes("straight");
+  const laneIntersection = (next.intersections || []).find(intersection => Array.isArray(intersection.lanes) && intersection.lanes.length);
+  const indicationGlyph = value => {
+    const v = String(value || "").toLowerCase().replace(/_/g, " ");
+    if (v.includes("uturn")) return "↶";
+    if (v.includes("slight left")) return "↖";
+    if (v.includes("sharp left")) return "⬉";
+    if (v.includes("left")) return "←";
+    if (v.includes("slight right")) return "↗";
+    if (v.includes("sharp right")) return "⬈";
+    if (v.includes("right")) return "→";
+    if (v.includes("straight")) return "↑";
+    return "";
+  };
+  const lanes = (laneIntersection?.lanes || [])
+    .slice(0, 7)
+    .map(lane => ({
+      arrows: (lane.indications || []).map(indicationGlyph).filter(Boolean),
+      valid: lane.valid === true,
+    }))
+    .filter(lane => lane.arrows.length);
   return {
     distance: formatDistance(distanceMeters),
     distanceMeters,
@@ -613,6 +658,7 @@ function nextRouteInstruction(route, points, progress) {
     modifier: maneuver.modifier || "",
     exit: maneuver.exit || next.exit || null,
     laneRight: hasRightLane && hasStraightLane,
+    lanes,
   };
 }
 
@@ -766,6 +812,7 @@ export default function AstanaMapPage() {
   const [mapType, setMapType] = useState("map");
   const [speed, setSpeed] = useState(0);
   const [speedLimit, setSpeedLimit] = useState(null);
+  const [upcomingCamera, setUpcomingCamera] = useState(null);
   const speedLimitRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const [locating, setLocating] = useState(true);
   const [gpsFixReady, setGpsFixReady] = useState(false);
@@ -1272,10 +1319,10 @@ export default function AstanaMapPage() {
               type: "circle",
               source: "moy3d-road-objects",
               paint: {
-                "circle-radius": ["match", ["get", "kind"], "camera", 9, "roadwork", 9, "closure", 9, "hazard", 9, 7],
-                "circle-color": ["match", ["get", "kind"], "camera", "#d92d3a", "roadwork", "#f28c18", "closure", "#b62435", "hazard", "#8d5ad6", "#159b54"],
-                "circle-stroke-color": "#ffffff",
-                "circle-stroke-width": 2.5,
+                "circle-radius": ["match", ["get", "kind"], "speed-sign", 15, "camera", 9, "roadwork", 9, "closure", 9, "hazard", 9, 7],
+                "circle-color": ["match", ["get", "kind"], "speed-sign", "#ffffff", "camera", "#d92d3a", "roadwork", "#f28c18", "closure", "#b62435", "hazard", "#8d5ad6", "#159b54"],
+                "circle-stroke-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#df2638", "#ffffff"],
+                "circle-stroke-width": ["case", ["==", ["get", "kind"], "speed-sign"], 4, 2.5],
               },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
@@ -1283,15 +1330,15 @@ export default function AstanaMapPage() {
               type: "symbol",
               source: "moy3d-road-objects",
               layout: {
-                "text-field": ["match", ["get", "kind"], "camera", "К", "roadwork", "Р", "closure", "З", "hazard", "!", "С"],
-                "text-size": 11,
+                "text-field": ["case", ["==", ["get", "kind"], "speed-sign"], ["to-string", ["get", "speedLimit"]], ["match", ["get", "kind"], "camera", "К", "roadwork", "Р", "closure", "З", "hazard", "!", "С"]],
+                "text-size": ["case", ["==", ["get", "kind"], "speed-sign"], 13, 11],
                 "text-font": ["Open Sans Regular"],
                 "text-allow-overlap": true,
                 "text-ignore-placement": true,
               },
               paint: {
-                "text-color": "#ffffff",
-                "text-halo-color": "#24303a",
+                "text-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#20242a", "#ffffff"],
+                "text-halo-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#ffffff", "#24303a"],
                 "text-halo-width": 0.7,
               },
             }, labelLayerId);
@@ -1528,6 +1575,7 @@ export default function AstanaMapPage() {
           kind: item.kind || "traffic-light",
           label: item.shortLabel || roadObjectShortLabel(item.kind),
           title: item.title || roadObjectTitle(item.kind),
+          speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
           catalogSource: item.catalogSource || "",
           sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
         },
@@ -2167,6 +2215,11 @@ export default function AstanaMapPage() {
         nwr(around:${radius},${coordinates})[highway=red_light_camera];
         nwr(around:${radius},${coordinates})[man_made=speed_camera];
         nwr(around:${radius},${coordinates})[highway=traffic_signals];
+        node(around:${radius},${coordinates})[traffic_sign~"maxspeed|speed_limit"];
+        node(around:${radius},${coordinates})["traffic_sign:forward"~"maxspeed|speed_limit"];
+        node(around:${radius},${coordinates})["traffic_sign:backward"~"maxspeed|speed_limit"];
+        node(around:${radius},${coordinates})["traffic_sign:maxspeed"];
+        node(around:${radius},${coordinates})[traffic_sign][maxspeed];
         nwr(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|red_light|speed_camera"];
         nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"camera|traffic|speed|red_light|enforcement|alpr|license_plate"];
         nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:zone"~"traffic|road|red_light"];
@@ -2206,6 +2259,7 @@ export default function AstanaMapPage() {
               kind,
               title: roadObjectTitle(kind),
               shortLabel: roadObjectShortLabel(kind),
+              speedLimit: kind === "speed-sign" ? postedSpeedFromTags(tags) : null,
               lat,
               lng,
               tags,
@@ -2249,13 +2303,14 @@ export default function AstanaMapPage() {
         for (const item of objects) {
           const isSignal = item.kind === "traffic-light";
           const isCamera = item.kind === "camera";
+          const isSpeedSign = item.kind === "speed-sign";
           const isEvent = ["roadwork", "closure", "hazard"].includes(item.kind);
           const title = item.title || roadObjectTitle(item.kind);
           const icon = L.divIcon({
             className: "moy-road-object-icon",
-            html: roadObjectIconHtml(item.kind),
-            iconSize: isCamera ? [42, 42] : isSignal ? [32, 46] : [38, 38],
-            iconAnchor: isCamera ? [21, 21] : isSignal ? [16, 23] : [19, 19],
+            html: roadObjectIconHtml(item.kind, item.speedLimit),
+            iconSize: isCamera ? [42, 42] : isSignal ? [32, 46] : isSpeedSign ? [42, 42] : [38, 38],
+            iconAnchor: isCamera ? [21, 21] : isSignal ? [16, 23] : isSpeedSign ? [21, 21] : [19, 19],
           });
           const marker = L.marker([item.lat, item.lng], {
             icon,
@@ -2263,7 +2318,7 @@ export default function AstanaMapPage() {
             keyboard: false,
             zIndexOffset: 2400,
           });
-          const mappedLimit = parseSpeedLimitValue(item.tags.maxspeed);
+          const mappedLimit = postedSpeedFromTags(item.tags) ?? parseSpeedLimitValue(item.tags.maxspeed);
           const detailParts = [];
           if (mappedLimit) detailParts.push('<div class="moy-road-object-popup-limit">Ограничение: ' + mappedLimit + ' км/ч</div>');
           const description = item.tags.description || item.tags["description:ru"] || item.tags.note || item.tags["note:ru"] || item.tags.construction || item.tags.hazard;
@@ -2334,6 +2389,36 @@ export default function AstanaMapPage() {
     voiceAnnouncementRef.current = state;
     if (phrase) speakRoutePrompt(phrase);
   }, [navigating, voiceGuidanceEnabled, nextInstruction?.maneuverKey, nextInstruction?.distanceMeters, nextInstruction?.maneuverType, nextInstruction?.modifier, nextInstruction?.exit, nextInstruction?.laneRight]);
+
+  useEffect(() => {
+    if (!navigating || !route?.geometry?.length || !origin) {
+      setUpcomingCamera(null);
+      return;
+    }
+    const points = routePointsRef.current.length > 1
+      ? routePointsRef.current
+      : route.geometry.map(point => [point[1], point[0]]);
+    if (points.length < 2) {
+      setUpcomingCamera(null);
+      return;
+    }
+    const progress = routeProgressRef.current;
+    let nearest = null;
+    for (const item of roadObjectsRef.current) {
+      if (item.kind !== "camera") continue;
+      const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
+      if (!Number.isFinite(snapped.distance) || snapped.distance > 65) continue;
+      if (progress >= 0 && snapped.progress < progress - 0.1) continue;
+      const meters = routeDistanceBetweenProgress(points, Math.max(0, progress), snapped.progress);
+      if (meters < 0 || meters > 1500) continue;
+      if (!nearest || meters < nearest.meters) nearest = { id: item.id, title: item.title, meters };
+    }
+    setUpcomingCamera(current => {
+      if (!nearest) return current === null ? null : null;
+      if (current?.id === nearest.id && Math.abs(current.meters - nearest.meters) < 20) return current;
+      return nearest;
+    });
+  }, [navigating, origin?.lat, origin?.lng, route?.id, roadObjectsRevision, navigationClock]);
 
   useEffect(() => {
     if (!navigating || !voiceGuidanceEnabled || !route?.geometry?.length || !origin) return;
@@ -2873,6 +2958,11 @@ export default function AstanaMapPage() {
           <b>{nextInstruction?.distance || "— м"}</b>
         </div>
       </div>}
+      {navigating && route && nextInstruction?.lanes?.length > 0 && <div className="astana-nav-lane-guidance" aria-label="Полосы перед следующим манёвром">
+        {nextInstruction.lanes.map((lane, index) => <div className={`astana-nav-lane${lane.valid ? " active" : ""}`} key={index} aria-label={lane.valid ? "Рекомендуемая полоса" : "Направление полосы"}>
+          {lane.arrows.map((arrow, arrowIndex) => <i key={arrowIndex}>{arrow}</i>)}
+        </div>)}
+      </div>}
 
       {showPlaceMapControls && <div className="astana-place-map-controls" aria-label="Управление картой">
         <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение" title="Моё местоположение">➤</button>
@@ -2925,7 +3015,10 @@ export default function AstanaMapPage() {
       </section>}
 
       {showMapUtilityControls && <div className="astana-map-right-controls astana-navigation-controls">
-        <div className="astana-nav-speed-now"><b>{speed}</b></div>
+        <div className="astana-nav-speed-now" title={upcomingCamera ? `Впереди камера через ${formatDistance(upcomingCamera.meters)}` : "Текущая скорость"}>
+          <b>{speed}</b>
+          {upcomingCamera && <span className="astana-nav-camera-alert" aria-label={`Камера впереди через ${formatDistance(upcomingCamera.meters)}`} title={`Камера через ${formatDistance(upcomingCamera.meters)}`}>📷</span>}
+        </div>
         <div className="astana-nav-speed-limit" aria-label={speedLimit !== null ? `Ограничение скорости ${speedLimit} километров в час` : "Ограничение скорости не определено"} title="Ограничение скорости"><b>{speedLimit ?? "—"}</b></div>
         <button className={`astana-nav-voice-toggle ${voiceGuidanceEnabled ? "enabled" : ""}`} onClick={toggleVoiceGuidance} aria-label={voiceGuidanceEnabled ? "Выключить голосовые подсказки" : "Включить голосовые подсказки"} title={voiceGuidanceEnabled ? "Голосовые подсказки включены" : "Включить голосовые подсказки"}>{voiceGuidanceEnabled ? "🔊" : "🔇"}</button>
         <div className="astana-nav-zoom">
