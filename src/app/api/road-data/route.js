@@ -148,7 +148,7 @@ async function fetchFromAnyOverpass(query, endpoints) {
       try {
         return await postOverpass(endpoint, query, controller.signal);
       } catch (error) {
-        const host = String(endpoint).replace(/^https?:\\/\\//, "").split("/")[0];
+        const host = new URL(endpoint).host;
         errors.push(host + ": " + (error && error.name === "AbortError" ? "timeout" : String(error && error.message || "request failed")));
         throw error;
       }
