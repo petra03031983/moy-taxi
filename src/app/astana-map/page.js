@@ -48,7 +48,7 @@ async function fetchRoadDataFromServer(mode, args = {}, signal) {
   if (Array.isArray(args.points) && args.points.length) {
     params.set("points", args.points
       .slice(0, 4)
-      .map(point => Number(point[0]).toFixed(3) + "," + Number(point[1]).toFixed(3))
+      .map(point => Number(point[0]).toFixed(5) + "," + Number(point[1]).toFixed(5))
       .join(";"));
   } else {
     if (Number.isFinite(args.lat)) params.set("lat", String(args.lat));
