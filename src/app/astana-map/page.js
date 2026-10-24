@@ -2335,9 +2335,10 @@ export default function AstanaMapPage() {
 
     void refreshPublicCameraCatalog();
     const interval = window.setInterval(() => {
+      // Retry the catalogue more promptly after a temporary external-source failure.
       publicCameraCatalogRef.current.fetchedAt = 0;
       void refreshPublicCameraCatalog();
-    }, 30 * 60 * 1000);
+    }, 5 * 60 * 1000);
 
     return () => {
       cancelled = true;
@@ -2418,9 +2419,11 @@ export default function AstanaMapPage() {
             unique.set(id, {
               id,
               kind,
-              title: kind === "traffic-sign"
-                ? "Дорожный знак " + String(tags.traffic_sign || tags["traffic_sign:forward"] || tags["traffic_sign:backward"] || tags["traffic_sign:maxspeed"] || "").slice(0, 80)
-                : roadObjectTitle(kind),
+              title: tags.source_layer === "underpasses"
+                ? "Подземный пешеходный переход"
+                : kind === "traffic-sign"
+                  ? "Дорожный знак " + String(tags.traffic_sign || tags["traffic_sign:forward"] || tags["traffic_sign:backward"] || tags["traffic_sign:maxspeed"] || "").slice(0, 80)
+                  : roadObjectTitle(kind),
               shortLabel: roadObjectShortLabel(kind),
               speedLimit: kind === "speed-sign" ? postedSpeedFromTags(tags) : null,
               lat,
@@ -2507,7 +2510,9 @@ export default function AstanaMapPage() {
           if (mappedLimit) detailParts.push('<div class="moy-road-object-popup-limit">Ограничение: ' + mappedLimit + ' км/ч</div>');
           const description = item.tags.description || item.tags["description:ru"] || item.tags.note || item.tags["note:ru"] || item.tags.construction || item.tags.hazard;
           if (description) detailParts.push('<div>' + escapeHtml(String(description).slice(0, 220)) + '</div>');
-          if (item.catalogSource === "astana-gis") {
+          if (item.catalogSource === "astana-gis" && item.tags?.source_layer === "underpasses") {
+            detailParts.push('<small>Источник: открытый геопортал города Астаны. Это отмеченный на карте подземный пешеходный переход.</small>');
+          } else if (item.catalogSource === "astana-gis") {
             detailParts.push('<small>Источник: открытый геопортал города Астаны. Отметка показывает расположение парковки, а не наличие свободных мест.</small>');
           }
           if (item.catalogSource === "qazgeo") {
