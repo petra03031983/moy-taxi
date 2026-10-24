@@ -6,7 +6,7 @@ const OVERPASS_ENDPOINTS = [
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 5_000;
+const REQUEST_TIMEOUT_MS = 4_000;
 const EXTERNAL_TIMEOUT_MS = 3_500;
 const MAX_POINTS = 4;
 const MAX_OVERPASS_ATTEMPTS = 2;
@@ -182,7 +182,7 @@ async function fetchFromAnyOverpass(query, endpoints) {
     throw error;
   }
 
-  const maxAttempts = Math.min(2, endpoints.length);
+  const maxAttempts = Math.min(1, endpoints.length);
   const startIndex = state.nextEndpointIndex % Math.max(1, endpoints.length);
   const errors = [];
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -199,6 +199,7 @@ async function fetchFromAnyOverpass(query, endpoints) {
         : String(error && error.message || "request failed"));
       errors.push(message);
       if (error && error.status === 429) throw error;
+      state.nextEndpointIndex = (index + 1) % endpoints.length;
     }
   }
   throw new Error(errors.slice(0, 2).join("; ").slice(0, 220) || "all Overpass providers failed");
