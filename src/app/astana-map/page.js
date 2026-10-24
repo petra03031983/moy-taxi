@@ -831,7 +831,7 @@ export default function AstanaMapPage() {
         label: "Астана",
       };
 
-      if (!weatherData) setWeatherLoading(true);
+      setWeatherLoading(true);
       try {
         const url = new URL("https://api.open-meteo.com/v1/forecast");
         url.search = new URLSearchParams({
