@@ -45,6 +45,8 @@ async function fetchOverpassJSON(query, parentSignal) {
 
 async function fetchRoadDataFromServer(mode, args = {}, signal) {
   const params = new URLSearchParams({ mode: String(mode || "objects") });
+  // Bypass previously cached partial API responses after road-data logic updates.
+  params.set("v", "2");
   if (Array.isArray(args.points) && args.points.length) {
     params.set("points", args.points
       .slice(0, 4)
