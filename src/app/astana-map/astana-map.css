@@ -370,3 +370,12 @@
  .astana-home-4d-toggle{top:120px;right:9px;width:44px;height:41px;border-radius:13px;font-size:14px}
  .astana-navigation-controls button.astana-nav-4d-toggle{width:48px;height:41px;min-height:41px}
 }
+
+/* Road works, mapped closures and hazards. These are map reports, not a live incident feed. */
+.moy-road-object-event{width:36px;height:36px;border-radius:11px;border:2.5px solid #fff;color:#fff;font:900 17px/1 Arial,sans-serif;box-shadow:0 2px 9px rgba(0,0,0,.45);text-shadow:0 1px 2px #0005}
+.moy-road-object-roadwork{background:#f28c18}
+.moy-road-object-closure{background:#b72435}
+.moy-road-object-hazard{background:#7d4bc2}
+.moy-road-object-popup{max-width:240px;display:flex;flex-direction:column;gap:5px}
+.moy-road-object-popup a{display:inline-block;color:#0568bd;font-weight:700;margin-top:3px}
+.moy-road-object-popup-caveat{display:block;margin-top:5px;color:#6c4b0b;font-size:11px;line-height:1.3}
