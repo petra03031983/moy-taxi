@@ -1,5 +1,4 @@
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.ch/api/interpreter",
   "https://lz4.overpass-api.de/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
@@ -7,6 +6,16 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.openstreetmap.fr/api/interpreter",
 ];
+
+function getOverpassEndpoints() {
+  // Overpass.ch requires a user API key; enable it only when the owner adds one
+  // to the Vercel environment, without placing credentials in source code.
+  const key = String(process.env.OVERPASS_CH_API_KEY || "").trim();
+  const keyed = key
+    ? ["https://api.overpass.ch/v1/" + encodeURIComponent(key) + "/interpreter"]
+    : [];
+  return [...keyed, ...OVERPASS_ENDPOINTS];
+}
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
@@ -531,7 +540,7 @@ export async function GET(request) {
     : Promise.resolve([]);
   let lastError = null;
 
-  const endpoints = OVERPASS_ENDPOINTS;
+  const endpoints = getOverpassEndpoints();
   let payload = null;
   let fallbackUsed = false;
   try {
