@@ -1183,6 +1183,42 @@ export default function AstanaMapPage() {
               },
             }, labelLayerId);
 
+            map.on("click", "moy3d-road-object-circles", event => {
+              const feature = event.features?.[0];
+              if (!feature) return;
+              const props = feature.properties || {};
+              const content = document.createElement("div");
+              content.className = "moy-road-object-popup";
+              const heading = document.createElement("b");
+              heading.textContent = String(props.title || roadObjectTitle(String(props.kind || "")));
+              content.appendChild(heading);
+              const kind = String(props.kind || "");
+              if (["roadwork", "closure", "hazard"].includes(kind)) {
+                const note = document.createElement("small");
+                note.className = "moy-road-object-popup-caveat";
+                note.textContent = "Отметка OpenStreetMap; это не подтверждение текущего перекрытия или активных работ.";
+                content.appendChild(note);
+              }
+              const sourceUrl = String(props.sourceUrl || "");
+              if (sourceUrl && /^https:\/\/[^\s"'<>]+$/i.test(sourceUrl)) {
+                const sourceLabel = document.createElement("small");
+                sourceLabel.textContent = "Публичная камера из каталога QazGeo (не live-видеопоток). ";
+                content.appendChild(sourceLabel);
+                const link = document.createElement("a");
+                link.href = sourceUrl;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.textContent = "Открыть источник";
+                content.appendChild(link);
+              }
+              new window.maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
+                .setLngLat(event.lngLat)
+                .setDOMContent(content)
+                .addTo(map);
+            });
+            map.on("mouseenter", "moy3d-road-object-circles", () => { map.getCanvas().style.cursor = "pointer"; });
+            map.on("mouseleave", "moy3d-road-object-circles", () => { map.getCanvas().style.cursor = ""; });
+
             map.on("moveend", () => {
               if (cancelled || !map3dEnabledRef.current || map3dSyncRef.current || !mapRef.current) return;
               const center = map.getCenter();
@@ -1345,6 +1381,8 @@ export default function AstanaMapPage() {
           kind: item.kind || "traffic-light",
           label: item.shortLabel || roadObjectShortLabel(item.kind),
           title: item.title || roadObjectTitle(item.kind),
+          catalogSource: item.catalogSource || "",
+          sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
         },
         geometry: { type: "Point", coordinates: [item.lng, item.lat] },
       }));
@@ -2031,6 +2069,32 @@ export default function AstanaMapPage() {
           }
         }
 
+        // Merge source-linked public camera locations only near the visible area or route.
+        // The optional external catalogue can fail without affecting the OSM-backed map.
+        const catalogItems = publicCameraCatalogRef.current.items || [];
+        for (const item of catalogItems) {
+          let isNearMap = false;
+          if (currentRoutePoints.length > 1) {
+            const snapped = snapToRoute(item, currentRoutePoints);
+            if (Number.isFinite(snapped.distance) && snapped.distance <= 350) {
+              const metersAhead = snapped.progress >= currentProgress
+                ? routeDistanceBetweenProgress(currentRoutePoints, currentProgress, snapped.progress)
+                : -1;
+              isNearMap = metersAhead >= 0 && metersAhead <= 7500;
+            }
+          } else if (mapCenter) {
+            isNearMap = distanceBetween([mapCenter.lat, mapCenter.lng], [item.lat, item.lng]) <= 4500;
+          } else if (livePosition) {
+            isNearMap = distanceBetween([livePosition.lat, livePosition.lng], [item.lat, item.lng]) <= 4500;
+          }
+          if (!isNearMap) continue;
+          const duplicate = Array.from(unique.values()).some(existing =>
+            existing.kind === "camera" &&
+            distanceBetween([existing.lat, existing.lng], [item.lat, item.lng]) < 25
+          );
+          if (!duplicate) unique.set(item.id, item);
+        }
+
         const objects = Array.from(unique.values());
         roadObjectsRef.current = objects;
         const group = roadObjectsLayerRef.current;
@@ -2057,11 +2121,18 @@ export default function AstanaMapPage() {
           });
           const mappedLimit = parseSpeedLimitValue(item.tags.maxspeed);
           const detailParts = [];
-          if (mappedLimit) detailParts.push(`<div class="moy-road-object-popup-limit">Ограничение: ${mappedLimit} км/ч</div>`);
+          if (mappedLimit) detailParts.push('<div class="moy-road-object-popup-limit">Ограничение: ' + mappedLimit + ' км/ч</div>');
           const description = item.tags.description || item.tags["description:ru"] || item.tags.note || item.tags["note:ru"] || item.tags.construction || item.tags.hazard;
-          if (description) detailParts.push(`<div>${escapeHtml(String(description).slice(0, 220))}</div>`);
+          if (description) detailParts.push('<div>' + escapeHtml(String(description).slice(0, 220)) + '</div>');
+          if (item.catalogSource === "qazgeo") {
+            detailParts.push('<small>Источник: публичный каталог QazGeo. Это ссылка на источник, а не видеопоток в реальном времени.</small>');
+            const sourceUrl = String(item.tags.source_url || "");
+            if (/^https:\/\/[^\s"'<>]+$/i.test(sourceUrl)) {
+              detailParts.push('<a href="' + escapeHtml(sourceUrl) + '" target="_blank" rel="noopener noreferrer">Открыть источник камеры</a>');
+            }
+          }
           if (isEvent) detailParts.push('<small class="moy-road-object-popup-caveat">Отметка OpenStreetMap; это не подтверждение текущего перекрытия или активных работ.</small>');
-          marker.bindPopup(`<div class="moy-road-object-popup"><b>${escapeHtml(title)}</b>${detailParts.join("")}</div>`);
+          marker.bindPopup('<div class="moy-road-object-popup"><b>' + escapeHtml(title) + '</b>' + detailParts.join("") + '</div>');
           marker.addTo(group);
         }
         setRoadObjectsRevision(value => value + 1);
@@ -2085,7 +2156,7 @@ export default function AstanaMapPage() {
         roadObjectsRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
       }
     };
-  }, [leafletReady, navigating, route?.id]);
+  }, [leafletReady, navigating, route?.id, cameraCatalogRevision]);
 
   useEffect(() => {
     if (!navigating || !voiceGuidanceEnabled || !nextInstruction || !Number.isFinite(nextInstruction.distanceMeters)) return;
