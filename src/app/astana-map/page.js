@@ -1293,10 +1293,40 @@ export default function AstanaMapPage() {
       if (source && typeof source.setData === "function") source.setData(data || emptyCollection);
     };
 
-    const mainRoute = route?.geometry?.length > 1 ? {
+    let mainRouteCoordinates = route?.geometry?.length > 1
+      ? route.geometry.map(point => [point[1], point[0]])
+      : [];
+
+    if (navigating && mainRouteCoordinates.length > 1 && origin &&
+        Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+      const snapped = snapToRoute(origin, mainRouteCoordinates);
+      const storedProgress = routeProgressRef.current;
+      // While the vehicle is on/near the active route, progress only moves forward.
+      // Even if a GPS sample jitters, draw the remaining route from the car onward,
+      // never redraw the already-travelled green line behind it.
+      let progress = storedProgress >= 0 ? storedProgress : snapped.progress;
+      if (Number.isFinite(snapped.distance) && snapped.distance <= 110) {
+        progress = storedProgress >= 0 ? Math.max(storedProgress, snapped.progress) : snapped.progress;
+        routeProgressRef.current = progress;
+      } else if (storedProgress < 0 && Number.isFinite(snapped.progress)) {
+        progress = snapped.progress;
+        routeProgressRef.current = progress;
+      }
+      const startPoint = routePointAtProgress(mainRouteCoordinates, progress) || snapped.point;
+      const nextIndex = Math.min(mainRouteCoordinates.length - 1, Math.floor(progress) + 1);
+      mainRouteCoordinates = [
+        startPoint,
+        ...mainRouteCoordinates.slice(nextIndex),
+      ];
+    }
+
+    const mainRoute = mainRouteCoordinates.length > 1 ? {
       type: "Feature",
       properties: {},
-      geometry: { type: "LineString", coordinates: route.geometry },
+      geometry: {
+        type: "LineString",
+        coordinates: mainRouteCoordinates.map(point => [point[1], point[0]]),
+      },
     } : null;
     setGeoJson("moy3d-main-route", {
       type: "FeatureCollection",
@@ -1844,15 +1874,11 @@ export default function AstanaMapPage() {
           }
         }
 
-        // Keep the green route geometry fixed. Only the completed part grows behind the car,
-        // so GPS jitter cannot make the active green strip jump forward/back on screen.
-        const passedPoints = points.slice(0, segment + 1);
-        if (!passedPoints.length || distanceBetween(passedPoints[passedPoints.length - 1], point) > 0.5) {
-          passedPoints.push(point);
-        } else {
-          passedPoints[passedPoints.length - 1] = point;
-        }
-        passedRouteRef.current?.setLatLngs(passedPoints.length ? passedPoints : [point]);
+        // Show only the untraveled route ahead. Remove the grey completed-trail layer
+        // so nothing resembling a route strip remains behind the vehicle in 2D.
+        const remainingPoints = [point, ...points.slice(segment + 1)];
+        routeRef.current?.setLatLngs(remainingPoints.length > 1 ? remainingPoints : [point]);
+        passedRouteRef.current?.setLatLngs([]);
 
         setNextInstruction(nextRouteInstruction(route, points, progress));
         // Avoid continuous pans from noisy GPS. A gentler, less frequent pan lets tile grids settle.
