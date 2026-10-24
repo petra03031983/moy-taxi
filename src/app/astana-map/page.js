@@ -469,26 +469,69 @@ function roadObjectKind(element) {
   const surveillanceZone = String(tags["surveillance:zone"] || "").toLowerCase();
   const surveillance = String(tags.surveillance || "").toLowerCase();
   const cameraType = String(tags["camera:type"] || "").toLowerCase();
-  // Classify traffic signals before surveillance/enforcement tags so a signal
-  // is never accidentally rendered as a camera.
-  if (tags.highway === "traffic_signals") return "traffic-light";
+  const highway = String(tags.highway || "").toLowerCase();
+  const construction = String(tags.construction || tags["construction:highway"] || tags.roadworks || "").toLowerCase();
+  const barrier = String(tags.barrier || "").toLowerCase();
+  const hazard = String(tags.hazard || tags["hazard:type"] || "").toLowerCase();
+  const closure = String(tags["road:closed"] || tags.closed || tags.access || "").toLowerCase();
+
+  // Classify signals and surveillance before generic road-event tags.
+  if (highway === "traffic_signals") return "traffic-light";
   if (
-    tags.highway === "speed_camera" ||
-    tags.highway === "red_light_camera" ||
+    highway === "speed_camera" ||
+    highway === "red_light_camera" ||
     tags.man_made === "speed_camera" ||
     /maxspeed|average_speed|red_light|speed_camera|alpr|license_plate/.test(enforcement) ||
     /speed|traffic|red_light|enforcement|alpr|license_plate/.test(surveillanceType) ||
     /traffic|road|red_light|speed|enforcement/.test(surveillanceZone) ||
     /speed|traffic|red_light|enforcement|alpr|license_plate/.test(surveillance) ||
-    /speed|traffic|red_light|enforcement|alpr|license_plate/.test(cameraType)
+    /speed|traffic|red_light|enforcement|alpr|license_plate/.test(cameraType) ||
+    tags["monitoring:traffic"] === "yes" ||
+    (tags.man_made === "surveillance" && surveillance === "public")
   ) return "camera";
+
+  if (
+    highway === "construction" ||
+    construction !== "" ||
+    tags.roadworks === "yes" ||
+    tags["construction:temporary"] === "yes"
+  ) return "roadwork";
+
+  if (
+    highway === "road_closed" ||
+    barrier === "road_block" ||
+    tags["road:closed"] === "yes" ||
+    tags.closed === "yes" ||
+    /^(closed|no)$/.test(closure) && tags.temporary === "yes"
+  ) return "closure";
+
+  if (hazard || tags["hazard:prone"] === "yes") return "hazard";
   return null;
+}
+
+function roadObjectTitle(kind) {
+  if (kind === "camera") return "Камера дорожного наблюдения / контроля";
+  if (kind === "roadwork") return "Дорожные работы (отметка карты)";
+  if (kind === "closure") return "Возможное перекрытие дороги (отметка карты)";
+  if (kind === "hazard") return "Дорожная опасность (отметка карты)";
+  return "Светофор";
+}
+
+function roadObjectShortLabel(kind) {
+  if (kind === "camera") return "К";
+  if (kind === "roadwork") return "Р";
+  if (kind === "closure") return "З";
+  if (kind === "hazard") return "!";
+  return "С";
 }
 
 function roadObjectIconHtml(kind) {
   if (kind === "camera") {
     return '<span class="moy-road-object-badge moy-road-object-camera" aria-label="Дорожная камера"><svg viewBox="0 0 32 32" role="presentation"><path d="M5 11.5h15.2a2 2 0 0 1 2 2v10.2H5z" fill="#fff"/><path d="m22 15 6-3v13l-6-3z" fill="#fff"/><circle cx="13" cy="17.8" r="4.1" fill="#d92c37"/><circle cx="13" cy="17.8" r="2.5" fill="#fff"/><path d="M10 8h6l2.4 3.5H8z" fill="#fff"/><path d="M15.5 23.5v4M10 27.5h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>';
   }
+  if (kind === "roadwork") return '<span class="moy-road-object-badge moy-road-object-event moy-road-object-roadwork" aria-label="Дорожные работы">Р</span>';
+  if (kind === "closure") return '<span class="moy-road-object-badge moy-road-object-event moy-road-object-closure" aria-label="Перекрытие дороги">З</span>';
+  if (kind === "hazard") return '<span class="moy-road-object-badge moy-road-object-event moy-road-object-hazard" aria-label="Дорожная опасность">!</span>';
   return '<span class="moy-road-object-badge moy-road-object-signal" aria-label="Светофор"><i></i><i></i><i></i></span>';
 }
 
@@ -1114,10 +1157,10 @@ export default function AstanaMapPage() {
               type: "circle",
               source: "moy3d-road-objects",
               paint: {
-                "circle-radius": ["case", ["==", ["get", "kind"], "camera"], 8, 6],
-                "circle-color": ["case", ["==", ["get", "kind"], "camera"], "#d92d3a", "#159b54"],
+                "circle-radius": ["match", ["get", "kind"], "camera", 9, "roadwork", 9, "closure", 9, "hazard", 9, 7],
+                "circle-color": ["match", ["get", "kind"], "camera", "#d92d3a", "roadwork", "#f28c18", "closure", "#b62435", "hazard", "#8d5ad6", "#159b54"],
                 "circle-stroke-color": "#ffffff",
-                "circle-stroke-width": 2,
+                "circle-stroke-width": 2.5,
               },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
@@ -1125,8 +1168,8 @@ export default function AstanaMapPage() {
               type: "symbol",
               source: "moy3d-road-objects",
               layout: {
-                "text-field": ["case", ["==", ["get", "kind"], "camera"], "К", "С"],
-                "text-size": 10,
+                "text-field": ["match", ["get", "kind"], "camera", "К", "roadwork", "Р", "closure", "З", "hazard", "!", "С"],
+                "text-size": 11,
                 "text-font": ["Open Sans Regular"],
                 "text-allow-overlap": true,
                 "text-ignore-placement": true,
@@ -1134,7 +1177,7 @@ export default function AstanaMapPage() {
               paint: {
                 "text-color": "#ffffff",
                 "text-halo-color": "#24303a",
-                "text-halo-width": 0.5,
+                "text-halo-width": 0.7,
               },
             }, labelLayerId);
 
@@ -1295,7 +1338,12 @@ export default function AstanaMapPage() {
       .filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng))
       .map(item => ({
         type: "Feature",
-        properties: { id: String(item.id || ""), kind: item.kind === "camera" ? "camera" : "traffic-light" },
+        properties: {
+          id: String(item.id || ""),
+          kind: item.kind || "traffic-light",
+          label: item.shortLabel || roadObjectShortLabel(item.kind),
+          title: item.title || roadObjectTitle(item.kind),
+        },
         geometry: { type: "Point", coordinates: [item.lng, item.lat] },
       }));
     setGeoJson("moy3d-road-objects", {
@@ -1870,9 +1918,17 @@ export default function AstanaMapPage() {
         nwr(around:${radius},${coordinates})[enforcement~"maxspeed|average_speed|red_light|speed_camera"];
         nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:type"~"camera|traffic|speed|red_light|enforcement|alpr|license_plate"];
         nwr(around:${radius},${coordinates})[man_made=surveillance]["surveillance:zone"~"traffic|road|red_light"];
-        nwr(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate"];
-        nwr(around:${radius},${coordinates})[surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})[man_made=surveillance][surveillance~"traffic|speed|red_light|enforcement|alpr|license_plate|public"];
+        nwr(around:${radius},${coordinates})["surveillance:type"~"traffic|speed|red_light|enforcement|alpr|license_plate"];
         nwr(around:${radius},${coordinates})["camera:type"~"speed|traffic|red_light|enforcement|alpr|license_plate"];
+        nwr(around:${radius},${coordinates})["monitoring:traffic"=yes];
+        nwr(around:${radius},${coordinates})[highway=construction];
+        nwr(around:${radius},${coordinates})[construction];
+        nwr(around:${radius},${coordinates})[roadworks=yes];
+        nwr(around:${radius},${coordinates})[barrier=road_block];
+        nwr(around:${radius},${coordinates})[highway=road_closed];
+        nwr(around:${radius},${coordinates})[hazard];
+        nwr(around:${radius},${coordinates})["hazard:prone"=yes];
       );out tags center;`;
 
       const controller = new AbortController();
@@ -1890,14 +1946,17 @@ export default function AstanaMapPage() {
           const lat = Number(element.lat ?? element.center?.lat);
           const lng = Number(element.lon ?? element.center?.lon);
           if (!kind || !Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          const tags = element.tags || {};
           const id = `${element.type || "node"}-${element.id ?? `${lat.toFixed(6)},${lng.toFixed(6)}`}`;
           if (!unique.has(id)) {
             unique.set(id, {
               id,
               kind,
+              title: roadObjectTitle(kind),
+              shortLabel: roadObjectShortLabel(kind),
               lat,
               lng,
-              tags: element.tags || {},
+              tags,
             });
           }
         }
@@ -1910,13 +1969,15 @@ export default function AstanaMapPage() {
 
         const L = window.L;
         for (const item of objects) {
+          const isSignal = item.kind === "traffic-light";
           const isCamera = item.kind === "camera";
-          const title = isCamera ? "Камера контроля движения" : "Светофор";
+          const isEvent = ["roadwork", "closure", "hazard"].includes(item.kind);
+          const title = item.title || roadObjectTitle(item.kind);
           const icon = L.divIcon({
             className: "moy-road-object-icon",
             html: roadObjectIconHtml(item.kind),
-            iconSize: isCamera ? [42, 42] : [32, 46],
-            iconAnchor: isCamera ? [21, 21] : [16, 23],
+            iconSize: isCamera ? [42, 42] : isSignal ? [32, 46] : [38, 38],
+            iconAnchor: isCamera ? [21, 21] : isSignal ? [16, 23] : [19, 19],
           });
           const marker = L.marker([item.lat, item.lng], {
             icon,
@@ -1925,10 +1986,12 @@ export default function AstanaMapPage() {
             zIndexOffset: 2400,
           });
           const mappedLimit = parseSpeedLimitValue(item.tags.maxspeed);
-          const details = mappedLimit
-            ? `<div class="moy-road-object-popup-limit">Ограничение: ${mappedLimit} км/ч</div>`
-            : "";
-          marker.bindPopup(`<div class="moy-road-object-popup"><b>${escapeHtml(title)}</b>${details}</div>`);
+          const detailParts = [];
+          if (mappedLimit) detailParts.push(`<div class="moy-road-object-popup-limit">Ограничение: ${mappedLimit} км/ч</div>`);
+          const description = item.tags.description || item.tags["description:ru"] || item.tags.note || item.tags["note:ru"] || item.tags.construction || item.tags.hazard;
+          if (description) detailParts.push(`<div>${escapeHtml(String(description).slice(0, 220))}</div>`);
+          if (isEvent) detailParts.push('<small class="moy-road-object-popup-caveat">Отметка OpenStreetMap; это не подтверждение текущего перекрытия или активных работ.</small>');
+          marker.bindPopup(`<div class="moy-road-object-popup"><b>${escapeHtml(title)}</b>${detailParts.join("")}</div>`);
           marker.addTo(group);
         }
         setRoadObjectsRevision(value => value + 1);
