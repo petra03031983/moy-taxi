@@ -360,3 +360,13 @@
  .astana-map-3d-canvas .maplibregl-ctrl-bottom-right{bottom:76px}
  .astana-navigation-controls button.astana-nav-3d-toggle{width:48px;height:41px;min-height:41px}
 }
+
+/* 4D is a live time layer over the 3D map, driven only by GPS and route data. */
+.astana-home-4d-toggle{position:absolute;top:124px;right:11px;z-index:23;width:48px;height:44px;border:1px solid #ffffff70;border-radius:14px;background:rgba(10,13,17,.92);color:#fff;font:900 15px Arial,sans-serif;box-shadow:0 3px 12px #0005}
+.astana-home-4d-toggle.active{background:#00b94b;border-color:#a1f3bc;box-shadow:0 0 0 3px #00b94b33,0 3px 12px #0007}
+.astana-navigation-controls button.astana-nav-4d-toggle{width:54px;height:44px;min-height:44px;flex:none;border:1px solid #bcefd0;border-radius:13px;background:rgba(10,13,17,.96);color:#fff;font-size:14px;font-weight:900;box-shadow:0 3px 12px #0008}
+.astana-navigation-controls button.astana-nav-4d-toggle.active{background:#00b94b;color:#fff;border-color:#9ef0b8;box-shadow:0 0 0 3px #00b94b33,0 3px 12px #0008}
+@media(max-width:520px){
+ .astana-home-4d-toggle{top:120px;right:9px;width:44px;height:41px;border-radius:13px;font-size:14px}
+ .astana-navigation-controls button.astana-nav-4d-toggle{width:48px;height:41px;min-height:41px}
+}
