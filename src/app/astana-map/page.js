@@ -2403,6 +2403,7 @@ export default function AstanaMapPage() {
           responseCount: Number(data.count ?? data.elements?.length ?? 0),
           sourceCounts: data.diagnostics || null,
           partial: Boolean(data.partial),
+          partialReason: String(data.partialReason || ""),
           fetchedAt: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
           roadError: "",
         }));
@@ -3138,7 +3139,7 @@ export default function AstanaMapPage() {
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
       {showRoadDataDiagnostics && <aside className="astana-road-diagnostics" aria-live="polite">
         <b>Диагностика дорожных данных</b>
-        <div>Сервис дороги: {roadDataDiagnostics?.roadStatus === "ok" ? "ответ получен" : roadDataDiagnostics?.roadStatus === "error" ? "ошибка запроса" : "загрузка…"}</div>
+        <div>Сервис дороги: {roadDataDiagnostics?.roadStatus === "ok" ? (roadDataDiagnostics?.partial ? "частичная загрузка" : "ответ получен") : roadDataDiagnostics?.roadStatus === "error" ? "ошибка запроса" : "загрузка…"}</div>
         {roadDataDiagnostics?.source && <div>Источник: {roadDataDiagnostics.source}</div>}
         <div>Получено объектов: {roadDataDiagnostics?.responseCount ?? "—"}; обработано: {roadDataDiagnostics?.mappedCount ?? "—"}</div>
         <div>Светофоры: {roadDataDiagnostics?.sourceCounts?.trafficLights ?? "—"}; камеры скорости: {roadDataDiagnostics?.sourceCounts?.speedCameras ?? "—"}</div>
@@ -3146,8 +3147,9 @@ export default function AstanaMapPage() {
         <div>Переходы: {roadDataDiagnostics?.sourceCounts?.pedestrianCrossings ?? "—"}; парковки: {roadDataDiagnostics?.sourceCounts?.parking ?? "—"}</div>
         <div>Каталог камер: {roadDataDiagnostics?.cameraStatus === "ok" ? `доступен, ${roadDataDiagnostics.cameraCatalogCount ?? 0}` : roadDataDiagnostics?.cameraStatus === "error" ? "недоступен" : "загрузка…"}</div>
         {roadDataDiagnostics?.fetchedAt && <div>Обновлено: {roadDataDiagnostics.fetchedAt}</div>}
+        {roadDataDiagnostics?.partialReason && <div>Почему частично: {roadDataDiagnostics.partialReason}</div>}
         {roadDataDiagnostics?.roadError && <div>Ошибка: {roadDataDiagnostics.roadError}</div>}
-        {roadDataDiagnostics?.cameraError && <div>Камеры: {roadDataDiagnostics.cameraError}</div>}
+        {roadDataDiagnostics?.cameraError && <div>Камеры: {roadDataDiagnostics.cameraError}</div>
       </aside>}
       {isHomeScreen && <>
         <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
