@@ -393,6 +393,25 @@ function smoothHeading(previous, target, weight = 0.28) {
   return ((previous + delta * weight) % 360 + 360) % 360;
 }
 
+function setMapHeadingUp(map, heading, options = {}) {
+  if (!map || !Number.isFinite(heading)) return false;
+  const normalizedHeading = ((heading % 360) + 360) % 360;
+  if (typeof map.setHeading === "function") {
+    map.setHeading(normalizedHeading, options);
+    return true;
+  }
+  // leaflet-rotate's bearing is the inverse of a heading-up course.
+  if (typeof map.setBearing === "function") {
+    const targetBearing = ((360 - normalizedHeading) % 360 + 360) % 360;
+    const currentBearing = typeof map.getBearing === "function" ? map.getBearing() : NaN;
+    if (!Number.isFinite(currentBearing) || angleDifferenceDegrees(currentBearing, targetBearing) >= 1.5) {
+      map.setBearing(targetBearing);
+    }
+    return true;
+  }
+  return false;
+}
+
 function routeDistanceBetweenProgress(points, startProgress, endProgress) {
   if (!points?.length || points.length < 2 || endProgress <= startProgress) return 0;
   const start = Math.max(0, Math.min(points.length - 1, startProgress));
@@ -1305,17 +1324,54 @@ export default function AstanaMapPage() {
   useEffect(() => {
     if (!map3dReady || !map3dRef.current || !map3dEnabled || !navigating || !origin) return;
     const map = map3dRef.current;
-    const bearing = Number.isFinite(origin.heading) && (origin.speedMps || 0) > 2.5
+    const routePoints = route?.geometry?.length > 1
+      ? route.geometry.map(point => [point[1], point[0]])
+      : [];
+    let cameraPoint = [origin.lat, origin.lng];
+    let targetHeading = Number.isFinite(origin.heading) && (origin.speedMps || 0) > 2.5
       ? origin.heading
       : map.getBearing();
-    map.easeTo({
-      center: [origin.lng, origin.lat],
-      zoom: Math.max(16.5, map.getZoom()),
-      pitch: 58,
-      bearing,
-      duration: 280,
-    });
-  }, [map3dReady, map3dEnabled, navigating, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps]);
+
+    if (routePoints.length > 1) {
+      const snapped = snapToRoute(origin, routePoints);
+      if (Number.isFinite(snapped.distance) && snapped.distance <= 100) {
+        const progress = routeProgressRef.current >= 0
+          ? Math.max(routeProgressRef.current, snapped.progress)
+          : snapped.progress;
+        const followPoint = routePointAtProgress(routePoints, progress) || snapped.point;
+        if (followPoint) cameraPoint = followPoint;
+        // Look ahead along the route so each bend turns the map before the car reaches it.
+        const routeHeading = routeHeadingAtProgress(routePoints, progress, 32) ?? snapped.heading;
+        if (Number.isFinite(routeHeading)) targetHeading = routeHeading;
+      } else if (!Number.isFinite(origin.heading) || (origin.speedMps || 0) <= 2.5) {
+        const snapHeading = routeHeadingAtProgress(routePoints, snapped.progress, 32) ?? snapped.heading;
+        if (Number.isFinite(snapHeading)) targetHeading = snapHeading;
+      }
+    }
+
+    const currentBearing = map.getBearing();
+    const targetBearing = smoothHeading(currentBearing, targetHeading, 0.62);
+    const bearingChanged = angleDifferenceDegrees(currentBearing, targetBearing) >= 1.5;
+    const center = [cameraPoint[1], cameraPoint[0]];
+    const currentCenter = map.getCenter();
+    const centerChanged = distanceBetween(
+      [currentCenter.lat, currentCenter.lng],
+      cameraPoint
+    ) >= 1.5;
+
+    // Camera heading always follows the route geometry (GPS course is only a fallback),
+    // keeping the active road centred and pointing toward the top of the screen.
+    if (centerChanged || bearingChanged) {
+      map.easeTo({
+        center,
+        zoom: Math.max(16.5, map.getZoom()),
+        pitch: 58,
+        bearing: targetBearing,
+        duration: 420,
+        essential: true,
+      });
+    }
+  }, [map3dReady, map3dEnabled, navigating, route, origin?.lat, origin?.lng, origin?.heading, origin?.speedMps]);
 
   useEffect(() => {
     if (!leafletReady || !navigator.geolocation) {
@@ -1707,11 +1763,11 @@ export default function AstanaMapPage() {
         // Derive bearing from monotonic route progress rather than the closest GPS snap segment.
         // A short look-ahead reduces small geometry wiggles and wrong turns at parallel roads.
         heading = routeHeadingAtProgress(points, progress, 24);
-        if (Number.isFinite(heading) && typeof mapRef.current?.setHeading === "function") {
+        if (Number.isFinite(heading) && mapRef.current) {
           const previousHeading = lastAppliedNavigationHeadingRef.current;
-          const smoothedHeading = smoothHeading(previousHeading, heading, 0.28);
-          if (previousHeading === null || angleDifferenceDegrees(smoothedHeading, previousHeading) >= 7) {
-            mapRef.current.setHeading(smoothedHeading, { ease: 0.5, deadzone: 4 });
+          const smoothedHeading = smoothHeading(previousHeading, heading, 0.38);
+          if (previousHeading === null || angleDifferenceDegrees(smoothedHeading, previousHeading) >= 2.5) {
+            setMapHeadingUp(mapRef.current, smoothedHeading, { ease: 0.28, deadzone: 1.0 });
             lastAppliedNavigationHeadingRef.current = smoothedHeading;
           }
         }
@@ -1755,11 +1811,11 @@ export default function AstanaMapPage() {
         if (snapped.distance > 220 || (rerouteState.offRouteSamples >= 3 && now - rerouteState.offRouteSince >= 2500)) {
           rerouteFromCurrentLocation(origin);
         }
-        if (Number.isFinite(origin.heading) && (origin.speedMps || 0) > 3 && typeof mapRef.current?.setHeading === "function") {
+        if (Number.isFinite(origin.heading) && (origin.speedMps || 0) > 3 && mapRef.current) {
           const previousHeading = lastAppliedNavigationHeadingRef.current;
-          const smoothedHeading = smoothHeading(previousHeading, origin.heading, 0.18);
-          if (previousHeading === null || angleDifferenceDegrees(smoothedHeading, previousHeading) >= 10) {
-            mapRef.current.setHeading(smoothedHeading, { ease: 0.55, deadzone: 5 });
+          const smoothedHeading = smoothHeading(previousHeading, origin.heading, 0.24);
+          if (previousHeading === null || angleDifferenceDegrees(smoothedHeading, previousHeading) >= 3) {
+            setMapHeadingUp(mapRef.current, smoothedHeading, { ease: 0.32, deadzone: 1.5 });
             lastAppliedNavigationHeadingRef.current = smoothedHeading;
           }
         }
@@ -2305,7 +2361,10 @@ export default function AstanaMapPage() {
     if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
     const current = routeOrigin || origin;
     const routePoints = activeRoute.geometry.map(p => [p[1], p[0]]);
-    const initialHeading = current && routePoints.length > 1 ? snapToRoute(current, routePoints).heading : null;
+    const initialSnap = current && routePoints.length > 1 ? snapToRoute(current, routePoints) : null;
+    const initialHeading = initialSnap
+      ? routeHeadingAtProgress(routePoints, initialSnap.progress, 32) ?? initialSnap.heading
+      : null;
     setNavigating(true);
     setVoiceGuidanceEnabled(true);
     speedWarningRef.current = { active: false, limit: null, lastSpokenAt: 0 };
@@ -2313,9 +2372,11 @@ export default function AstanaMapPage() {
     // Keep the live-navigation map on the same light OSM tiles; avoid a dark-layer swap.
     setMapType("map");
     if (current && mapRef.current) {
-      mapRef.current.setView([current.lat, current.lng], 17, { animate: true });
-      if (Number.isFinite(initialHeading) && typeof mapRef.current.setHeading === "function") {
-        mapRef.current.setHeading(initialHeading, { ease: 0.18, deadzone: 1.5 });
+      const startPoint = initialSnap && initialSnap.distance <= 85 ? initialSnap.point : [current.lat, current.lng];
+      mapRef.current.setView(startPoint, 17, { animate: true });
+      if (Number.isFinite(initialHeading)) {
+        setMapHeadingUp(mapRef.current, initialHeading, { ease: 0.22, deadzone: 1.0 });
+        lastAppliedNavigationHeadingRef.current = initialHeading;
       }
     }
     window.setTimeout(() => {
