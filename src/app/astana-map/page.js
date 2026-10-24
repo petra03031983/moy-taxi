@@ -2528,9 +2528,12 @@ export default function AstanaMapPage() {
     if (!nearest) return;
 
     cameraWarningRef.current.announced.add(nearest.item.id);
-    const cameraLimit = parseSpeedLimitValue(nearest.item.tags?.maxspeed) || speedLimit || null;
+    const isSpeedCamera = isSpeedEnforcementCamera(nearest.item.tags || {});
+    const cameraLimit = isSpeedCamera
+      ? (parseSpeedLimitValue(nearest.item.tags?.maxspeed) || speedLimit || null)
+      : null;
     const limitText = cameraLimit ? ` Ограничение ${cameraLimit} километров в час.` : "";
-    const cameraPhrase = isSpeedEnforcementCamera(nearest.item.tags || {})
+    const cameraPhrase = isSpeedCamera
       ? "Впереди камера контроля скорости."
       : "Впереди камера дорожного наблюдения.";
     speakRoutePrompt(`${cameraPhrase}${limitText} Через ${voiceDistanceText(nearest.meters)}.`);
