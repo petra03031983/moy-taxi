@@ -1074,27 +1074,6 @@ export default function AstanaMapPage() {
               },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
-              id: "moy3d-main-route-direction-arrows",
-              type: "symbol",
-              source: "moy3d-main-route",
-              layout: {
-                "symbol-placement": "line",
-                "symbol-spacing": 105,
-                "text-field": "➤",
-                "text-size": 27,
-                "text-rotation-alignment": "map",
-                "text-keep-upright": false,
-                "text-allow-overlap": true,
-                "text-ignore-placement": true,
-              },
-              paint: {
-                "text-color": "#ffffff",
-                "text-halo-color": "#087d34",
-                "text-halo-width": 2.7,
-              },
-            }, labelLayerId);
-
-            addLayerBeforeLabels(map, {
               id: "moy3d-current-position-glow",
               type: "circle",
               source: "moy3d-location-points",
@@ -1342,15 +1321,19 @@ export default function AstanaMapPage() {
         ? route.geometry.map(point => [point[1], point[0]])
         : [];
       const snapped = routeCoordinates.length > 1 ? snapToRoute(origin, routeCoordinates) : null;
-      // GPS often places the icon beside the road. During navigation, pin it to
-      // the actual route line whenever the GPS fix is reasonably close.
-      const snapToGreenRoute = Boolean(snapped && Number.isFinite(snapped.distance) && snapped.distance <= 65);
-      const markerPosition = snapToGreenRoute ? snapped.point : [origin.lat, origin.lng];
-      const heading = snapToGreenRoute
-        ? snapped.heading
-        : Number.isFinite(origin.heading)
-          ? origin.heading
-          : Number.isFinite(snapped?.heading) ? snapped.heading : 0;
+      // Use the same route progress for the car icon and follow camera, so the
+      // green strip cannot visually drift away from the vehicle while GPS jitters.
+      const snapToGreenRoute = Boolean(snapped && Number.isFinite(snapped.distance) && snapped.distance <= 85);
+      let markerPosition = [origin.lat, origin.lng];
+      let heading = Number.isFinite(origin.heading) ? origin.heading : 0;
+      if (snapToGreenRoute) {
+        const progress = navigating && routeProgressRef.current >= 0
+          ? Math.max(routeProgressRef.current, snapped.progress)
+          : snapped.progress;
+        if (navigating) routeProgressRef.current = progress;
+        markerPosition = routePointAtProgress(routeCoordinates, progress) || snapped.point;
+        heading = routeHeadingAtProgress(routeCoordinates, progress, 24) ?? snapped.heading;
+      }
       locationFeatures.push({
         type: "Feature",
         properties: { kind: "current", title: "Моё местоположение", heading },
@@ -1422,14 +1405,15 @@ export default function AstanaMapPage() {
 
     if (routePoints.length > 1) {
       const snapped = snapToRoute(origin, routePoints);
-      if (Number.isFinite(snapped.distance) && snapped.distance <= 100) {
+      if (Number.isFinite(snapped.distance) && snapped.distance <= 85) {
         const progress = routeProgressRef.current >= 0
           ? Math.max(routeProgressRef.current, snapped.progress)
           : snapped.progress;
+        routeProgressRef.current = progress;
         const followPoint = routePointAtProgress(routePoints, progress) || snapped.point;
         if (followPoint) cameraPoint = followPoint;
         // Look ahead along the route so each bend turns the map before the car reaches it.
-        const routeHeading = routeHeadingAtProgress(routePoints, progress, 32) ?? snapped.heading;
+        const routeHeading = routeHeadingAtProgress(routePoints, progress, 24) ?? snapped.heading;
         if (Number.isFinite(routeHeading)) targetHeading = routeHeading;
       } else if (!Number.isFinite(origin.heading) || (origin.speedMps || 0) <= 2.5) {
         const snapHeading = routeHeadingAtProgress(routePoints, snapped.progress, 32) ?? snapped.heading;
@@ -1438,14 +1422,14 @@ export default function AstanaMapPage() {
     }
 
     const currentBearing = map.getBearing();
-    const targetBearing = smoothHeading(currentBearing, targetHeading, 0.62);
-    const bearingChanged = angleDifferenceDegrees(currentBearing, targetBearing) >= 1.5;
+    const targetBearing = smoothHeading(currentBearing, targetHeading, 0.76);
+    const bearingChanged = angleDifferenceDegrees(currentBearing, targetBearing) >= 1.0;
     const center = [cameraPoint[1], cameraPoint[0]];
     const currentCenter = map.getCenter();
     const centerChanged = distanceBetween(
       [currentCenter.lat, currentCenter.lng],
       cameraPoint
-    ) >= 1.5;
+    ) >= 0.8;
 
     // Camera heading always follows the route geometry (GPS course is only a fallback),
     // keeping the active road centred and pointing toward the top of the screen.
@@ -1455,7 +1439,7 @@ export default function AstanaMapPage() {
         zoom: Math.max(16.5, map.getZoom()),
         pitch: 58,
         bearing: targetBearing,
-        duration: 420,
+        duration: 220,
         essential: true,
       });
     }
