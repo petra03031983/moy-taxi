@@ -916,6 +916,8 @@ export default function AstanaMapPage() {
   const [navigationClock, setNavigationClock] = useState(Date.now());
   const [roadObjectsRevision, setRoadObjectsRevision] = useState(0);
   const [cameraCatalogRevision, setCameraCatalogRevision] = useState(0);
+  const [showRoadDataDiagnostics, setShowRoadDataDiagnostics] = useState(false);
+  const [roadDataDiagnostics, setRoadDataDiagnostics] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherData, setWeatherData] = useState(null);
   const weatherLocationRef = useRef(null);
@@ -930,6 +932,12 @@ export default function AstanaMapPage() {
     lastGpsPoint: null,
     lastGpsAt: 0,
   });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setShowRoadDataDiagnostics(params.get("debugRoads") === "1");
+  }, []);
+
   const [voiceGuidanceEnabled, setVoiceGuidanceEnabled] = useState(false);
   const voiceAnnouncementRef = useRef({ key: null, lastDistance: null, announced: new Set(), initialAnnounced: false });
   const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
@@ -2247,11 +2255,21 @@ export default function AstanaMapPage() {
           .filter(Boolean);
         if (cancelled || controller.signal.aborted) return;
         publicCameraCatalogRef.current = { items, fetchedAt: Date.now() };
+        setRoadDataDiagnostics(previous => ({
+          ...(previous || {}),
+          cameraStatus: "ok",
+          cameraCatalogCount: items.length,
+          cameraError: "",
+        }));
         setCameraCatalogRevision(value => value + 1);
       } catch (error) {
-        console.warn("[Astana Guide] Public camera catalogue unavailable", {
-          message: String(error?.message || "Camera catalogue request failed"),
-        });
+        const message = String(error?.message || "Camera catalogue request failed");
+        console.warn("[Astana Guide] Public camera catalogue unavailable", { message });
+        setRoadDataDiagnostics(previous => ({
+          ...(previous || {}),
+          cameraStatus: "error",
+          cameraError: message,
+        }));
         // Optional public camera catalogue; OSM objects must continue to work if it is unavailable.
       }
     };
@@ -2318,6 +2336,16 @@ export default function AstanaMapPage() {
           diagnostics: data.diagnostics || null,
           partial: Boolean(data.partial),
         });
+        setRoadDataDiagnostics(previous => ({
+          ...(previous || {}),
+          roadStatus: "ok",
+          source: String(data.source || "Источник не указан"),
+          responseCount: Number(data.count ?? data.elements?.length ?? 0),
+          sourceCounts: data.diagnostics || null,
+          partial: Boolean(data.partial),
+          fetchedAt: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          roadError: "",
+        }));
 
         const unique = new Map();
         for (const element of data.elements || []) {
@@ -2383,6 +2411,13 @@ export default function AstanaMapPage() {
         }
         const objects = deduplicatedObjects;
         roadObjectsRef.current = objects;
+        const mappedByKind = {};
+        for (const item of objects) mappedByKind[item.kind] = (mappedByKind[item.kind] || 0) + 1;
+        setRoadDataDiagnostics(previous => ({
+          ...(previous || {}),
+          mappedCount: objects.length,
+          byKind: mappedByKind,
+        }));
         const group = roadObjectsLayerRef.current;
         if (!group) return;
         group.clearLayers();
@@ -2429,9 +2464,14 @@ export default function AstanaMapPage() {
         }
         setRoadObjectsRevision(value => value + 1);
       } catch (error) {
-        console.warn("[Astana Guide] Road-data request failed", {
-          message: String(error?.message || "Road-data request failed"),
-        });
+        const message = String(error?.message || "Road-data request failed");
+        console.warn("[Astana Guide] Road-data request failed", { message });
+        setRoadDataDiagnostics(previous => ({
+          ...(previous || {}),
+          roadStatus: "error",
+          roadError: message,
+          fetchedAt: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        }));
         // Keep already-loaded objects visible when Overpass is temporarily unavailable.
       } finally {
         if (roadObjectsRequestRef.current === requestState) {
@@ -3032,6 +3072,19 @@ export default function AstanaMapPage() {
     <main className="astana-map-page">
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
+      {showRoadDataDiagnostics && <aside className="astana-road-diagnostics" aria-live="polite">
+        <b>Диагностика дорожных данных</b>
+        <div>Сервис дороги: {roadDataDiagnostics?.roadStatus === "ok" ? "ответ получен" : roadDataDiagnostics?.roadStatus === "error" ? "ошибка запроса" : "загрузка…"}</div>
+        {roadDataDiagnostics?.source && <div>Источник: {roadDataDiagnostics.source}</div>}
+        <div>Получено объектов: {roadDataDiagnostics?.responseCount ?? "—"}; обработано: {roadDataDiagnostics?.mappedCount ?? "—"}</div>
+        <div>Светофоры: {roadDataDiagnostics?.sourceCounts?.trafficLights ?? "—"}; камеры скорости: {roadDataDiagnostics?.sourceCounts?.speedCameras ?? "—"}</div>
+        <div>Другие камеры: {roadDataDiagnostics?.sourceCounts?.surveillanceCameras ?? "—"}; знаки: {roadDataDiagnostics?.sourceCounts?.trafficSigns ?? "—"}</div>
+        <div>Переходы: {roadDataDiagnostics?.sourceCounts?.pedestrianCrossings ?? "—"}; парковки: {roadDataDiagnostics?.sourceCounts?.parking ?? "—"}</div>
+        <div>Каталог камер: {roadDataDiagnostics?.cameraStatus === "ok" ? `доступен, ${roadDataDiagnostics.cameraCatalogCount ?? 0}` : roadDataDiagnostics?.cameraStatus === "error" ? "недоступен" : "загрузка…"}</div>
+        {roadDataDiagnostics?.fetchedAt && <div>Обновлено: {roadDataDiagnostics.fetchedAt}</div>}
+        {roadDataDiagnostics?.roadError && <div>Ошибка: {roadDataDiagnostics.roadError}</div>}
+        {roadDataDiagnostics?.cameraError && <div>Камеры: {roadDataDiagnostics.cameraError}</div>}
+      </aside>}
       {isHomeScreen && <>
         <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
         <button className={`astana-home-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"}>{map4dEnabled && map3dReady && gpsFixReady ? "LIVE" : "4D"}</button>
