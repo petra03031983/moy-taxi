@@ -1,13 +1,16 @@
 const OVERPASS_ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.openstreetmap.fr/api/interpreter",
 ];
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 4_000;
-const EXTERNAL_TIMEOUT_MS = 3_500;
+const REQUEST_TIMEOUT_MS = 3_500;
+const EXTERNAL_TIMEOUT_MS = 3_000;
 const MAX_POINTS = 4;
 const MAX_OVERPASS_ATTEMPTS = 2;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
@@ -71,46 +74,47 @@ function makeQuery(mode, points, radius) {
   const around = "around:" + radius + "," + coordinates;
 
   const selectors = [
-    `nwr(${around})[highway=traffic_signals];`,
-    `nwr(${around})[highway=crossing];`,
-    `nwr(${around})[crossing];`,
-    `nwr(${around})[highway=speed_camera];`,
-    `nwr(${around})[highway=red_light_camera];`,
+    `node(${around})[highway~"^(traffic_signals|crossing|stop|give_way|speed_camera|red_light_camera)$"];`,
+    `node(${around})[crossing];`,
+    `node(${around})[traffic_sign];`,
+    `node(${around})["traffic_sign:forward"];`,
+    `node(${around})["traffic_sign:backward"];`,
+    `node(${around})["traffic_sign:maxspeed"];`,
     `nwr(${around})[maxspeed];`,
-    `nwr(${around})[traffic_sign];`,
-    `nwr(${around})["traffic_sign:forward"];`,
-    `nwr(${around})["traffic_sign:backward"];`,
-    `nwr(${around})["traffic_sign:maxspeed"];`,
+    `node(${around})[man_made=surveillance]["surveillance:type"~"^(camera|traffic|speed|red_light|enforcement)$"];`,
+    `node(${around})["camera:type"~"^(speed|traffic|red_light|enforcement)$"];`,
     `nwr(${around})[amenity=parking];`,
-    `nwr(${around})[parking];`,
-    `nwr(${around})[enforcement];`,
-    `nwr(${around})[man_made=surveillance];`,
-    `nwr(${around})["camera:type"];`,
-    `nwr(${around})["monitoring:traffic"=yes];`,
+    `way(${around})[highway=construction];`,
     `nwr(${around})[roadworks=yes];`,
-    `nwr(${around})[barrier=road_block];`,
-    `nwr(${around})[hazard];`,
   ];
-  return "[out:json][timeout:4];(" + selectors.join("") + ");out tags center;"
+  return "[out:json][timeout:3];(" + selectors.join("") + ");out tags center;"
 }
 
 function makeFallbackQuery(mode, points, radius) {
-  if (mode === "speed") return makeQuery(mode, points, radius);
+  if (mode === "speed") {
+    const lat = points[0][0].toFixed(6);
+    const lng = points[0][1].toFixed(6);
+    return "[out:json][timeout:3];(" +
+      "way(around:180," + lat + "," + lng + ")[highway];" +
+      "node(around:120," + lat + "," + lng + ")[maxspeed];" +
+      "node(around:120," + lat + "," + lng + ")[traffic_sign];" +
+      ");out tags center;";
+  }
   const coordinates = points
-    .map(([lat, lng]) => lat.toFixed(5) + "," + lng.toFixed(5))
+    .slice(0, 4)
+    .map(([lat, lng]) => lat.toFixed(3) + "," + lng.toFixed(3))
     .join(",");
-  const around = "around:" + Math.min(radius, 500) + "," + coordinates;
+  const around = "around:" + Math.min(radius, 450) + "," + coordinates;
   return "[out:json][timeout:3];(" +
     `node(${around})[highway=traffic_signals];` +
     `node(${around})[highway=crossing];` +
     `node(${around})[crossing];` +
     `node(${around})[highway=speed_camera];` +
     `node(${around})[highway=red_light_camera];` +
-    `node(${around})[maxspeed];` +
     `node(${around})[traffic_sign];` +
     `node(${around})["traffic_sign:maxspeed"];` +
-    `node(${around})[amenity=parking];` +
-    ");out tags;";
+    `nwr(${around})[maxspeed];` +
+    ");out tags center;";
 }
 
 
@@ -356,6 +360,65 @@ async function fetchOfficialParking(points, radius) {
   return elements;
 }
 
+async function fetchOfficialUnderpasses(points, radius) {
+  if (!points.length || !isNearAstana(points)) return [];
+  const lats = points.map(point => point[0]);
+  const lngs = points.map(point => point[1]);
+  const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+  const latPadding = Math.max(0.0025, radius / 111320 * 1.5);
+  const lngPadding = Math.max(
+    0.003,
+    radius / (111320 * Math.max(0.35, Math.cos(centerLat * Math.PI / 180))) * 1.5,
+  );
+  const minLat = Math.min(...lats) - latPadding;
+  const maxLat = Math.max(...lats) + latPadding;
+  const minLng = Math.min(...lngs) - lngPadding;
+  const maxLng = Math.max(...lngs) + lngPadding;
+  const params = new URLSearchParams({
+    where: "1=1",
+    geometry: [minLng, minLat, maxLng, maxLat].join(","),
+    geometryType: "esriGeometryEnvelope",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    outFields: "OBJECTID,NAME,NOTE,REGION,OBLAST",
+    returnGeometry: "true",
+    outSR: "4326",
+    resultRecordCount: "500",
+    f: "geojson",
+  });
+  const collection = await fetchExternalJson(
+    "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/3/query?" + params.toString(),
+    EXTERNAL_TIMEOUT_MS,
+  );
+  const features = Array.isArray(collection && collection.features) ? collection.features : [];
+  const elements = [];
+  for (const feature of features) {
+    const center = polygonCentroid(feature && feature.geometry);
+    if (!center) continue;
+    const [lat, lon] = center;
+    if (lat < 50.8 || lat > 51.55 || lon < 70.8 || lon > 72.1) continue;
+    const properties = feature.properties || {};
+    const id = properties.OBJECTID ?? feature.id ?? (lat.toFixed(6) + "-" + lon.toFixed(6));
+    elements.push({
+      type: "node",
+      id: "astana-gis-underpass-" + String(id),
+      lat,
+      lon,
+      tags: {
+        highway: "crossing",
+        crossing: "underpass",
+        location: "underground",
+        name: String(properties.NAME || "Подземный пешеходный переход"),
+        note: String(properties.NOTE || ""),
+        source: "astana-gis",
+        source_layer: "underpasses",
+        region: String(properties.REGION || ""),
+      },
+    });
+  }
+  return elements;
+}
+
 async function fetchPublicCameraElements() {
   const collection = await fetchExternalJson(PUBLIC_CAMERA_ENDPOINT, EXTERNAL_TIMEOUT_MS);
   const features = Array.isArray(collection && collection.features) ? collection.features : [];
@@ -445,8 +508,11 @@ export async function GET(request) {
   const query = makeQuery(mode, points, radius);
   // Fetch the official Astana parking layer in parallel with OSM so a slow map-data
   // server does not prevent the driver from seeing available location records.
-  const parkingPromise = mode === "objects"
-    ? fetchOfficialParking(points, radius).catch(() => [])
+  const officialLayersPromise = mode === "objects"
+    ? Promise.all([
+        fetchOfficialParking(points, radius).catch(() => []),
+        fetchOfficialUnderpasses(points, radius).catch(() => []),
+      ]).then(([parking, underpasses]) => mergeElements(parking, underpasses))
     : Promise.resolve([]);
   let lastError = null;
 
@@ -468,18 +534,18 @@ export async function GET(request) {
   }
 
   if (payload) {
-    const parking = await parkingPromise;
-    const elements = mergeElements(payload.elements, parking);
+    const officialLayers = await officialLayersPromise;
+    const elements = mergeElements(payload.elements, officialLayers);
     const result = {
       elements,
-      source: (parking.length
+      source: (officialLayers.length
         ? "OpenStreetMap / Overpass + Astana city geoportal"
         : "OpenStreetMap / Overpass") + (fallbackUsed ? " (облегчённый запрос)" : ""),
       fetchedAt: new Date().toISOString(),
       cached: false,
       count: elements.length,
       diagnostics: summarizeRoadObjects(elements),
-      sources: parking.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking layer"] : ["OpenStreetMap / Overpass"],
+      sources: officialLayers.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking and underpasses"] : ["OpenStreetMap / Overpass"],
       fallbackUsed,
     };
     memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
@@ -492,17 +558,17 @@ export async function GET(request) {
     return jsonResponse(result);
   }
 
-  const parking = mode === "objects" ? await parkingPromise : [];
-  if (parking.length) {
+  const officialLayers = mode === "objects" ? await officialLayersPromise : [];
+  if (officialLayers.length) {
     const result = {
-      elements: parking,
-      source: "Astana city geoportal parking layer (partial response)",
+      elements: officialLayers,
+      source: "Astana city geoportal parking / underpasses (partial response)",
       fetchedAt: new Date().toISOString(),
       cached: false,
-      count: parking.length,
-      diagnostics: summarizeRoadObjects(parking),
+      count: officialLayers.length,
+      diagnostics: summarizeRoadObjects(officialLayers),
       partial: true,
-      sources: ["Astana city geoportal parking layer"],
+      sources: ["Astana city geoportal parking and underpasses"],
     };
     memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
     return jsonResponse(result);
