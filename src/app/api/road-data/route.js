@@ -6,7 +6,7 @@ const OVERPASS_ENDPOINTS = [
 
 const CACHE_TTL_MS = 45_000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 4_200;
+const REQUEST_TIMEOUT_MS = 8_000;
 const EXTERNAL_TIMEOUT_MS = 4_000;
 const MAX_POINTS = 14;
 const MAX_OVERPASS_ATTEMPTS = 2;
@@ -123,6 +123,51 @@ async function postOverpass(endpoint, query) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function summarizeRoadObjects(elements = []) {
+  const counts = {
+    trafficLights: 0,
+    speedCameras: 0,
+    surveillanceCameras: 0,
+    speedLimits: 0,
+    trafficSigns: 0,
+    pedestrianCrossings: 0,
+    parking: 0,
+    roadEvents: 0,
+  };
+
+  for (const element of elements) {
+    const tags = element && element.tags ? element.tags : {};
+    const highway = String(tags.highway || "").toLowerCase();
+    const amenity = String(tags.amenity || "").toLowerCase();
+    const sign = String(tags.traffic_sign || tags["traffic_sign:forward"] || tags["traffic_sign:backward"] || "");
+    const enforcement = String(tags.enforcement || tags["enforcement:type"] || "").toLowerCase();
+    const cameraType = String(tags["camera:type"] || tags["surveillance:type"] || "").toLowerCase();
+
+    if (highway === "traffic_signals") counts.trafficLights += 1;
+    if (highway === "speed_camera" || highway === "red_light_camera" ||
+        tags.man_made === "speed_camera" || /speed_camera|average_speed|maxspeed/.test(enforcement) ||
+        /speed|red_light/.test(cameraType)) counts.speedCameras += 1;
+    else if (tags.man_made === "surveillance" || tags["monitoring:traffic"] === "yes" ||
+        /camera|traffic/.test(cameraType)) counts.surveillanceCameras += 1;
+
+    if (tags.maxspeed || tags["traffic_sign:maxspeed"] ||
+        tags["maxspeed:forward"] || tags["maxspeed:backward"]) counts.speedLimits += 1;
+
+    if (sign || tags["traffic_sign:maxspeed"]) counts.trafficSigns += 1;
+    if (highway === "crossing" || tags.crossing || tags["crossing:markings"] || tags.footway === "crossing") {
+      counts.pedestrianCrossings += 1;
+    }
+    if (amenity === "parking" || tags.parking || tags.parking_space || tags["parking:lane"]) {
+      counts.parking += 1;
+    }
+    if (highway === "construction" || tags.roadworks === "yes" || tags.hazard || tags["road:closed"] === "yes") {
+      counts.roadEvents += 1;
+    }
+  }
+
+  return counts;
 }
 
 async function fetchExternalJson(url, timeoutMs = EXTERNAL_TIMEOUT_MS) {
@@ -338,6 +383,7 @@ export async function GET(request) {
         fetchedAt: new Date().toISOString(),
         cached: false,
         count: elements.length,
+        diagnostics: summarizeRoadObjects(elements),
         sources: parking.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking layer"] : ["OpenStreetMap / Overpass"],
       };
       memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
@@ -361,6 +407,7 @@ export async function GET(request) {
       fetchedAt: new Date().toISOString(),
       cached: false,
       count: parking.length,
+      diagnostics: summarizeRoadObjects(parking),
       partial: true,
       sources: ["Astana city geoportal parking layer"],
     };
