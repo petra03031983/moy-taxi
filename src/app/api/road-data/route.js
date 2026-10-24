@@ -21,7 +21,7 @@ function getOverpassEndpoints() {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const PARTIAL_CACHE_TTL_MS = 20 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 3_000;
+const REQUEST_TIMEOUT_MS = 4_000;
 const EXTERNAL_TIMEOUT_MS = 3_000;
 const CAMERA_CATALOG_TIMEOUT_MS = 6_000;
 const MAX_POINTS = 4;
@@ -76,7 +76,7 @@ function makeQuery(mode, points, radius) {
   if (mode === "speed") {
     const lat = points[0][0].toFixed(6);
     const lng = points[0][1].toFixed(6);
-    return "[out:json][timeout:4];(" +
+    return "[out:json][timeout:3];(" +
       "way(around:220," + lat + "," + lng + ")[highway];" +
       "node(around:180," + lat + "," + lng + ")[maxspeed];" +
       "node(around:180," + lat + "," + lng + ")[traffic_sign];" +
