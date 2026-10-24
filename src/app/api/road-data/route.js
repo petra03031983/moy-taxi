@@ -18,11 +18,13 @@ function getOverpassEndpoints() {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const PARTIAL_CACHE_TTL_MS = 30 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 7_000;
 const EXTERNAL_TIMEOUT_MS = 3_000;
 const MAX_POINTS = 4;
 const MAX_OVERPASS_ATTEMPTS = 2;
+const OVERPASS_FAILURE_COOLDOWN_MS = 20_000;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
 const PUBLIC_CAMERA_ENDPOINT = "https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru";
 
@@ -104,7 +106,7 @@ function makeFallbackQuery(mode, points, radius) {
   if (mode === "speed") {
     const lat = points[0][0].toFixed(6);
     const lng = points[0][1].toFixed(6);
-    return "[out:json][timeout:2];(" +
+    return "[out:json][timeout:1];(" +
       "way(around:180," + lat + "," + lng + ")[highway];" +
       "node(around:120," + lat + "," + lng + ")[maxspeed];" +
       "node(around:120," + lat + "," + lng + ")[traffic_sign];" +
@@ -115,7 +117,7 @@ function makeFallbackQuery(mode, points, radius) {
     .map(([lat, lng]) => lat.toFixed(3) + "," + lng.toFixed(3))
     .join(",");
   const around = "around:" + Math.min(radius, 450) + "," + coordinates;
-  return "[out:json][timeout:2];(" +
+  return "[out:json][timeout:1];(" +
     `node(${around})[highway=traffic_signals];` +
     `node(${around})[highway=crossing];` +
     `node(${around})[crossing];` +
@@ -191,48 +193,67 @@ async function postOverpass(endpoint, query, timeoutMs = REQUEST_TIMEOUT_MS) {
 
 // Try one provider per request. If it fails, the API route makes at most one
 // lighter retry on the next eligible provider; 429 cooldown is kept per host.
-async function fetchFromAnyOverpass(query, endpoints, timeoutMs = REQUEST_TIMEOUT_MS) {
+async function fetchFromAnyOverpass(query, endpoints, timeoutMs = REQUEST_TIMEOUT_MS, maxAttempts = 1) {
   const state = getOverpassState();
-  const now = Date.now();
-  let selectedIndex = -1;
-  let earliestCooldown = Infinity;
+  const attemptLimit = Math.max(1, Math.min(
+    endpoints.length,
+    Number.isFinite(Number(maxAttempts)) ? Math.trunc(Number(maxAttempts)) : 1,
+  ));
+  let lastError = null;
 
-  for (let offset = 0; offset < endpoints.length; offset += 1) {
-    const index = (state.nextEndpointIndex + offset) % endpoints.length;
-    const host = new URL(endpoints[index]).host;
-    const blockedUntil = Number(state.blockedUntilByHost[host] || 0);
-    if (blockedUntil <= now) {
-      delete state.blockedUntilByHost[host];
-      selectedIndex = index;
-      break;
+  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
+    const now = Date.now();
+    let selectedIndex = -1;
+    let earliestCooldown = Infinity;
+
+    for (let offset = 0; offset < endpoints.length; offset += 1) {
+      const index = (state.nextEndpointIndex + offset) % endpoints.length;
+      const host = new URL(endpoints[index]).host;
+      const blockedUntil = Number(state.blockedUntilByHost[host] || 0);
+      if (blockedUntil <= now) {
+        delete state.blockedUntilByHost[host];
+        selectedIndex = index;
+        break;
+      }
+      earliestCooldown = Math.min(earliestCooldown, blockedUntil);
     }
-    earliestCooldown = Math.min(earliestCooldown, blockedUntil);
+
+    if (selectedIndex < 0) {
+      if (lastError) throw lastError;
+      const waitSeconds = Number.isFinite(earliestCooldown)
+        ? Math.ceil((earliestCooldown - now) / 1000)
+        : 60;
+      const error = new Error("Все публичные источники временно ограничили запросы; повтор через " + Math.max(1, waitSeconds) + " с");
+      error.status = 429;
+      throw error;
+    }
+
+    const endpoint = endpoints[selectedIndex];
+    const host = new URL(endpoint).host;
+    state.nextEndpointIndex = (selectedIndex + 1) % endpoints.length;
+
+    try {
+      return await postOverpass(endpoint, query, timeoutMs);
+    } catch (error) {
+      const transient = error && (
+        error.name === "AbortError" ||
+        !Number.isFinite(error.status) ||
+        Number(error.status) >= 500
+      );
+      if (transient) {
+        state.blockedUntilByHost[host] = Date.now() + OVERPASS_FAILURE_COOLDOWN_MS;
+      }
+      const detail = error && error.name === "AbortError"
+        ? "timeout"
+        : String(error && error.message || "request failed");
+      const wrapped = new Error(host + ": " + detail);
+      if (error && Number.isFinite(error.status)) wrapped.status = error.status;
+      lastError = wrapped;
+    }
   }
 
-  if (selectedIndex < 0) {
-    const waitSeconds = Number.isFinite(earliestCooldown) ? Math.ceil((earliestCooldown - now) / 1000) : 60;
-    const error = new Error("Все публичные источники временно ограничили запросы; повтор через " + Math.max(1, waitSeconds) + " с");
-    error.status = 429;
-    throw error;
-  }
-
-  const endpoint = endpoints[selectedIndex];
-  const host = new URL(endpoint).host;
-  try {
-    const payload = await postOverpass(endpoint, query, timeoutMs);
-    state.nextEndpointIndex = (selectedIndex + 1) % endpoints.length;
-    return payload;
-  } catch (error) {
-    state.nextEndpointIndex = (selectedIndex + 1) % endpoints.length;
-    const detail = error && error.name === "AbortError"
-      ? "timeout"
-      : String(error && error.message || "request failed");
-    const wrapped = new Error(host + ": " + detail);
-    if (error && Number.isFinite(error.status)) wrapped.status = error.status;
-    throw wrapped;
-  }
+  throw lastError || new Error("OpenStreetMap road data unavailable");
 }
-
 function summarizeRoadObjects(elements = []) {
   const counts = {
     trafficLights: 0,
@@ -525,7 +546,9 @@ export async function GET(request) {
     .map(([lat, lng]) => lat.toFixed(3) + "," + lng.toFixed(3))
     .join(";");
   const cached = memoryCache.get(cacheKey);
-  if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) {
+  const cachedAgeMs = cached ? Date.now() - cached.savedAt : Infinity;
+  const cacheTtlMs = cached?.payload?.partial ? PARTIAL_CACHE_TTL_MS : CACHE_TTL_MS;
+  if (cached && cachedAgeMs < cacheTtlMs) {
     return jsonResponse({ ...cached.payload, cached: true });
   }
 
@@ -549,7 +572,14 @@ export async function GET(request) {
     lastError = error;
     try {
       fallbackUsed = true;
-      payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints, 2_500);
+      // A lightweight query is retried on two different eligible providers within
+      // the same overall timeout budget as the previous single fallback attempt.
+      payload = await fetchFromAnyOverpass(
+        makeFallbackQuery(mode, points, radius),
+        endpoints,
+        1_250,
+        MAX_OVERPASS_ATTEMPTS,
+      );
     } catch (fallbackError) {
       lastError = fallbackError;
     }
