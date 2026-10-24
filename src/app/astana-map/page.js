@@ -60,6 +60,40 @@ function formatArrivalTime(seconds, now = Date.now()) {
   return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
+function weatherSummary(code, isDay = 1) {
+  const labels = {
+    0: ["Ясно", isDay ? "☀️" : "🌙"],
+    1: ["Преимущественно ясно", isDay ? "🌤️" : "🌙"],
+    2: ["Переменная облачность", "⛅"],
+    3: ["Пасмурно", "☁️"],
+    45: ["Туман", "🌫️"],
+    48: ["Изморозевый туман", "🌫️"],
+    51: ["Небольшая морось", "🌦️"],
+    53: ["Морось", "🌦️"],
+    55: ["Сильная морось", "🌧️"],
+    56: ["Ледяная морось", "🌧️"],
+    57: ["Сильная ледяная морось", "🌧️"],
+    61: ["Небольшой дождь", "🌧️"],
+    63: ["Дождь", "🌧️"],
+    65: ["Сильный дождь", "🌧️"],
+    66: ["Ледяной дождь", "🌧️"],
+    67: ["Сильный ледяной дождь", "🌧️"],
+    71: ["Небольшой снег", "🌨️"],
+    73: ["Снег", "🌨️"],
+    75: ["Сильный снег", "❄️"],
+    77: ["Снежная крупа", "🌨️"],
+    80: ["Кратковременный дождь", "🌦️"],
+    81: ["Ливень", "🌧️"],
+    82: ["Сильный ливень", "⛈️"],
+    85: ["Небольшой снегопад", "🌨️"],
+    86: ["Сильный снегопад", "❄️"],
+    95: ["Гроза", "⛈️"],
+    96: ["Гроза с градом", "⛈️"],
+    99: ["Сильная гроза с градом", "⛈️"],
+  };
+  return labels[Number(code)] || ["Погодные условия", "🌡️"];
+}
+
 function routeTurnCount(route) {
   return (route?.steps || []).filter(step => ["turn", "roundabout", "fork", "merge"].includes(step?.maneuver?.type)).length;
 }
@@ -744,6 +778,12 @@ export default function AstanaMapPage() {
   const [navigationClock, setNavigationClock] = useState(Date.now());
   const [roadObjectsRevision, setRoadObjectsRevision] = useState(0);
   const [cameraCatalogRevision, setCameraCatalogRevision] = useState(0);
+  const [weatherOpen, setWeatherOpen] = useState(false);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherData, setWeatherData] = useState(null);
+  const [weatherError, setWeatherError] = useState("");
+  const weatherFetchedAtRef = useRef(0);
+  const weatherAbortRef = useRef(null);
   const navigationStatsRef = useRef({
     routeId: null,
     remainingDistanceMeters: 0,
@@ -2486,6 +2526,72 @@ export default function AstanaMapPage() {
     };
   }, [map3dReady, map3dEnabled, map4dEnabled, gpsFixReady]);
 
+  async function toggleWeather() {
+    if (weatherOpen) {
+      setWeatherOpen(false);
+      return;
+    }
+    setWeatherOpen(true);
+    setWeatherError("");
+
+    if (weatherData && Date.now() - weatherFetchedAtRef.current < 10 * 60 * 1000) return;
+
+    weatherAbortRef.current?.abort();
+    const controller = new AbortController();
+    weatherAbortRef.current = controller;
+    const point = origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)
+      ? { lat: origin.lat, lng: origin.lng, label: "Рядом с вами" }
+      : { lat: ASTANA[0], lng: ASTANA[1], label: "Астана" };
+
+    setWeatherLoading(true);
+    try {
+      const url = new URL("https://api.open-meteo.com/v1/forecast");
+      url.search = new URLSearchParams({
+        latitude: String(point.lat),
+        longitude: String(point.lng),
+        current: "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m",
+        timezone: "auto",
+        temperature_unit: "celsius",
+        wind_speed_unit: "kmh",
+        forecast_days: "1",
+      }).toString();
+
+      const timeout = window.setTimeout(() => controller.abort(), 9000);
+      let response;
+      try {
+        response = await fetch(url.toString(), {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+      if (!response.ok) throw new Error("Сервис погоды временно недоступен.");
+      const payload = await response.json();
+      if (!payload?.current || !Number.isFinite(Number(payload.current.temperature_2m))) {
+        throw new Error("Не удалось получить текущую погоду.");
+      }
+      if (controller.signal.aborted) return;
+      setWeatherData({
+        ...payload.current,
+        locationLabel: point.label,
+        timezone: payload.timezone || "auto",
+      });
+      weatherFetchedAtRef.current = Date.now();
+    } catch (weatherFetchError) {
+      if (!controller.signal.aborted) {
+        setWeatherError(weatherFetchError?.name === "AbortError"
+          ? "Запрос погоды занял слишком много времени. Попробуйте ещё раз."
+          : weatherFetchError?.message || "Не удалось загрузить погоду. Проверьте интернет.");
+      }
+    } finally {
+      if (weatherAbortRef.current === controller) {
+        weatherAbortRef.current = null;
+        setWeatherLoading(false);
+      }
+    }
+  }
+
   function toggle4DMap() {
     if (!map3dReady || !map3dRef.current) {
       setError("3D-карта ещё загружается. Подождите, пока появятся улицы, затем включите 4D.");
@@ -2893,7 +2999,29 @@ export default function AstanaMapPage() {
 
 
       {isHomeScreen && <button className="astana-home-locate" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение">➤</button>}
-      {isHomeScreen && <div className="astana-home-weather" aria-label="Погода"><span>☁️</span><b>Погода</b></div>}
+      {isHomeScreen && <button type="button" className="astana-home-weather" aria-label="Открыть погоду" aria-expanded={weatherOpen} onClick={toggleWeather}><span>☁️</span><b>Погода</b></button>}
+      {isHomeScreen && weatherOpen && <section className="astana-weather-panel" role="dialog" aria-label="Текущая погода">
+        <div className="astana-weather-panel-head">
+          <div><b>Погода</b><small>{weatherData?.locationLabel || (origin ? "Рядом с вами" : "Астана")}</small></div>
+          <div className="astana-weather-panel-actions">
+            <button type="button" onClick={() => { weatherFetchedAtRef.current = 0; setWeatherData(null); void toggleWeather(); }} aria-label="Обновить погоду" title="Обновить">↻</button>
+            <button type="button" onClick={() => setWeatherOpen(false)} aria-label="Закрыть погоду">×</button>
+          </div>
+        </div>
+        {weatherLoading && <div className="astana-weather-loading"><span className="astana-weather-spinner"/>Загружаем погоду…</div>}
+        {!weatherLoading && weatherError && <div className="astana-weather-error">{weatherError}<button type="button" onClick={() => { weatherFetchedAtRef.current = 0; setWeatherOpen(false); window.setTimeout(() => { void toggleWeather(); }, 0); }}>Повторить</button></div>}
+        {!weatherLoading && !weatherError && weatherData && <>
+          <div className="astana-weather-main"><span>{weatherSummary(weatherData.weather_code, weatherData.is_day)[1]}</span><div><strong>{Math.round(Number(weatherData.temperature_2m))}°C</strong><b>{weatherSummary(weatherData.weather_code, weatherData.is_day)[0]}</b></div></div>
+          <div className="astana-weather-feels">Ощущается как {Math.round(Number(weatherData.apparent_temperature))}°C</div>
+          <div className="astana-weather-details">
+            <div><span>💨</span><small>Ветер</small><b>{Math.round(Number(weatherData.wind_speed_10m))} км/ч</b></div>
+            <div><span>💧</span><small>Влажность</small><b>{Math.round(Number(weatherData.relative_humidity_2m))}%</b></div>
+            <div><span>🌧️</span><small>Осадки</small><b>{Number(weatherData.precipitation || 0).toLocaleString("ru-RU")} мм</b></div>
+          </div>
+          <div className="astana-weather-updated">Обновлено: {new Date(weatherData.time).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} · Open-Meteo</div>
+        </>}
+        {!weatherLoading && !weatherError && !weatherData && <div className="astana-weather-loading">Нет данных о погоде.</div>}
+      </section>}
       {isHomeScreen && <nav className="astana-home-bottom-nav" aria-label="Главное меню">
         <button className="active" onClick={openHomeSearch}><span>▦</span><b>Поиск</b></button>
         <button onClick={() => { if (route) setShowSteps(true); else openHomeSearch(); }}><span>⌁</span><b>Проезд</b></button>
