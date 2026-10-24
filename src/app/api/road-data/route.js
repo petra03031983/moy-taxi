@@ -6,8 +6,8 @@ const OVERPASS_ENDPOINTS = [
 
 const CACHE_TTL_MS = 45_000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 3_800;
-const EXTERNAL_TIMEOUT_MS = 2_200;
+const REQUEST_TIMEOUT_MS = 4_200;
+const EXTERNAL_TIMEOUT_MS = 4_000;
 const MAX_POINTS = 14;
 const MAX_OVERPASS_ATTEMPTS = 2;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
