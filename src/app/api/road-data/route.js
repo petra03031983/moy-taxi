@@ -6,10 +6,10 @@ const OVERPASS_ENDPOINTS = [
 
 const CACHE_TTL_MS = 45_000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 4_200;
+const REQUEST_TIMEOUT_MS = 4_500;
 const EXTERNAL_TIMEOUT_MS = 3_500;
-const MAX_POINTS = 14;
-const MAX_OVERPASS_ATTEMPTS = 2;
+const MAX_POINTS = 8;
+const MAX_OVERPASS_ATTEMPTS = 3;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
 const PUBLIC_CAMERA_ENDPOINT = "https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru";
 
@@ -71,27 +71,27 @@ function makeQuery(mode, points, radius) {
   const around = "around:" + radius + "," + coordinates;
 
   const selectors = [
-    `nwr(${around})[highway~"^(traffic_signals|crossing|stop|give_way|speed_camera|red_light_camera|construction|road_closed)$"];`,
+    `nwr(${around})[highway=traffic_signals];`,
+    `nwr(${around})[highway=crossing];`,
     `nwr(${around})[crossing];`,
-    `nwr(${around})["crossing:markings"];`,
-    `nwr(${around})[amenity=parking];`,
-    `nwr(${around})[parking];`,
-    `nwr(${around})[parking_space];`,
+    `nwr(${around})[highway=speed_camera];`,
+    `nwr(${around})[highway=red_light_camera];`,
     `nwr(${around})[maxspeed];`,
     `nwr(${around})[traffic_sign];`,
     `nwr(${around})["traffic_sign:forward"];`,
     `nwr(${around})["traffic_sign:backward"];`,
     `nwr(${around})["traffic_sign:maxspeed"];`,
-    `nwr(${around})[enforcement~"^(maxspeed|average_speed|red_light|speed_camera|alpr|license_plate)$"];`,
-    `nwr(${around})[man_made=surveillance]["surveillance:type"~"^(camera|traffic|speed|red_light|enforcement|alpr|license_plate)$"];`,
-    `nwr(${around})["camera:type"~"^(speed|traffic|red_light|enforcement|alpr|license_plate)$"];`,
+    `nwr(${around})[amenity=parking];`,
+    `nwr(${around})[parking];`,
+    `nwr(${around})[enforcement];`,
+    `nwr(${around})[man_made=surveillance];`,
+    `nwr(${around})["camera:type"];`,
     `nwr(${around})["monitoring:traffic"=yes];`,
     `nwr(${around})[roadworks=yes];`,
     `nwr(${around})[barrier=road_block];`,
     `nwr(${around})[hazard];`,
-    `nwr(${around})["hazard:prone"=yes];`,
   ];
-  return "[out:json][timeout:4];(" + selectors.join("") + ");out tags center;";
+  return "[out:json][timeout:4];(" + selectors.join("") + ");out tags center;"
 }
 
 function makeFallbackQuery(mode, points, radius) {
@@ -99,20 +99,25 @@ function makeFallbackQuery(mode, points, radius) {
   const coordinates = points
     .map(([lat, lng]) => lat.toFixed(5) + "," + lng.toFixed(5))
     .join(",");
-  const around = "around:" + radius + "," + coordinates;
-  return "[out:json][timeout:4];(" +
-    `nwr(${around})[highway~"^(traffic_signals|crossing|speed_camera|red_light_camera)$"];` +
-    `nwr(${around})[crossing];` +
-    `nwr(${around})[maxspeed];` +
-    `nwr(${around})[traffic_sign];` +
-    `nwr(${around})["traffic_sign:maxspeed"];` +
-    `nwr(${around})[amenity=parking];` +
-    `nwr(${around})[roadworks=yes];` +
-    ");out tags center;";
+  const around = "around:" + Math.min(radius, 500) + "," + coordinates;
+  return "[out:json][timeout:3];(" +
+    `node(${around})[highway=traffic_signals];` +
+    `node(${around})[highway=crossing];` +
+    `node(${around})[crossing];` +
+    `node(${around})[highway=speed_camera];` +
+    `node(${around})[highway=red_light_camera];` +
+    `node(${around})[maxspeed];` +
+    `node(${around})[traffic_sign];` +
+    `node(${around})["traffic_sign:maxspeed"];` +
+    `node(${around})[amenity=parking];` +
+    ");out tags;";
 }
 
-async function postOverpass(endpoint, query) {
+
+async function postOverpass(endpoint, query, parentSignal) {
   const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  parentSignal?.addEventListener("abort", abortFromParent, { once: true });
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
@@ -125,14 +130,36 @@ async function postOverpass(endpoint, query) {
       signal: controller.signal,
       cache: "no-store",
     });
-    if (!response.ok) throw new Error("Overpass HTTP " + response.status);
+    if (!response.ok) throw new Error("HTTP " + response.status);
     const payload = await response.json();
-    if (!Array.isArray(payload && payload.elements)) throw new Error("Invalid Overpass payload");
+    if (!Array.isArray(payload && payload.elements)) throw new Error("Invalid JSON response");
     return payload;
   } finally {
     clearTimeout(timeout);
+    parentSignal?.removeEventListener("abort", abortFromParent);
   }
 }
+
+async function fetchFromAnyOverpass(query, endpoints) {
+  const controller = new AbortController();
+  const errors = [];
+  try {
+    return await Promise.any(endpoints.map(async endpoint => {
+      try {
+        return await postOverpass(endpoint, query, controller.signal);
+      } catch (error) {
+        const host = String(endpoint).replace(/^https?:\\/\\//, "").split("/")[0];
+        errors.push(host + ": " + (error && error.name === "AbortError" ? "timeout" : String(error && error.message || "request failed")));
+        throw error;
+      }
+    }));
+  } catch {
+    throw new Error(errors.slice(0, 3).join("; ").slice(0, 220) || "all Overpass providers failed");
+  } finally {
+    controller.abort();
+  }
+}
+
 
 function summarizeRoadObjects(elements = []) {
   const counts = {
@@ -380,35 +407,43 @@ export async function GET(request) {
   let lastError = null;
 
   const endpoints = OVERPASS_ENDPOINTS.slice(0, MAX_OVERPASS_ATTEMPTS);
-  for (let attemptIndex = 0; attemptIndex < endpoints.length; attemptIndex += 1) {
-    const endpoint = endpoints[attemptIndex];
-    const attemptQuery = attemptIndex === 0 ? query : makeFallbackQuery(mode, points, radius);
+  let payload = null;
+  let fallbackUsed = false;
+  try {
+    payload = await fetchFromAnyOverpass(query, endpoints);
+  } catch (error) {
+    lastError = error;
     try {
-      const payload = await postOverpass(endpoint, attemptQuery);
-      const parking = await parkingPromise;
-      const elements = mergeElements(payload.elements, parking);
-      const result = {
-        elements,
-        source: parking.length
-          ? "OpenStreetMap / Overpass + Astana city geoportal"
-          : "OpenStreetMap / Overpass",
-        fetchedAt: new Date().toISOString(),
-        cached: false,
-        count: elements.length,
-        diagnostics: summarizeRoadObjects(elements),
-        sources: parking.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking layer"] : ["OpenStreetMap / Overpass"],
-      };
-      memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
-      if (memoryCache.size > 300) {
-        for (const [key, value] of memoryCache) {
-          if (Date.now() - value.savedAt > CACHE_TTL_MS * 4) memoryCache.delete(key);
-          if (memoryCache.size <= 220) break;
-        }
-      }
-      return jsonResponse(result);
-    } catch (error) {
-      lastError = error;
+      fallbackUsed = true;
+      payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints);
+    } catch (fallbackError) {
+      lastError = fallbackError;
     }
+  }
+
+  if (payload) {
+    const parking = await parkingPromise;
+    const elements = mergeElements(payload.elements, parking);
+    const result = {
+      elements,
+      source: (parking.length
+        ? "OpenStreetMap / Overpass + Astana city geoportal"
+        : "OpenStreetMap / Overpass") + (fallbackUsed ? " (облегчённый запрос)" : ""),
+      fetchedAt: new Date().toISOString(),
+      cached: false,
+      count: elements.length,
+      diagnostics: summarizeRoadObjects(elements),
+      sources: parking.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking layer"] : ["OpenStreetMap / Overpass"],
+      fallbackUsed,
+    };
+    memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
+    if (memoryCache.size > 300) {
+      for (const [key, value] of memoryCache) {
+        if (Date.now() - value.savedAt > CACHE_TTL_MS * 4) memoryCache.delete(key);
+        if (memoryCache.size <= 220) break;
+      }
+    }
+    return jsonResponse(result);
   }
 
   const parking = mode === "objects" ? await parkingPromise : [];
@@ -440,9 +475,7 @@ export async function GET(request) {
 
   return jsonResponse({
     error: "Road data source is temporarily unavailable.",
-    details: lastError && lastError.name === "AbortError"
-      ? "timeout"
-      : String(lastError && lastError.message || "source_unavailable").slice(0, 140),
+    details: String(lastError && lastError.message || "source_unavailable").slice(0, 180),
     source: "OpenStreetMap / Overpass",
   }, 502);
 }
