@@ -590,6 +590,7 @@ export async function GET(request) {
       count: officialLayers.length,
       diagnostics: summarizeRoadObjects(officialLayers),
       partial: true,
+      partialReason: String(lastError && lastError.message || "OpenStreetMap temporarily unavailable").slice(0, 220),
       sources: ["Astana city geoportal parking and underpasses"],
     };
     memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
@@ -603,6 +604,7 @@ export async function GET(request) {
       cached: true,
       stale: true,
       partial: true,
+      partialReason: String(lastError && lastError.message || "Using saved data while the live source is unavailable").slice(0, 220),
       source: String(cached.payload.source || "OpenStreetMap / Overpass") + " — последние сохранённые данные",
     });
   }
