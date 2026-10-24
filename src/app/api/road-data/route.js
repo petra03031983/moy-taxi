@@ -1,10 +1,11 @@
 const OVERPASS_ENDPOINTS = [
-  "https://lz4.overpass-api.de/api/interpreter",
+  // Prefer the European community mirror first; rotate to independent providers on failure.
   "https://overpass.private.coffee/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
   "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
 ];
 
 function getOverpassEndpoints() {
@@ -18,23 +19,28 @@ function getOverpassEndpoints() {
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const PARTIAL_CACHE_TTL_MS = 30 * 1000;
+const PARTIAL_CACHE_TTL_MS = 20 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 7_000;
+const REQUEST_TIMEOUT_MS = 3_000;
 const EXTERNAL_TIMEOUT_MS = 3_000;
+const CAMERA_CATALOG_TIMEOUT_MS = 6_000;
 const MAX_POINTS = 4;
-const MAX_OVERPASS_ATTEMPTS = 2;
+const MAX_OVERPASS_ATTEMPTS = 3;
 const OVERPASS_FAILURE_COOLDOWN_MS = 20_000;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
 const PUBLIC_CAMERA_ENDPOINT = "https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru";
 
 function jsonResponse(body, status = 200, headers = {}) {
+  const partial = Boolean(body && (body.partial || body.stale || body.fallbackUsed));
+  const cacheControl = status !== 200
+    ? "no-store"
+    : partial
+      ? "public, max-age=10, s-maxage=15, stale-while-revalidate=30"
+      : "public, max-age=30, s-maxage=120, stale-while-revalidate=300";
   return Response.json(body, {
     status,
     headers: {
-      "Cache-Control": status === 200
-        ? "public, s-maxage=300, stale-while-revalidate=900"
-        : "no-store",
+      "Cache-Control": cacheControl,
       "X-Content-Type-Options": "nosniff",
       ...headers,
     },
@@ -80,26 +86,38 @@ function makeQuery(mode, points, radius) {
       ");out tags geom;";
   }
 
-  const coordinates = points
-    .map(([lat, lng]) => lat.toFixed(5) + "," + lng.toFixed(5))
-    .join(",");
-  const around = "around:" + radius + "," + coordinates;
+  // Bounding boxes are cheaper than large around-polyline filters and work
+  // for both a single GPS point and a set of samples along the active route.
+  const lats = points.map(([lat]) => lat);
+  const lngs = points.map(([, lng]) => lng);
+  const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+  const latPadding = Math.max(0.001, radius / 111320 * 1.15);
+  const lngPadding = Math.max(
+    0.001,
+    radius / (111320 * Math.max(0.35, Math.cos(centerLat * Math.PI / 180))) * 1.15,
+  );
+  const bounds = [
+    (Math.min(...lats) - latPadding).toFixed(5),
+    (Math.min(...lngs) - lngPadding).toFixed(5),
+    (Math.max(...lats) + latPadding).toFixed(5),
+    (Math.max(...lngs) + lngPadding).toFixed(5),
+  ].join(",");
 
   const selectors = [
-    `node(${around})[highway~"^(traffic_signals|crossing|stop|give_way|speed_camera|red_light_camera)$"];`,
-    `node(${around})[crossing];`,
-    `node(${around})[traffic_sign];`,
-    `node(${around})["traffic_sign:forward"];`,
-    `node(${around})["traffic_sign:backward"];`,
-    `node(${around})["traffic_sign:maxspeed"];`,
-    `nwr(${around})[maxspeed];`,
-    `node(${around})[man_made=surveillance]["surveillance:type"~"^(camera|traffic|speed|red_light|enforcement)$"];`,
-    `node(${around})["camera:type"~"^(speed|traffic|red_light|enforcement)$"];`,
-    `nwr(${around})[amenity=parking];`,
-    `way(${around})[highway=construction];`,
-    `nwr(${around})[roadworks=yes];`,
+    `node(${bounds})[highway~"^(traffic_signals|crossing|stop|give_way|speed_camera|red_light_camera)$"];`,
+    `node(${bounds})[crossing];`,
+    `node(${bounds})[traffic_sign];`,
+    `node(${bounds})["traffic_sign:forward"];`,
+    `node(${bounds})["traffic_sign:backward"];`,
+    `node(${bounds})["traffic_sign:maxspeed"];`,
+    `nwr(${bounds})[maxspeed];`,
+    `node(${bounds})[man_made=surveillance]["surveillance:type"~"^(camera|traffic|speed|red_light|enforcement)$"];`,
+    `node(${bounds})["camera:type"~"^(speed|traffic|red_light|enforcement)$"];`,
+    `nwr(${bounds})[amenity=parking];`,
+    `way(${bounds})[highway=construction];`,
+    `nwr(${bounds})[roadworks=yes];`,
   ];
-  return "[out:json][timeout:6];(" + selectors.join("") + ");out tags center;"
+  return "[out:json][timeout:3];(" + selectors.join("") + ");out tags center;";
 }
 
 function makeFallbackQuery(mode, points, radius) {
@@ -112,23 +130,40 @@ function makeFallbackQuery(mode, points, radius) {
       "node(around:120," + lat + "," + lng + ")[traffic_sign];" +
       ");out tags center;";
   }
-  const coordinates = points
-    .slice(0, 4)
-    .map(([lat, lng]) => lat.toFixed(3) + "," + lng.toFixed(3))
-    .join(",");
-  const around = "around:" + Math.min(radius, 450) + "," + coordinates;
+
+  // Lightweight bounding-box fallback includes traffic lights, camera tags,
+  // speed limits, road signs, crossings, parking and roadworks.
+  const lats = points.map(([lat]) => lat);
+  const lngs = points.map(([, lng]) => lng);
+  const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+  const safeRadius = Math.min(radius, 900);
+  const latPadding = Math.max(0.001, safeRadius / 111320 * 1.15);
+  const lngPadding = Math.max(
+    0.001,
+    safeRadius / (111320 * Math.max(0.35, Math.cos(centerLat * Math.PI / 180))) * 1.15,
+  );
+  const bounds = [
+    (Math.min(...lats) - latPadding).toFixed(5),
+    (Math.min(...lngs) - lngPadding).toFixed(5),
+    (Math.max(...lats) + latPadding).toFixed(5),
+    (Math.max(...lngs) + lngPadding).toFixed(5),
+  ].join(",");
+
   return "[out:json][timeout:1];(" +
-    `node(${around})[highway=traffic_signals];` +
-    `node(${around})[highway=crossing];` +
-    `node(${around})[crossing];` +
-    `node(${around})[highway=speed_camera];` +
-    `node(${around})[highway=red_light_camera];` +
-    `node(${around})[traffic_sign];` +
-    `node(${around})["traffic_sign:maxspeed"];` +
-    `nwr(${around})[maxspeed];` +
+    `node(${bounds})[highway~"^(traffic_signals|crossing|stop|give_way|speed_camera|red_light_camera)$"];` +
+    `node(${bounds})[crossing];` +
+    `node(${bounds})[traffic_sign];` +
+    `node(${bounds})["traffic_sign:forward"];` +
+    `node(${bounds})["traffic_sign:backward"];` +
+    `node(${bounds})["traffic_sign:maxspeed"];` +
+    `nwr(${bounds})[maxspeed];` +
+    `node(${bounds})[man_made=surveillance]["surveillance:type"~"^(camera|traffic|speed|red_light|enforcement)$"];` +
+    `node(${bounds})["camera:type"~"^(speed|traffic|red_light|enforcement)$"];` +
+    `nwr(${bounds})[amenity=parking];` +
+    `way(${bounds})[highway=construction];` +
+    `nwr(${bounds})[roadworks=yes];` +
     ");out tags center;";
 }
-
 
 function getOverpassState() {
   if (!globalThis.__astanaOverpassState) {
@@ -465,7 +500,7 @@ async function fetchOfficialUnderpasses(points, radius) {
 }
 
 async function fetchPublicCameraElements() {
-  const collection = await fetchExternalJson(PUBLIC_CAMERA_ENDPOINT, EXTERNAL_TIMEOUT_MS);
+  const collection = await fetchExternalJson(PUBLIC_CAMERA_ENDPOINT, CAMERA_CATALOG_TIMEOUT_MS);
   const features = Array.isArray(collection && collection.features) ? collection.features : [];
   return features.map((feature, index) => {
     const coordinates = feature && feature.geometry && feature.geometry.coordinates;
@@ -577,7 +612,7 @@ export async function GET(request) {
       payload = await fetchFromAnyOverpass(
         makeFallbackQuery(mode, points, radius),
         endpoints,
-        1_250,
+        1_500,
         MAX_OVERPASS_ATTEMPTS,
       );
     } catch (fallbackError) {
@@ -599,6 +634,8 @@ export async function GET(request) {
       diagnostics: summarizeRoadObjects(elements),
       sources: officialLayers.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking and underpasses"] : ["OpenStreetMap / Overpass"],
       fallbackUsed,
+      partial: Boolean(fallbackUsed || !Array.isArray(payload.elements) || payload.elements.length === 0),
+      partialReason: fallbackUsed ? "Основной запрос не завершился вовремя; использован облегчённый запрос" : "",
     };
     memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
     if (memoryCache.size > 300) {
