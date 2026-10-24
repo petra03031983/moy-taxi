@@ -1353,6 +1353,12 @@ export default function AstanaMapPage() {
               heading.textContent = String(props.title || roadObjectTitle(String(props.kind || "")));
               content.appendChild(heading);
               const kind = String(props.kind || "");
+              if (kind === "speed-sign" && Number.isFinite(Number(props.speedLimit)) && Number(props.speedLimit) > 0) {
+                const limit = document.createElement("div");
+                limit.className = "moy-road-object-popup-limit";
+                limit.textContent = "Ограничение: " + Math.round(Number(props.speedLimit)) + " км/ч";
+                content.appendChild(limit);
+              }
               if (["roadwork", "closure", "hazard"].includes(kind)) {
                 const note = document.createElement("small");
                 note.className = "moy-road-object-popup-caveat";
@@ -2485,9 +2491,23 @@ export default function AstanaMapPage() {
         const activePoints = routePointsRef.current.length > 1
           ? routePointsRef.current
           : route.geometry.map(point => [point[1], point[0]]);
-        const limit = findSpeedLimitForRoute(current, activePoints, data.elements || []);
-        // A successful lookup with no matched, tagged road means the source has no reliable
-        // speed limit for the current road. A temporary network/API error keeps the last value.
+        let limit = findSpeedLimitForRoute(current, activePoints, data.elements || []);
+
+        // A physically mapped speed sign near the current road is more specific than
+        // a road's generic maxspeed zone tag. Use only a numeric sign found in map data.
+        let nearestSign = null;
+        for (const item of roadObjectsRef.current) {
+          if (item.kind !== "speed-sign" || !Number.isFinite(Number(item.speedLimit))) continue;
+          const distance = distanceBetween([current.lat, current.lng], [item.lat, item.lng]);
+          if (distance > 55) continue;
+          const routeSnap = activePoints.length > 1 ? snapToRoute(item, activePoints) : null;
+          if (routeSnap && (!Number.isFinite(routeSnap.distance) || routeSnap.distance > 35)) continue;
+          if (!nearestSign || distance < nearestSign.distance) nearestSign = { item, distance };
+        }
+        if (nearestSign) limit = Number(nearestSign.item.speedLimit);
+
+        // A successful lookup with no matched, tagged road/sign means there is no reliable
+        // posted value available for this segment. A transient API failure keeps the last value.
         setSpeedLimit(limit);
       } catch {
         // Preserve the latest valid value on transient network or Overpass errors.
@@ -3015,7 +3035,7 @@ export default function AstanaMapPage() {
       </section>}
 
       {showMapUtilityControls && <div className="astana-map-right-controls astana-navigation-controls">
-        <div className="astana-nav-speed-now" title={upcomingCamera ? `Впереди камера через ${formatDistance(upcomingCamera.meters)}` : "Текущая скорость"}>
+        <div className={`astana-nav-speed-now${upcomingCamera ? " has-camera" : ""}`} title={upcomingCamera ? `Впереди камера через ${formatDistance(upcomingCamera.meters)}` : "Текущая скорость"}>
           <b>{speed}</b>
           {upcomingCamera && <span className="astana-nav-camera-alert" aria-label={`Камера впереди через ${formatDistance(upcomingCamera.meters)}`} title={`Камера через ${formatDistance(upcomingCamera.meters)}`}>📷</span>}
         </div>
