@@ -1,7 +1,8 @@
 const OVERPASS_ENDPOINTS = [
+  "https://overpass.ch/api/interpreter",
   "https://lz4.overpass-api.de/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://overpass.openstreetmap.fr/api/interpreter",
@@ -9,7 +10,7 @@ const OVERPASS_ENDPOINTS = [
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 3_500;
+const REQUEST_TIMEOUT_MS = 7_000;
 const EXTERNAL_TIMEOUT_MS = 3_000;
 const MAX_POINTS = 4;
 const MAX_OVERPASS_ATTEMPTS = 2;
@@ -87,14 +88,14 @@ function makeQuery(mode, points, radius) {
     `way(${around})[highway=construction];`,
     `nwr(${around})[roadworks=yes];`,
   ];
-  return "[out:json][timeout:3];(" + selectors.join("") + ");out tags center;"
+  return "[out:json][timeout:6];(" + selectors.join("") + ");out tags center;"
 }
 
 function makeFallbackQuery(mode, points, radius) {
   if (mode === "speed") {
     const lat = points[0][0].toFixed(6);
     const lng = points[0][1].toFixed(6);
-    return "[out:json][timeout:3];(" +
+    return "[out:json][timeout:2];(" +
       "way(around:180," + lat + "," + lng + ")[highway];" +
       "node(around:120," + lat + "," + lng + ")[maxspeed];" +
       "node(around:120," + lat + "," + lng + ")[traffic_sign];" +
@@ -105,7 +106,7 @@ function makeFallbackQuery(mode, points, radius) {
     .map(([lat, lng]) => lat.toFixed(3) + "," + lng.toFixed(3))
     .join(",");
   const around = "around:" + Math.min(radius, 450) + "," + coordinates;
-  return "[out:json][timeout:3];(" +
+  return "[out:json][timeout:2];(" +
     `node(${around})[highway=traffic_signals];` +
     `node(${around})[highway=crossing];` +
     `node(${around})[crossing];` +
@@ -141,9 +142,9 @@ function retryAfterMs(response) {
   return 60_000;
 }
 
-async function postOverpass(endpoint, query) {
+async function postOverpass(endpoint, query, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const host = new URL(endpoint).host;
   try {
     const response = await fetch(endpoint, {
@@ -181,7 +182,7 @@ async function postOverpass(endpoint, query) {
 
 // Try one provider per request. If it fails, the API route makes at most one
 // lighter retry on the next eligible provider; 429 cooldown is kept per host.
-async function fetchFromAnyOverpass(query, endpoints) {
+async function fetchFromAnyOverpass(query, endpoints, timeoutMs = REQUEST_TIMEOUT_MS) {
   const state = getOverpassState();
   const now = Date.now();
   let selectedIndex = -1;
@@ -209,7 +210,7 @@ async function fetchFromAnyOverpass(query, endpoints) {
   const endpoint = endpoints[selectedIndex];
   const host = new URL(endpoint).host;
   try {
-    const payload = await postOverpass(endpoint, query);
+    const payload = await postOverpass(endpoint, query, timeoutMs);
     state.nextEndpointIndex = (selectedIndex + 1) % endpoints.length;
     return payload;
   } catch (error) {
@@ -539,7 +540,7 @@ export async function GET(request) {
     lastError = error;
     try {
       fallbackUsed = true;
-      payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints);
+      payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints, 2_500);
     } catch (fallbackError) {
       lastError = fallbackError;
     }
