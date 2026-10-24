@@ -441,3 +441,9 @@
  .astana-nav-lane{min-width:25px;height:32px;padding:0 2px}
  .astana-nav-lane i{font-size:21px}
 }
+
+
+/* Opt-in diagnostic panel used only when ?debugRoads=1 is present. */
+.astana-road-diagnostics{position:fixed;top:88px;left:8px;z-index:1200;width:min(310px,calc(100vw - 16px));max-height:36dvh;overflow:hidden;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(255,255,255,.22);border-radius:12px;background:rgba(8,12,17,.94);color:#fff;font:11px/1.35 Arial,Helvetica,sans-serif;box-shadow:0 3px 16px rgba(0,0,0,.32);pointer-events:none;overflow-wrap:anywhere}
+.astana-road-diagnostics b{display:block;margin-bottom:5px;font-size:12px;font-weight:800}
+.astana-road-diagnostics div{margin-top:3px}
