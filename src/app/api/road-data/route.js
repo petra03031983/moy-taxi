@@ -5,8 +5,13 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 const CACHE_TTL_MS = 45_000;
-const REQUEST_TIMEOUT_MS = 4_500;
+const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 3_800;
+const EXTERNAL_TIMEOUT_MS = 2_200;
 const MAX_POINTS = 14;
+const MAX_OVERPASS_ATTEMPTS = 2;
+const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
+const PUBLIC_CAMERA_ENDPOINT = "https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru";
 
 function jsonResponse(body, status = 200, headers = {}) {
   return Response.json(body, {
@@ -47,31 +52,43 @@ function readPoints(params) {
 }
 
 function makeQuery(mode, points, radius) {
+  if (mode === "speed") {
+    const lat = points[0][0].toFixed(6);
+    const lng = points[0][1].toFixed(6);
+    return "[out:json][timeout:6];(" +
+      "way(around:220," + lat + "," + lng + ")[highway];" +
+      "node(around:180," + lat + "," + lng + ")[maxspeed];" +
+      "node(around:180," + lat + "," + lng + ")[traffic_sign];" +
+      "node(around:180," + lat + "," + lng + ")[\"traffic_sign:maxspeed\"];" +
+      "node(around:180," + lat + "," + lng + ")[\"traffic_sign:forward\"];" +
+      "node(around:180," + lat + "," + lng + ")[\"traffic_sign:backward\"];" +
+      ");out tags geom;";
+  }
+
   const coordinates = points
     .map(([lat, lng]) => lat.toFixed(5) + "," + lng.toFixed(5))
     .join(",");
   const around = "around:" + radius + "," + coordinates;
 
-  if (mode === "speed") {
-    const lat = points[0][0].toFixed(6);
-    const lng = points[0][1].toFixed(6);
-    return "[out:json][timeout:8];(" +
-      "way(around:220," + lat + "," + lng + ")[highway];" +
-      "node(around:100," + lat + "," + lng + ")[maxspeed];" +
-      "node(around:100," + lat + "," + lng + ")[traffic_sign];" +
-      "node(around:100," + lat + "," + lng + ")[\"traffic_sign:maxspeed\"];" +
-      ");out tags geom;";
-  }
-
-  return "[out:json][timeout:10];(" +
+  return "[out:json][timeout:6];(" +
     "nwr(" + around + ")[highway=traffic_signals];" +
+    "nwr(" + around + ")[highway=crossing];" +
+    "nwr(" + around + ")[crossing];" +
+    "nwr(" + around + ")[\"crossing:markings\"];" +
+    "nwr(" + around + ")[highway=stop];" +
+    "nwr(" + around + ")[highway=give_way];" +
+    "nwr(" + around + ")[amenity=parking];" +
+    "nwr(" + around + ")[parking];" +
+    "nwr(" + around + ")[parking_space];" +
     "nwr(" + around + ")[highway=speed_camera];" +
     "nwr(" + around + ")[highway=red_light_camera];" +
     "nwr(" + around + ")[man_made=speed_camera];" +
     "nwr(" + around + ")[traffic_sign];" +
+    "nwr(" + around + ")[\"traffic_sign:forward\"];" +
+    "nwr(" + around + ")[\"traffic_sign:backward\"];" +
     "nwr(" + around + ")[\"traffic_sign:maxspeed\"];" +
     "nwr(" + around + ")[maxspeed];" +
-    "nwr(" + around + ")[enforcement~\"maxspeed|average_speed|red_light|speed_camera\"];" +
+    "nwr(" + around + ")[enforcement~\"maxspeed|average_speed|red_light|speed_camera|alpr|license_plate\"];" +
     "nwr(" + around + ")[man_made=surveillance][\"surveillance:type\"~\"camera|traffic|speed|red_light|enforcement|alpr|license_plate\"];" +
     "nwr(" + around + ")[man_made=surveillance][\"surveillance:zone\"~\"traffic|road|red_light\"];" +
     "nwr(" + around + ")[\"camera:type\"~\"speed|traffic|red_light|enforcement|alpr|license_plate\"];" +
@@ -108,6 +125,147 @@ async function postOverpass(endpoint, query) {
   }
 }
 
+async function fetchExternalJson(url, timeoutMs = EXTERNAL_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json, application/geo+json" },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("External road-data HTTP " + response.status);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function polygonCentroid(geometry) {
+  if (!geometry || !Array.isArray(geometry.coordinates)) return null;
+  if (geometry.type === "Point") {
+    const coords = geometry.coordinates;
+    const lng = Number(coords[0]);
+    const lat = Number(coords[1]);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+  }
+
+  let ring = null;
+  if (geometry.type === "Polygon") ring = geometry.coordinates[0];
+  if (geometry.type === "MultiPolygon") ring = geometry.coordinates[0] && geometry.coordinates[0][0];
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  let lngTotal = 0;
+  let latTotal = 0;
+  let count = 0;
+  for (const point of ring) {
+    const lng = Number(point && point[0]);
+    const lat = Number(point && point[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    lngTotal += lng;
+    latTotal += lat;
+    count += 1;
+  }
+  return count ? [latTotal / count, lngTotal / count] : null;
+}
+
+function isNearAstana(points) {
+  return points.some(([lat, lng]) =>
+    lat >= 50.8 && lat <= 51.55 && lng >= 70.8 && lng <= 72.1
+  );
+}
+
+async function fetchOfficialParking(points, radius) {
+  if (!points.length || !isNearAstana(points)) return [];
+  const lats = points.map(point => point[0]);
+  const lngs = points.map(point => point[1]);
+  const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+  const latPadding = Math.max(0.0025, radius / 111320 * 1.5);
+  const lngPadding = Math.max(
+    0.003,
+    radius / (111320 * Math.max(0.35, Math.cos(centerLat * Math.PI / 180))) * 1.5,
+  );
+  const minLat = Math.min(...lats) - latPadding;
+  const maxLat = Math.max(...lats) + latPadding;
+  const minLng = Math.min(...lngs) - lngPadding;
+  const maxLng = Math.max(...lngs) + lngPadding;
+  const params = new URLSearchParams({
+    where: "1=1",
+    geometry: [minLng, minLat, maxLng, maxLat].join(","),
+    geometryType: "esriGeometryEnvelope",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    outFields: "OBJECTID,NAME,NOTE,REGION,OBLAST",
+    returnGeometry: "true",
+    outSR: "4326",
+    resultRecordCount: "1000",
+    f: "geojson",
+  });
+
+  const collection = await fetchExternalJson(
+    ASTANA_PARKING_ENDPOINT + "?" + params.toString(),
+    EXTERNAL_TIMEOUT_MS,
+  );
+  const features = Array.isArray(collection && collection.features) ? collection.features : [];
+  const elements = [];
+  for (const feature of features) {
+    const center = polygonCentroid(feature && feature.geometry);
+    if (!center) continue;
+    const [lat, lon] = center;
+    if (lat < 50.8 || lat > 51.55 || lon < 70.8 || lon > 72.1) continue;
+    const properties = feature.properties || {};
+    const id = properties.OBJECTID ?? feature.id ?? (lat.toFixed(6) + "-" + lon.toFixed(6));
+    elements.push({
+      type: "node",
+      id: "astana-gis-parking-" + String(id),
+      lat,
+      lon,
+      tags: {
+        amenity: "parking",
+        name: String(properties.NAME || "Автомобильная парковка"),
+        note: String(properties.NOTE || ""),
+        source: "astana-gis",
+        region: String(properties.REGION || ""),
+      },
+    });
+  }
+  return elements;
+}
+
+async function fetchPublicCameraElements() {
+  const collection = await fetchExternalJson(PUBLIC_CAMERA_ENDPOINT, EXTERNAL_TIMEOUT_MS);
+  const features = Array.isArray(collection && collection.features) ? collection.features : [];
+  return features.map((feature, index) => {
+    const coordinates = feature && feature.geometry && feature.geometry.coordinates;
+    const lon = Number(coordinates && coordinates[0]);
+    const lat = Number(coordinates && coordinates[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < 40 || lat > 56 || lon < 45 || lon > 90) return null;
+    const properties = feature.properties || {};
+    const rawUrl = String(properties.source_url || properties.url || "");
+    const sourceUrl = /^https:\/\/[^\\s"'<>]+$/i.test(rawUrl) ? rawUrl : "";
+    const cameraId = properties.camera_id || feature.id || (lat.toFixed(6) + "-" + lon.toFixed(6) + "-" + index);
+    return {
+      type: "node",
+      id: "qazgeo-" + String(cameraId),
+      lat,
+      lon,
+      tags: {
+        name: String(properties.name || properties.name_ru || "Публичная камера"),
+        source_url: sourceUrl,
+        source: "qazgeo",
+      },
+    };
+  }).filter(Boolean);
+}
+
+function mergeElements(primary, additional) {
+  const unique = new Map();
+  for (const element of [...(primary || []), ...(additional || [])]) {
+    const id = String(element && element.type || "item") + ":" + String(element && element.id || "");
+    if (!unique.has(id)) unique.set(id, element);
+  }
+  return Array.from(unique.values());
+}
+
 function getMemoryCache() {
   if (!globalThis.__moyTaxiRoadDataCache) globalThis.__moyTaxiRoadDataCache = new Map();
   return globalThis.__moyTaxiRoadDataCache;
@@ -115,7 +273,36 @@ function getMemoryCache() {
 
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
-  const mode = params.get("mode") === "speed" ? "speed" : "objects";
+  const requestedMode = params.get("mode");
+  const mode = requestedMode === "speed" ? "speed" : requestedMode === "cameras" ? "cameras" : "objects";
+  const memoryCache = getMemoryCache();
+
+  if (mode === "cameras") {
+    const cacheKey = "public-cameras:catalog";
+    const cached = memoryCache.get(cacheKey);
+    if (cached && Date.now() - cached.savedAt < CAMERA_CACHE_TTL_MS) {
+      return jsonResponse({ ...cached.payload, cached: true });
+    }
+    try {
+      const elements = await fetchPublicCameraElements();
+      const result = {
+        elements,
+        source: "QazGeo public camera catalogue",
+        fetchedAt: new Date().toISOString(),
+        cached: false,
+        count: elements.length,
+      };
+      memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
+      return jsonResponse(result);
+    } catch (error) {
+      return jsonResponse({
+        error: "Public camera catalogue is temporarily unavailable.",
+        details: error && error.name === "AbortError" ? "timeout" : "source_unavailable",
+        source: "QazGeo public camera catalogue",
+      }, 502);
+    }
+  }
+
   const points = readPoints(params);
   if (!points) return jsonResponse({ error: "Valid coordinates are required." }, 400);
 
@@ -125,23 +312,33 @@ export async function GET(request) {
   const cacheKey = mode + ":" + radius + ":" + points
     .map(([lat, lng]) => lat.toFixed(3) + "," + lng.toFixed(3))
     .join(";");
-  const memoryCache = getMemoryCache();
   const cached = memoryCache.get(cacheKey);
   if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) {
     return jsonResponse({ ...cached.payload, cached: true });
   }
 
   const query = makeQuery(mode, points, radius);
+  // Fetch the official Astana parking layer in parallel with OSM so a slow map-data
+  // server does not prevent the driver from seeing available location records.
+  const parkingPromise = mode === "objects"
+    ? fetchOfficialParking(points, radius).catch(() => [])
+    : Promise.resolve([]);
   let lastError = null;
-  for (const endpoint of OVERPASS_ENDPOINTS) {
+
+  for (const endpoint of OVERPASS_ENDPOINTS.slice(0, MAX_OVERPASS_ATTEMPTS)) {
     try {
       const payload = await postOverpass(endpoint, query);
+      const parking = await parkingPromise;
+      const elements = mergeElements(payload.elements, parking);
       const result = {
-        elements: payload.elements,
-        source: "OpenStreetMap / Overpass",
+        elements,
+        source: parking.length
+          ? "OpenStreetMap / Overpass + Astana city geoportal"
+          : "OpenStreetMap / Overpass",
         fetchedAt: new Date().toISOString(),
         cached: false,
-        count: payload.elements.length,
+        count: elements.length,
+        sources: parking.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking layer"] : ["OpenStreetMap / Overpass"],
       };
       memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
       if (memoryCache.size > 300) {
@@ -154,6 +351,21 @@ export async function GET(request) {
     } catch (error) {
       lastError = error;
     }
+  }
+
+  const parking = mode === "objects" ? await parkingPromise : [];
+  if (parking.length) {
+    const result = {
+      elements: parking,
+      source: "Astana city geoportal parking layer (partial response)",
+      fetchedAt: new Date().toISOString(),
+      cached: false,
+      count: parking.length,
+      partial: true,
+      sources: ["Astana city geoportal parking layer"],
+    };
+    memoryCache.set(cacheKey, { savedAt: Date.now(), payload: result });
+    return jsonResponse(result);
   }
 
   return jsonResponse({
