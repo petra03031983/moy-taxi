@@ -43,6 +43,32 @@ async function fetchOverpassJSON(query, parentSignal) {
   throw lastError || new Error("OpenStreetMap road data unavailable");
 }
 
+async function fetchRoadDataFromServer(mode, args = {}, signal) {
+  const params = new URLSearchParams({ mode: String(mode || "objects") });
+  if (Array.isArray(args.points) && args.points.length) {
+    params.set("points", args.points
+      .slice(0, 14)
+      .map(point => Number(point[0]).toFixed(5) + "," + Number(point[1]).toFixed(5))
+      .join(";"));
+  } else {
+    if (Number.isFinite(args.lat)) params.set("lat", String(args.lat));
+    if (Number.isFinite(args.lng)) params.set("lng", String(args.lng));
+  }
+  if (Number.isFinite(args.radius)) params.set("radius", String(args.radius));
+
+  const response = await fetch("/api/road-data?" + params.toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(payload?.elements)) {
+    throw new Error(payload?.error || "Сервис дорожных данных временно недоступен");
+  }
+  return payload;
+}
+
+
 function formatDistance(meters) {
   const n = Number(meters || 0);
   return n >= 1000 ? `${(n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} км` : `${Math.round(n)} м`;
@@ -2214,37 +2240,12 @@ export default function AstanaMapPage() {
           ? [livePosition.lat, livePosition.lng]
           : ASTANA;
 
-      // While following a route, ask for objects along the next 7 km of that route.
-      // On the general map, show nearby road objects around the visible/current location.
-      // Keep live requests small enough for public Overpass instances.
-      // Seven points cover the next 4.2 km without an excessive multi-filter query.
+      // Load road data through the same-origin cached API, not directly from the phone.
+      // More route samples keep the lookup corridor following bends and intersections.
       const routeQueryPoints = currentRoutePoints.length > 1
-        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 7)
+        ? sampleRouteForRoadObjects(currentRoutePoints, currentProgress, 4200, 12)
         : [anchor];
-      const coordinates = routeQueryPoints
-        .map(point => `${Number(point[0].toFixed(6))},${Number(point[1].toFixed(6))}`)
-        .join(",");
-      const radius = currentRoutePoints.length > 1 ? 260 : 2200;
-      const q = `[out:json][timeout:12];(
-        nwr(around:${radius},${coordinates})[highway=traffic_signals];
-        nwr(around:${radius},${coordinates})[highway~"speed_camera|red_light_camera"];
-        nwr(around:${radius},${coordinates})[man_made=speed_camera];
-        nwr(around:${radius},${coordinates})[traffic_sign];
-        nwr(around:${radius},${coordinates})[maxspeed];
-        nwr(around:${radius},${coordinates})[enforcement];
-        nwr(around:${radius},${coordinates})[man_made=surveillance];
-        nwr(around:${radius},${coordinates})["surveillance:type"];
-        nwr(around:${radius},${coordinates})["surveillance:zone"];
-        nwr(around:${radius},${coordinates})["camera:type"];
-        nwr(around:${radius},${coordinates})["monitoring:traffic"=yes];
-        nwr(around:${radius},${coordinates})[highway=construction];
-        nwr(around:${radius},${coordinates})[construction];
-        nwr(around:${radius},${coordinates})[roadworks=yes];
-        nwr(around:${radius},${coordinates})[barrier=road_block];
-        nwr(around:${radius},${coordinates})[highway=road_closed];
-        nwr(around:${radius},${coordinates})[hazard];
-        nwr(around:${radius},${coordinates})["hazard:prone"=yes];
-      );out tags center;`;
+      const radius = currentRoutePoints.length > 1 ? 240 : 1500;
 
       const controller = new AbortController();
       requestState.inFlight = true;
@@ -2252,7 +2253,10 @@ export default function AstanaMapPage() {
       requestState.controller = controller;
 
       try {
-        const data = await fetchOverpassJSON(q, controller.signal);
+        const data = await fetchRoadDataFromServer("objects", {
+          points: routeQueryPoints,
+          radius,
+        }, controller.signal);
         if (disposed || controller.signal.aborted || roadObjectsRequestRef.current !== requestState) return;
 
         const unique = new Map();
@@ -2488,13 +2492,7 @@ export default function AstanaMapPage() {
       try {
         const lat = Number(current.lat.toFixed(6));
         const lng = Number(current.lng.toFixed(6));
-        const q = `[out:json][timeout:8];(
-          way(around:180,${lat},${lng})[highway];
-          node(around:180,${lat},${lng})[maxspeed];
-          node(around:180,${lat},${lng})[traffic_sign];
-          node(around:180,${lat},${lng})["traffic_sign:maxspeed"];
-        );out tags geom;`;
-        const data = await fetchOverpassJSON(q, controller.signal);
+        const data = await fetchRoadDataFromServer("speed", { lat, lng }, controller.signal);
         if (disposed || controller.signal.aborted) return;
 
         const activePoints = routePointsRef.current.length > 1
