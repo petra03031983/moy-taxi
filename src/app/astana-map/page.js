@@ -651,6 +651,7 @@ export default function AstanaMapPage() {
   const [leafletReady, setLeafletReady] = useState(false);
   const [map3dReady, setMap3dReady] = useState(false);
   const [map3dEnabled, setMap3dEnabled] = useState(true);
+  const [map4dEnabled, setMap4dEnabled] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -905,6 +906,7 @@ export default function AstanaMapPage() {
       map3dReadyRef.current = false;
       setMap3dEnabled(false);
       setMap3dReady(false);
+      setMap4dEnabled(false);
     };
 
     const addLayerBeforeLabels = (map, layer, labelLayerId) => {
@@ -1235,7 +1237,7 @@ export default function AstanaMapPage() {
 
     const locationFeatures = [];
     if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
-      const routeCoordinates = navigating && route?.geometry?.length > 1
+      const routeCoordinates = (navigating || map4dEnabled) && route?.geometry?.length > 1
         ? route.geometry.map(point => [point[1], point[0]])
         : [];
       const snapped = routeCoordinates.length > 1 ? snapToRoute(origin, routeCoordinates) : null;
@@ -1280,7 +1282,7 @@ export default function AstanaMapPage() {
       type: "FeatureCollection",
       features: roadFeatures,
     });
-  }, [map3dReady, route, routeOptions, destination, selectedPlace, query, origin?.lat, origin?.lng, roadObjectsRevision]);
+  }, [map3dReady, map4dEnabled, navigating, route, routeOptions, destination, selectedPlace, query, origin?.lat, origin?.lng, roadObjectsRevision]);
 
   useEffect(() => {
     if (!map3dReady || !map3dRef.current || !map3dEnabled) return;
@@ -2168,6 +2170,62 @@ export default function AstanaMapPage() {
     mapRef.current?.setView([point.lat, point.lng], 15);
   }
 
+  useEffect(() => {
+    if (!map3dReady || !map3dRef.current || !map3dEnabled || !map4dEnabled) return;
+    const map = map3dRef.current;
+    let phase = 0;
+
+    // 4D = current GPS/route position changing over time, with a subtle pulse
+    // at the real vehicle position. No fake traffic-light timings are simulated.
+    const animateLivePosition = () => {
+      if (!map3dRef.current || !map3dEnabledRef.current) return;
+      phase += 0.14;
+      const wave = (Math.sin(phase) + 1) / 2;
+      try {
+        if (map.getLayer("moy3d-current-position-glow")) {
+          map.setPaintProperty("moy3d-current-position-glow", "circle-radius", 13 + wave * 11);
+          map.setPaintProperty("moy3d-current-position-glow", "circle-opacity", 0.12 + wave * 0.32);
+        }
+        if (map.getLayer("moy3d-main-route-line")) {
+          const zoom = map.getZoom();
+          const baseWidth = zoom >= 18 ? 18 : zoom >= 15 ? 14 : 10;
+          map.setPaintProperty("moy3d-main-route-line", "line-width", baseWidth + wave * 2.5);
+        }
+      } catch {
+        // If a style is temporarily reloading, the next animation frame retries.
+      }
+    };
+
+    const timer = window.setInterval(animateLivePosition, 90);
+    animateLivePosition();
+    return () => {
+      window.clearInterval(timer);
+      try {
+        if (map.getLayer("moy3d-current-position-glow")) {
+          map.setPaintProperty("moy3d-current-position-glow", "circle-radius", 13);
+          map.setPaintProperty("moy3d-current-position-glow", "circle-opacity", 0.2);
+        }
+        if (map.getLayer("moy3d-main-route-line")) {
+          const zoom = map.getZoom();
+          map.setPaintProperty("moy3d-main-route-line", "line-width", ["interpolate", ["linear"], ["zoom"], 12, 10, 15, 14, 18, 18]);
+        }
+      } catch {}
+    };
+  }, [map3dReady, map3dEnabled, map4dEnabled]);
+
+  function toggle4DMap() {
+    if (!map3dReady || !map3dRef.current) {
+      setError("3D-карта ещё загружается. Подождите, пока появятся улицы, затем включите 4D.");
+      return;
+    }
+    if (!map3dEnabled) {
+      map3dEnabledRef.current = true;
+      setMap3dEnabled(true);
+    }
+    setMap4dEnabled(value => !value);
+    setError("");
+  }
+
   function toggle3DMap() {
     if (!map3dReady || !map3dRef.current) {
       setError("3D-карта пока не загрузилась. Обычная карта остаётся доступной.");
@@ -2193,6 +2251,7 @@ export default function AstanaMapPage() {
     }
     map3dEnabledRef.current = enabling;
     setMap3dEnabled(enabling);
+    if (!enabling) setMap4dEnabled(false);
     setError("");
   }
 
@@ -2200,6 +2259,7 @@ export default function AstanaMapPage() {
     if (map3dEnabled) {
       map3dEnabledRef.current = false;
       setMap3dEnabled(false);
+      setMap4dEnabled(false);
     }
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
@@ -2316,7 +2376,10 @@ export default function AstanaMapPage() {
     <main className="astana-map-page">
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
-      {isHomeScreen && <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>}
+      {isHomeScreen && <>
+        <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
+        <button className={`astana-home-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"}>{map4dEnabled && map3dReady ? "LIVE" : "4D"}</button>
+      </>}
 
 
 
@@ -2457,6 +2520,7 @@ export default function AstanaMapPage() {
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
           <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить">−</button>
         </div>
+        <button className={`astana-nav-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"} title={map4dEnabled ? "Живая динамика включена" : "Включить 4D"}>{map4dEnabled && map3dReady ? "LIVE" : "4D"}</button>
         <button className="astana-nav-3d-toggle" onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"} title={map3dEnabled ? "2D-карта" : "3D-карта"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
         <button className="astana-nav-recenter" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17, { animate: true }); }} aria-label="Моё местоположение">➤</button>
       </div>}
