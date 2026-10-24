@@ -277,6 +277,12 @@
 .moy-road-object-signal i{display:block;width:8px;height:8px;border-radius:50%;background:#ff3b42;border:1px solid rgba(255,255,255,.25);box-sizing:border-box}
 .moy-road-object-signal i:nth-child(2){background:#ffc928}
 .moy-road-object-signal i:nth-child(3){background:#22d166}
+.moy-road-object-parking{width:38px;height:38px;border-radius:9px;background:#087cf5;border:2.5px solid #fff;color:#fff;font:900 23px/1 Arial,sans-serif}
+.moy-road-object-crossing{width:40px;height:40px;border-radius:50%;background:#1475d4;border:2.5px solid #fff;color:#fff;font-size:24px}
+.moy-road-object-generic-sign{width:38px;height:38px;border-radius:10px;background:#ef8a17;border:2.5px solid #fff;color:#fff;font:900 18px/1 Arial,sans-serif}
+.moy-road-object-stop{min-width:42px;height:38px;padding:0 3px;border-radius:9px;background:#d92d3a;border:2.5px solid #fff;color:#fff;font:900 12px/1 Arial,sans-serif;letter-spacing:-.3px}
+.moy-road-object-giveway{width:39px;height:39px;border-radius:50%;background:#fff;border:3px solid #d92d3a;color:#d92d3a;font:900 25px/1 Arial,sans-serif}
+.moy-road-object-prohibition{width:39px;height:39px;border-radius:50%;background:#fff;border:4px solid #d92d3a;color:#d92d3a;font:900 21px/1 Arial,sans-serif}
 .moy-road-object-popup{font-family:Arial,sans-serif;font-size:14px;color:#20262c;line-height:1.35}
 .moy-road-object-popup b{font-weight:800}
 .moy-road-object-popup-limit{margin-top:4px;color:#c52e39;font-weight:700}
