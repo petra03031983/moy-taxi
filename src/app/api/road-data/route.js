@@ -6,8 +6,8 @@ const OVERPASS_ENDPOINTS = [
 
 const CACHE_TTL_MS = 45_000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 8_000;
-const EXTERNAL_TIMEOUT_MS = 4_000;
+const REQUEST_TIMEOUT_MS = 4_200;
+const EXTERNAL_TIMEOUT_MS = 3_500;
 const MAX_POINTS = 14;
 const MAX_OVERPASS_ATTEMPTS = 2;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
@@ -55,7 +55,7 @@ function makeQuery(mode, points, radius) {
   if (mode === "speed") {
     const lat = points[0][0].toFixed(6);
     const lng = points[0][1].toFixed(6);
-    return "[out:json][timeout:6];(" +
+    return "[out:json][timeout:4];(" +
       "way(around:220," + lat + "," + lng + ")[highway];" +
       "node(around:180," + lat + "," + lng + ")[maxspeed];" +
       "node(around:180," + lat + "," + lng + ")[traffic_sign];" +
@@ -70,35 +70,44 @@ function makeQuery(mode, points, radius) {
     .join(",");
   const around = "around:" + radius + "," + coordinates;
 
-  return "[out:json][timeout:6];(" +
-    "nwr(" + around + ")[highway=traffic_signals];" +
-    "nwr(" + around + ")[highway=crossing];" +
-    "nwr(" + around + ")[crossing];" +
-    "nwr(" + around + ")[\"crossing:markings\"];" +
-    "nwr(" + around + ")[highway=stop];" +
-    "nwr(" + around + ")[highway=give_way];" +
-    "nwr(" + around + ")[amenity=parking];" +
-    "nwr(" + around + ")[parking];" +
-    "nwr(" + around + ")[parking_space];" +
-    "nwr(" + around + ")[highway=speed_camera];" +
-    "nwr(" + around + ")[highway=red_light_camera];" +
-    "nwr(" + around + ")[man_made=speed_camera];" +
-    "nwr(" + around + ")[traffic_sign];" +
-    "nwr(" + around + ")[\"traffic_sign:forward\"];" +
-    "nwr(" + around + ")[\"traffic_sign:backward\"];" +
-    "nwr(" + around + ")[\"traffic_sign:maxspeed\"];" +
-    "nwr(" + around + ")[maxspeed];" +
-    "nwr(" + around + ")[enforcement~\"maxspeed|average_speed|red_light|speed_camera|alpr|license_plate\"];" +
-    "nwr(" + around + ")[man_made=surveillance][\"surveillance:type\"~\"camera|traffic|speed|red_light|enforcement|alpr|license_plate\"];" +
-    "nwr(" + around + ")[man_made=surveillance][\"surveillance:zone\"~\"traffic|road|red_light\"];" +
-    "nwr(" + around + ")[\"camera:type\"~\"speed|traffic|red_light|enforcement|alpr|license_plate\"];" +
-    "nwr(" + around + ")[\"monitoring:traffic\"=yes];" +
-    "nwr(" + around + ")[highway=construction];" +
-    "nwr(" + around + ")[roadworks=yes];" +
-    "nwr(" + around + ")[barrier=road_block];" +
-    "nwr(" + around + ")[highway=road_closed];" +
-    "nwr(" + around + ")[hazard];" +
-    "nwr(" + around + ")[\"hazard:prone\"=yes];" +
+  const selectors = [
+    `nwr(${around})[highway~"^(traffic_signals|crossing|stop|give_way|speed_camera|red_light_camera|construction|road_closed)$"];`,
+    `nwr(${around})[crossing];`,
+    `nwr(${around})["crossing:markings"];`,
+    `nwr(${around})[amenity=parking];`,
+    `nwr(${around})[parking];`,
+    `nwr(${around})[parking_space];`,
+    `nwr(${around})[maxspeed];`,
+    `nwr(${around})[traffic_sign];`,
+    `nwr(${around})["traffic_sign:forward"];`,
+    `nwr(${around})["traffic_sign:backward"];`,
+    `nwr(${around})["traffic_sign:maxspeed"];`,
+    `nwr(${around})[enforcement~"^(maxspeed|average_speed|red_light|speed_camera|alpr|license_plate)$"];`,
+    `nwr(${around})[man_made=surveillance]["surveillance:type"~"^(camera|traffic|speed|red_light|enforcement|alpr|license_plate)$"];`,
+    `nwr(${around})["camera:type"~"^(speed|traffic|red_light|enforcement|alpr|license_plate)$"];`,
+    `nwr(${around})["monitoring:traffic"=yes];`,
+    `nwr(${around})[roadworks=yes];`,
+    `nwr(${around})[barrier=road_block];`,
+    `nwr(${around})[hazard];`,
+    `nwr(${around})["hazard:prone"=yes];`,
+  ];
+  return "[out:json][timeout:4];(" + selectors.join("") + ");out tags center;";
+}
+
+function makeFallbackQuery(mode, points, radius) {
+  if (mode === "speed") return makeQuery(mode, points, radius);
+  const coordinates = points
+    .map(([lat, lng]) => lat.toFixed(5) + "," + lng.toFixed(5))
+    .join(",");
+  const around = "around:" + radius + "," + coordinates;
+  return "[out:json][timeout:4];(" +
+    `nwr(${around})[highway~"^(traffic_signals|crossing|speed_camera|red_light_camera)$"];` +
+    `nwr(${around})[crossing];` +
+    `nwr(${around})[maxspeed];` +
+    `nwr(${around})[traffic_sign];` +
+    `nwr(${around})["traffic_sign:maxspeed"];` +
+    `nwr(${around})[amenity=parking];` +
+    `nwr(${around})[roadworks=yes];` +
     ");out tags center;";
 }
 
@@ -370,9 +379,12 @@ export async function GET(request) {
     : Promise.resolve([]);
   let lastError = null;
 
-  for (const endpoint of OVERPASS_ENDPOINTS.slice(0, MAX_OVERPASS_ATTEMPTS)) {
+  const endpoints = OVERPASS_ENDPOINTS.slice(0, MAX_OVERPASS_ATTEMPTS);
+  for (let attemptIndex = 0; attemptIndex < endpoints.length; attemptIndex += 1) {
+    const endpoint = endpoints[attemptIndex];
+    const attemptQuery = attemptIndex === 0 ? query : makeFallbackQuery(mode, points, radius);
     try {
-      const payload = await postOverpass(endpoint, query);
+      const payload = await postOverpass(endpoint, attemptQuery);
       const parking = await parkingPromise;
       const elements = mergeElements(payload.elements, parking);
       const result = {
@@ -415,9 +427,22 @@ export async function GET(request) {
     return jsonResponse(result);
   }
 
+  // If upstream providers are temporarily down, keep the last successful layer on screen.
+  if (cached && Array.isArray(cached.payload?.elements) && cached.payload.elements.length) {
+    return jsonResponse({
+      ...cached.payload,
+      cached: true,
+      stale: true,
+      partial: true,
+      source: String(cached.payload.source || "OpenStreetMap / Overpass") + " — последние сохранённые данные",
+    });
+  }
+
   return jsonResponse({
     error: "Road data source is temporarily unavailable.",
-    details: lastError && lastError.name === "AbortError" ? "timeout" : "source_unavailable",
+    details: lastError && lastError.name === "AbortError"
+      ? "timeout"
+      : String(lastError && lastError.message || "source_unavailable").slice(0, 140),
     source: "OpenStreetMap / Overpass",
   }, 502);
 }
