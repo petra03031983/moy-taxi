@@ -414,3 +414,8 @@
  .astana-weather-main strong{font-size:39px}
  .astana-weather-details b{font-size:11px}
 }
+
+/* Main-screen weather is a live readout, not a button. */
+.astana-home-weather{cursor:default!important;min-width:118px;justify-content:center;gap:9px;padding:10px 15px}
+.astana-home-weather span{font-size:25px;line-height:1}
+.astana-home-weather b{font-size:19px!important;font-weight:800;color:#202b32;white-space:nowrap;letter-spacing:-.25px}
