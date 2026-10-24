@@ -4,12 +4,12 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.private.coffee/api/interpreter",
 ];
 
-const CACHE_TTL_MS = 45_000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
 const CAMERA_CACHE_TTL_MS = 30 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 4_500;
+const REQUEST_TIMEOUT_MS = 5_000;
 const EXTERNAL_TIMEOUT_MS = 3_500;
-const MAX_POINTS = 8;
-const MAX_OVERPASS_ATTEMPTS = 3;
+const MAX_POINTS = 4;
+const MAX_OVERPASS_ATTEMPTS = 2;
 const ASTANA_PARKING_ENDPOINT = "https://gis.esaulet.kz/server/rest/services/dop_sloi_geoportal_otkr/MapServer/7/query";
 const PUBLIC_CAMERA_ENDPOINT = "https://qgeo.tech/api/v1/external-layers/public-cameras?lang=ru";
 
@@ -18,7 +18,7 @@ function jsonResponse(body, status = 200, headers = {}) {
     status,
     headers: {
       "Cache-Control": status === 200
-        ? "public, s-maxage=45, stale-while-revalidate=180"
+        ? "public, s-maxage=300, stale-while-revalidate=900"
         : "no-store",
       "X-Content-Type-Options": "nosniff",
       ...headers,
@@ -114,10 +114,25 @@ function makeFallbackQuery(mode, points, radius) {
 }
 
 
-async function postOverpass(endpoint, query, parentSignal) {
+function getOverpassState() {
+  if (!globalThis.__astanaOverpassState) {
+    globalThis.__astanaOverpassState = { blockedUntil: 0, blockedHost: "", nextEndpointIndex: 0 };
+  }
+  return globalThis.__astanaOverpassState;
+}
+
+function retryAfterMs(response) {
+  const value = String(response.headers.get("Retry-After") || "").trim();
+  if (!value) return 60_000;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.max(30_000, Math.min(10 * 60_000, seconds * 1000));
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) return Math.max(30_000, Math.min(10 * 60_000, date - Date.now()));
+  return 60_000;
+}
+
+async function postOverpass(endpoint, query) {
   const controller = new AbortController();
-  const abortFromParent = () => controller.abort();
-  parentSignal?.addEventListener("abort", abortFromParent, { once: true });
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
@@ -125,41 +140,69 @@ async function postOverpass(endpoint, query, parentSignal) {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         Accept: "application/json",
+        "User-Agent": "AstanaGuide/1.0 (+https://astana-map-roads.vercel.app/)",
+        Referer: "https://astana-map-roads.vercel.app/",
       },
       body: new URLSearchParams({ data: query }).toString(),
       signal: controller.signal,
       cache: "no-store",
     });
-    if (!response.ok) throw new Error("HTTP " + response.status);
+    if (response.status === 429) {
+      const waitMs = retryAfterMs(response);
+      const state = getOverpassState();
+      state.blockedUntil = Date.now() + waitMs;
+      state.blockedHost = new URL(endpoint).host;
+      const error = new Error("HTTP 429; ждём " + Math.ceil(waitMs / 1000) + " с перед следующим запросом");
+      error.status = 429;
+      throw error;
+    }
+    if (!response.ok) {
+      const error = new Error("HTTP " + response.status);
+      error.status = response.status;
+      throw error;
+    }
     const payload = await response.json();
     if (!Array.isArray(payload && payload.elements)) throw new Error("Invalid JSON response");
     return payload;
   } finally {
     clearTimeout(timeout);
-    parentSignal?.removeEventListener("abort", abortFromParent);
   }
 }
 
+// Query only one provider at a time. A 429 is a command to wait, not to retry
+// immediately against other public mirrors, which share limited capacity.
 async function fetchFromAnyOverpass(query, endpoints) {
-  const controller = new AbortController();
-  const errors = [];
-  try {
-    return await Promise.any(endpoints.map(async endpoint => {
-      try {
-        return await postOverpass(endpoint, query, controller.signal);
-      } catch (error) {
-        const host = new URL(endpoint).host;
-        errors.push(host + ": " + (error && error.name === "AbortError" ? "timeout" : String(error && error.message || "request failed")));
-        throw error;
-      }
-    }));
-  } catch {
-    throw new Error(errors.slice(0, 3).join("; ").slice(0, 220) || "all Overpass providers failed");
-  } finally {
-    controller.abort();
+  const state = getOverpassState();
+  const remainingMs = state.blockedUntil - Date.now();
+  if (remainingMs > 0) {
+    const error = new Error(
+      (state.blockedHost || "Overpass") + " is rate-limited; retry in " + Math.ceil(remainingMs / 1000) + " s"
+    );
+    error.status = 429;
+    throw error;
   }
-}
 
+  const maxAttempts = Math.min(2, endpoints.length);
+  const startIndex = state.nextEndpointIndex % Math.max(1, endpoints.length);
+  const errors = [];
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const index = (startIndex + attempt) % endpoints.length;
+    const endpoint = endpoints[index];
+    try {
+      const payload = await postOverpass(endpoint, query);
+      state.nextEndpointIndex = (index + 1) % endpoints.length;
+      return payload;
+    } catch (error) {
+      const host = new URL(endpoint).host;
+      const message = host + ": " + (error && error.name === "AbortError"
+        ? "timeout"
+        : String(error && error.message || "request failed"));
+      errors.push(message);
+      if (error && error.status === 429) throw error;
+    }
+  }
+  throw new Error(errors.slice(0, 2).join("; ").slice(0, 220) || "all Overpass providers failed");
+}
 
 function summarizeRoadObjects(elements = []) {
   const counts = {
@@ -413,11 +456,13 @@ export async function GET(request) {
     payload = await fetchFromAnyOverpass(query, endpoints);
   } catch (error) {
     lastError = error;
-    try {
-      fallbackUsed = true;
-      payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints);
-    } catch (fallbackError) {
-      lastError = fallbackError;
+    if (!(error && error.status === 429)) {
+      try {
+        fallbackUsed = true;
+        payload = await fetchFromAnyOverpass(makeFallbackQuery(mode, points, radius), endpoints);
+      } catch (fallbackError) {
+        lastError = fallbackError;
+      }
     }
   }
 
