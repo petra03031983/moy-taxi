@@ -2321,7 +2321,9 @@ export default function AstanaMapPage() {
             unique.set(id, {
               id,
               kind,
-              title: roadObjectTitle(kind),
+              title: kind === "traffic-sign"
+                ? "Дорожный знак " + String(tags.traffic_sign || tags["traffic_sign:forward"] || tags["traffic_sign:backward"] || tags["traffic_sign:maxspeed"] || "").slice(0, 80)
+                : roadObjectTitle(kind),
               shortLabel: roadObjectShortLabel(kind),
               speedLimit: kind === "speed-sign" ? postedSpeedFromTags(tags) : null,
               lat,
@@ -2553,6 +2555,7 @@ export default function AstanaMapPage() {
       if (warningState.announced.has(item.id)) continue;
       let phrase = "";
       if (item.kind === "traffic-light") phrase = "Впереди светофор";
+      else if (item.kind === "traffic-sign") phrase = "Впереди дорожный знак";
       else if (item.kind === "pedestrian-crossing") phrase = "Впереди пешеходный переход";
       else if (item.kind === "stop-sign") phrase = "Впереди знак СТОП";
       else if (item.kind === "give-way-sign") phrase = "Впереди знак «Уступите дорогу»";
