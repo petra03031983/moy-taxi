@@ -28,6 +28,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 
 import org.json.JSONArray;
@@ -76,6 +77,7 @@ public class RoadScanService extends Service {
     private File frameDirectory;
     private File metadataFile;
     private NotificationManager notificationManager;
+    private PowerManager.WakeLock wakeLock;
     private final Runnable captureLoop = new Runnable() {
         @Override public void run() {
             if (!scanning) return;
@@ -146,6 +148,14 @@ public class RoadScanService extends Service {
             return;
         }
         scanning = true;
+        // Keep the CPU awake so timed camera captures and GPS updates continue
+        // while Android dims or locks the screen. Battery use will be higher.
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager != null && (wakeLock == null || !wakeLock.isHeld())) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AstanaGuide:RoadScan");
+            wakeLock.setReferenceCounted(false);
+            wakeLock.acquire();
+        }
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putBoolean("active", true).putString("lastError", "").apply();
         updateNotification("Сканирование запущено · ожидание GPS");
@@ -473,6 +483,10 @@ public class RoadScanService extends Service {
             pendingCaptureLocation = null;
         }
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("active", false).apply();
+        if (wakeLock != null && wakeLock.isHeld()) {
+            try { wakeLock.release(); } catch (RuntimeException ignored) {}
+        }
+        wakeLock = null;
     }
 
     @Override
