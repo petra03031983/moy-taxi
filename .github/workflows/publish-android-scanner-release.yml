@@ -58,8 +58,8 @@ jobs:
             Пакет: kz.astanaguide.scanner.icons144
             Версия приложения: 1.4.4 (debug build: графические значки, предварительные GPS-наблюдения и исправленная синхронизация времени GPS).
 
-            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.3.apk и откройте его на телефоне.
-          files: Astana-Guide-Scanner-Icons-AI-v1.4.3.apk
+            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.4.apk и откройте его на телефоне.
+          files: Astana-Guide-Scanner-Icons-AI-v1.4.4.apk
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
