@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/publish-android-scanner-release.yml"
+      - "android/**"
+      - "src/app/api/road-screen-evidence/route.js"
+      - "src/app/astana-map/page.js"
+      - "supabase/migrations/**"
   workflow_dispatch:
 
 permissions:
@@ -41,21 +45,21 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Prepare APK for release
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Astana-Guide-Scanner-Screen-AI-v1.4.1.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Astana-Guide-Scanner-Icons-AI-v1.4.2.apk
 
       - name: Publish downloadable APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: astana-guide-scanner-1.4.1-mobile
-          name: "Астана Гид — сканер экрана 1.4.1"
+          tag_name: astana-guide-screen-icons-1.4.2-mobile
+          name: "Астана Гид — сканер значков 1.4.2"
           body: |
             Установочный APK для Android.
 
-            Пакет: kz.astanaguide.scanner.screen
-            Версия приложения: 1.4.1 (debug build для тестирования).
+            Пакет: kz.astanaguide.scanner.icons
+            Версия приложения: 1.4.2 (debug build для проверки распознавания графических значков).
 
-            Скачайте файл Astana-Guide-Scanner-Screen-AI-v1.4.1.apk и откройте его на телефоне.
-          files: Astana-Guide-Scanner-Screen-AI-v1.4.1.apk
+            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.2.apk и откройте его на телефоне.
+          files: Astana-Guide-Scanner-Icons-AI-v1.4.2.apk
           fail_on_unmatched_files: true
           draft: false
           prerelease: false

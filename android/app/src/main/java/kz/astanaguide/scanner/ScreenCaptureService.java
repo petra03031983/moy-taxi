@@ -40,6 +40,7 @@ import java.nio.ByteBuffer;
 import java.text.Normalizer;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -245,6 +246,15 @@ public class ScreenCaptureService extends Service {
                 .putInt("framesCount", getSharedPreferences(PREFS, MODE_PRIVATE).getInt("framesCount", 0) + 1)
                 .putLong("lastFrameAt", System.currentTimeMillis())
                 .apply();
+            // Detect graphic navigation symbols locally as well as reading visible text.
+            // The frame is never persisted or uploaded.
+            try {
+                processScreenIcons(ScreenIconDetector.detect(frame));
+            } catch (Exception iconError) {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("screenIconStatus", "Не удалось распознать значки: " + safeMessage(iconError))
+                    .apply();
+            }
             screenOcr.recognize(frame, (recognizedText, errorMessage) -> {
                 if (errorMessage != null) {
                     setError("Русский OCR не смог прочитать экран: " + errorMessage);
@@ -290,6 +300,144 @@ public class ScreenCaptureService extends Service {
             if (kind == null || !thisFrameDedup.add(kind + ":" + line.toLowerCase(Locale.ROOT))) continue;
             saveScreenEvidence(kind, line);
         }
+    }
+
+    private void processScreenIcons(ScreenIconDetector.ScanResult result) {
+        if (!active || result == null) return;
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        int count = result.detections == null ? 0 : result.detections.size();
+        prefs.edit().putLong("screenIconLastScanAt", now)
+            .putInt("screenIconLastFrameCount", count).apply();
+
+        if (count == 0) {
+            prefs.edit().putString("screenIconStatus", "На последнем кадре значки камеры/светофора не распознаны.")
+                .apply();
+            return;
+        }
+        if (!result.vehicleAnchorFound) {
+            prefs.edit().putString("screenIconStatus",
+                "Значки замечены, но маркер автомобиля на карте не найден; координаты не записываем.")
+                .apply();
+            return;
+        }
+
+        boolean closeToVehicle = false;
+        for (ScreenIconDetector.Detection detection : result.detections) {
+            float dx = Math.abs(detection.x - result.vehicleX);
+            float dy = Math.abs(detection.y - result.vehicleY);
+            // Save a map point only when the graphic marker has moved close to the car/arrow.
+            // Far-away icons are deliberately not assigned the vehicle's current GPS position.
+            if (dx > 0.16f || dy > 0.145f) continue;
+            Location point = getFreshLocation();
+            if (point == null) {
+                prefs.edit().putString("screenIconStatus",
+                    "Значок рядом с маркером автомобиля найден, но свежего GPS пока нет.")
+                    .apply();
+                continue;
+            }
+            saveScreenIconEvidence(detection, point);
+            closeToVehicle = true;
+        }
+        if (closeToVehicle) {
+            prefs.edit().putString("screenIconStatus",
+                "Графический значок прошёл рядом с маркером автомобиля; приблизительная GPS-точка сохранена для проверки.")
+                .apply();
+        } else {
+            prefs.edit().putString("screenIconStatus",
+                "Графические значки найдены; ждём, пока один из них приблизится к маркеру автомобиля.")
+                .apply();
+        }
+    }
+
+    private void saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point) {
+        if (detection == null || point == null) return;
+        long now = System.currentTimeMillis();
+        String kind = detection.kind;
+        String label = "speed-camera".equals(kind) ? "speed camera icon" : "traffic light icon";
+        StringBuilder text = new StringBuilder(label)
+            .append(" near vehicle marker, screen x=")
+            .append(Math.round(detection.x * 100f))
+            .append("% y=")
+            .append(Math.round(detection.y * 100f))
+            .append("%");
+        if (point.hasBearing()) text.append(", heading=").append(Math.round(point.getBearing())).append("deg");
+        text.append(", pattern=").append(detection.pattern == null ? "graphic" : detection.pattern);
+        String sourceText = text.toString();
+        if (sourceText.length() > 150) sourceText = sourceText.substring(0, 150);
+
+        String sourceId = "screen_icon_" + UUID.randomUUID();
+        JSONObject item = new JSONObject();
+        try {
+            item.put("id", sourceId);
+            item.put("source_id", sourceId);
+            item.put("kind", kind);
+            item.put("sourceText", sourceText);
+            item.put("observedLat", point.getLatitude());
+            item.put("observedLng", point.getLongitude());
+            item.put("accuracy", point.getAccuracy());
+            item.put("gpsAt", point.getTime());
+            item.put("distanceAheadM", JSONObject.NULL);
+            // The icon is saved only when it is close to the detected vehicle marker.
+            // This is an approximate pass-by point, not an exact surveyed camera coordinate.
+            item.put("estimatedLat", point.getLatitude());
+            item.put("estimatedLng", point.getLongitude());
+            item.put("capturedAt", Instant.ofEpochMilli(now).toString());
+            item.put("source", "screen-icon-near-vehicle");
+            item.put("reviewStatus", "needs-review");
+            item.put("confidence", Math.min(0.28, Math.max(0.10, detection.confidence * 0.40)));
+            item.put("syncStatus", "local-only");
+        } catch (Exception ignored) { return; }
+
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        synchronized (EVIDENCE_LOCK) {
+            JSONArray evidence;
+            try { evidence = new JSONArray(prefs.getString("evidence", "[]")); }
+            catch (Exception error) { evidence = new JSONArray(); }
+
+            // Deduplicate repeated frames of the same physical feature without suppressing
+            // another camera/signal further along the road.
+            for (int i = evidence.length() - 1; i >= 0; i--) {
+                JSONObject prior = evidence.optJSONObject(i);
+                if (prior == null || !kind.equals(prior.optString("kind"))) continue;
+                long priorAt = parseTime(prior.optString("capturedAt"));
+                if (now - priorAt > 30 * 60_000L) continue;
+                double priorLat = prior.optDouble("observedLat", Double.NaN);
+                double priorLng = prior.optDouble("observedLng", Double.NaN);
+                if (!Double.isFinite(priorLat) || !Double.isFinite(priorLng)) continue;
+                if (distanceMeters(point.getLatitude(), point.getLongitude(), priorLat, priorLng) < 28.0) {
+                    prefs.edit().putString("lastMatch", kind + " · " + sourceText)
+                        .putLong("lastMatchAt", now)
+                        .putString("screenIconStatus", "Похожий объект уже сохранён рядом; повтор не записан.")
+                        .apply();
+                    return;
+                }
+            }
+
+            evidence.put(item);
+            while (evidence.length() > MAX_LOCAL_EVIDENCE) evidence.remove(0);
+            prefs.edit()
+                .putString("evidence", evidence.toString())
+                .putInt("matchesCount", prefs.getInt("matchesCount", 0) + 1)
+                .putInt("screenIconSavedCount", prefs.getInt("screenIconSavedCount", 0) + 1)
+                .putString("lastMatch", kind + " · " + sourceText)
+                .putLong("lastMatchAt", now)
+                .putString("status", "Найден графический значок; приблизительная точка сохранена как требующая проверки.")
+                .apply();
+        }
+
+        cloudExecutor.execute(() -> queueAndSync(item));
+        updateNotification("Анализ экрана · графических наблюдений " +
+            prefs.getInt("screenIconSavedCount", 0) + " · точки требуют проверки");
+    }
+
+    private static double distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return 6371000.0 * 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0.0, 1.0 - a)));
     }
 
     private static String normalizeLine(String value) {
@@ -603,6 +751,8 @@ public class ScreenCaptureService extends Service {
             result.put("screenScanStatus", prefs.getString("status", "Экран ещё не сканировался"));
             result.put("screenScanCloudStatus", prefs.getString("cloudStatus", "Облачная синхронизация экрана ещё не запускалась"));
             result.put("screenScanPendingCount", new JSONArray(prefs.getString("pendingCloud", "[]")).length());
+            result.put("screenScanIconStatus", prefs.getString("screenIconStatus", "Графические значки ещё не анализировались."));
+            result.put("screenScanIconSavedCount", prefs.getInt("screenIconSavedCount", 0));
             result.put("screenScanEvidence", new JSONArray(prefs.getString("evidence", "[]")));
         } catch (Exception ignored) {}
         return result.toString();

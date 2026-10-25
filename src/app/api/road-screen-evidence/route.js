@@ -110,6 +110,8 @@ function normalize(candidate) {
   const estimateLngValue = candidate.estimated_lng ?? candidate.estimatedLng;
   const estimatedLat = estimateLatValue == null ? null : Number(estimateLatValue);
   const estimatedLng = estimateLngValue == null ? null : Number(estimateLngValue);
+  // Icon-only observations are located when the marker passes near the detected vehicle marker.
+  const iconPassEstimate = lowerText.includes("near vehicle marker");
   const now = Date.now();
 
   if (!sourceId || sourceId.length < 8 || !ALLOWED_KINDS.has(kind)) return null;
@@ -125,7 +127,7 @@ function normalize(candidate) {
   if ((estimatedLat == null) !== (estimatedLng == null)) return null;
   if (estimatedLat != null && (!Number.isFinite(estimatedLat) || estimatedLat < 47 || estimatedLat > 55)) return null;
   if (estimatedLng != null && (!Number.isFinite(estimatedLng) || estimatedLng < 65 || estimatedLng > 77)) return null;
-  if (distanceAheadM == null && (estimatedLat != null || estimatedLng != null)) return null;
+  if (distanceAheadM == null && (estimatedLat != null || estimatedLng != null) && !iconPassEstimate) return null;
 
   return {
     source_id: sourceId,

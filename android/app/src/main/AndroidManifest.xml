@@ -16,7 +16,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="Астана Гид — сканер экрана"
+        android:label="Астана Гид — сканер значков"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:supportsRtl="true">
