@@ -317,25 +317,6 @@ public class ScreenCaptureService extends Service {
         Double estimateLng = null;
         Double distanceAhead = parseDistanceAhead(sourceText);
         if (point != null && distanceAhead != null && point.hasBearing()) {
-            Location estimated = new Location(point);
-            estimated.setLatitude(point.getLatitude());
-            estimated.setLongitude(point.getLongitude());
-            estimated.setBearing(point.getBearing());
-            estimated.setSpeed(point.hasSpeed() ? point.getSpeed() : 0f);
-            estimated.setTime(point.getTime());
-            estimated.setAccuracy(point.getAccuracy());
-            estimated.setLatitude(point.getLatitude());
-            estimated.setLongitude(point.getLongitude());
-            Location destination = new Location("estimated-road-object");
-            destination.setLatitude(point.getLatitude());
-            destination.setLongitude(point.getLongitude());
-            destination.setBearing(point.getBearing());
-            Location projected = new Location(point);
-            projected.setLatitude(point.getLatitude());
-            projected.setLongitude(point.getLongitude());
-            float[] result = new float[1];
-            Location.distanceBetween(point.getLatitude(), point.getLongitude(),
-                point.getLatitude(), point.getLongitude(), result);
             double bearingRadians = Math.toRadians(point.getBearing());
             double earth = 6371000.0;
             double latRad = Math.toRadians(point.getLatitude());
@@ -574,6 +555,13 @@ public class ScreenCaptureService extends Service {
 
     private static long parseTime(String value) {
         try { return Instant.parse(value).toEpochMilli(); } catch (Exception ignored) { return 0L; }
+    }
+
+    public static void recordExternalError(Context context, String message) {
+        context.getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putString("lastError", message == null ? "" : message)
+            .putString("status", message == null ? "" : message)
+            .apply();
     }
 
     private void setError(String message) {
