@@ -2427,7 +2427,8 @@ export default function AstanaMapPage() {
             if (!Number.isFinite(snapped.distance) || snapped.distance > 320 || metersAhead < 0 || metersAhead > 4800) continue;
           } else {
             const center = mapCenter ? [mapCenter.lat, mapCenter.lng] : anchor;
-            if (distanceBetween(center, [lat, lng]) > 1100) continue;
+            // City geoportal layers may return objects up to ~2.25 km from the map center.
+            if (distanceBetween(center, [lat, lng]) > 2400) continue;
           }
 
           const tags = element.tags || {};
