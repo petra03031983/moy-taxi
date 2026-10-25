@@ -60,7 +60,8 @@ public class ScreenCaptureService extends Service {
     private static final long MAX_GPS_AGE_MS = 25000L;
     private static final float MAX_GPS_ACCURACY_M = 60.0f;
     private static final int MAX_LOCAL_EVIDENCE = 80;
-    private static final String CLOUD_ENDPOINT = "https://astana-map-roads.vercel.app/api/road-screen-evidence";
+    private static final String CLOUD_ENDPOINT = "https://qyejqovxwniqlcsspmbc.supabase.co/rest/v1/road_screen_evidence?on_conflict=source_id";
+    private static final String SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
     private static final Object EVIDENCE_LOCK = new Object();
     private static final Pattern DISTANCE_PATTERN = Pattern.compile(
         "(?:через\\s*)?(\\d{1,4}(?:[.,]\\d+)?)\\s*(км|м)\\b",
@@ -521,6 +522,9 @@ public class ScreenCaptureService extends Service {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY);
+                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_PUBLISHABLE_KEY);
+                connection.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal");
                 byte[] bytes = body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 connection.setFixedLengthStreamingMode(bytes.length);
                 try (OutputStream output = connection.getOutputStream()) { output.write(bytes); }
