@@ -164,8 +164,8 @@ public class RoadScanService extends Service {
                 if (location == null) return;
                 lastLocation = new Location(location);
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putDouble("lat", location.getLatitude())
-                    .putDouble("lng", location.getLongitude())
+                    .putString("lat", Double.toString(location.getLatitude()))
+                    .putString("lng", Double.toString(location.getLongitude()))
                     .putFloat("accuracy", location.getAccuracy())
                     .putFloat("heading", location.hasBearing() ? location.getBearing() : -1f)
                     .putFloat("speedMps", location.hasSpeed() ? location.getSpeed() : -1f)
