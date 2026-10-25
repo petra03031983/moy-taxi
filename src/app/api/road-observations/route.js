@@ -11,7 +11,8 @@ const ALLOWED_KIND_LABELS = {
 };
 
 function getConfig() {
-  const base = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\\/+$/, "");
+  let base = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  while (base.endsWith("/")) base = base.slice(0, -1);
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || DEFAULT_SUPABASE_PUBLISHABLE_KEY;
   if (!base || !key) return null;
   return { base, key };
