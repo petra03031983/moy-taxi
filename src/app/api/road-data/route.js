@@ -32,11 +32,14 @@ const PUBLIC_CAMERA_ENDPOINT = "https://qgeo.tech/api/v1/external-layers/public-
 
 function jsonResponse(body, status = 200, headers = {}) {
   const partial = Boolean(body && (body.partial || body.stale || body.fallbackUsed));
+  const providerBlocked = Boolean(body && body.providerBlocked);
   const cacheControl = status !== 200
     ? "no-store"
-    : partial
-      ? "public, max-age=10, s-maxage=15, stale-while-revalidate=30"
-      : "public, max-age=30, s-maxage=120, stale-while-revalidate=300";
+    : providerBlocked
+      ? "public, max-age=120, s-maxage=900, stale-while-revalidate=1800"
+      : partial
+        ? "public, max-age=10, s-maxage=15, stale-while-revalidate=30"
+        : "public, max-age=30, s-maxage=120, stale-while-revalidate=300";
   return Response.json(body, {
     status,
     headers: {
@@ -170,11 +173,15 @@ function getOverpassState() {
     globalThis.__astanaOverpassState = {
       blockedUntilByHost: {},
       nextEndpointIndex: 0,
+      providerPausedUntil: 0,
+      providerPauseReason: "",
     };
   }
   const state = globalThis.__astanaOverpassState;
   if (!state.blockedUntilByHost) state.blockedUntilByHost = {};
   if (!Number.isFinite(state.nextEndpointIndex)) state.nextEndpointIndex = 0;
+  if (!Number.isFinite(state.providerPausedUntil)) state.providerPausedUntil = 0;
+  if (typeof state.providerPauseReason !== "string") state.providerPauseReason = "";
   return state;
 }
 
@@ -211,6 +218,7 @@ async function postOverpass(endpoint, query, timeoutMs = REQUEST_TIMEOUT_MS) {
       state.blockedUntilByHost[host] = Date.now() + waitMs;
       const error = new Error("HTTP 429; источник временно ограничил запросы, пауза " + Math.ceil(waitMs / 1000) + " с");
       error.status = 429;
+      error.retryAfterMs = waitMs;
       throw error;
     }
     if (!response.ok) {
@@ -234,6 +242,15 @@ async function fetchFromAnyOverpass(query, endpoints, timeoutMs = REQUEST_TIMEOU
     endpoints.length,
     Number.isFinite(Number(maxAttempts)) ? Math.trunc(Number(maxAttempts)) : 1,
   ));
+  const pauseRemainingMs = Number(state.providerPausedUntil || 0) - Date.now();
+  if (pauseRemainingMs > 0) {
+    const error = new Error(
+      (state.providerPauseReason || "Overpass API temporarily paused") +
+      "; следующий запрос через " + Math.ceil(pauseRemainingMs / 1000) + " с",
+    );
+    error.status = Number(state.providerPauseStatus || 429);
+    throw error;
+  }
   let lastError = null;
 
   for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
@@ -270,6 +287,23 @@ async function fetchFromAnyOverpass(query, endpoints, timeoutMs = REQUEST_TIMEOU
     try {
       return await postOverpass(endpoint, query, timeoutMs);
     } catch (error) {
+      const status = Number(error && error.status);
+      if (status === 406 || status === 429) {
+        // 406/429 are provider access/rate-limit signals, not ordinary timeouts.
+        // Stop all Overpass calls for this deployment rather than trying mirrors
+        // to work around a provider restriction.
+        const pauseMs = status === 429
+          ? Math.max(30_000, Number(error.retryAfterMs) || 60_000)
+          : 15 * 60_000;
+        state.providerPausedUntil = Date.now() + pauseMs;
+        state.providerPauseReason = host + ": HTTP " + status;
+        state.providerPauseStatus = status;
+        state.blockedUntilByHost[host] = state.providerPausedUntil;
+        const blocked = new Error(host + ": HTTP " + status + "; Overpass запрошен повторно после паузы");
+        blocked.status = status;
+        throw blocked;
+      }
+
       const transient = error && (
         error.name === "AbortError" ||
         !Number.isFinite(error.status) ||
@@ -605,18 +639,20 @@ export async function GET(request) {
     payload = await fetchFromAnyOverpass(query, endpoints);
   } catch (error) {
     lastError = error;
-    try {
-      fallbackUsed = true;
-      // A lightweight query is retried on two different eligible providers within
-      // the same overall timeout budget as the previous single fallback attempt.
-      payload = await fetchFromAnyOverpass(
-        makeFallbackQuery(mode, points, radius),
-        endpoints,
-        1_500,
-        MAX_OVERPASS_ATTEMPTS,
-      );
-    } catch (fallbackError) {
-      lastError = fallbackError;
+    // A 406/429 is an access/rate-limit signal. Do not immediately issue a second
+    // query against another public mirror; use official city layers and back off.
+    if (Number(error && error.status) !== 406 && Number(error && error.status) !== 429) {
+      try {
+        fallbackUsed = true;
+        payload = await fetchFromAnyOverpass(
+          makeFallbackQuery(mode, points, radius),
+          endpoints,
+          1_500,
+          MAX_OVERPASS_ATTEMPTS,
+        );
+      } catch (fallbackError) {
+        lastError = fallbackError;
+      }
     }
   }
 
@@ -649,6 +685,7 @@ export async function GET(request) {
 
   const officialLayers = mode === "objects" ? await officialLayersPromise : [];
   if (officialLayers.length) {
+    const providerBlocked = [406, 429].includes(Number(lastError && lastError.status));
     const result = {
       elements: officialLayers,
       source: "Astana city geoportal parking / underpasses (partial response)",
@@ -657,6 +694,7 @@ export async function GET(request) {
       count: officialLayers.length,
       diagnostics: summarizeRoadObjects(officialLayers),
       partial: true,
+      providerBlocked,
       partialReason: String(lastError && lastError.message || "OpenStreetMap temporarily unavailable").slice(0, 220),
       sources: ["Astana city geoportal parking and underpasses"],
     };
