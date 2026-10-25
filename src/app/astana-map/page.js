@@ -3751,7 +3751,29 @@ export default function AstanaMapPage() {
             : "Сохраняется текущий кадр с координатами и отметкой. Пока объект указывается вручную — автоматическое распознавание ИИ ещё не подключено."}</small>
           {nativeScannerAvailable && <button type="button" onClick={() => window.AstanaScanner.openBatterySettings()}>Настроить работу в фоне</button>}
         </div>}
-        {screenUI}
+        <div className="astana-road-scan-mark-form">
+          <label>Экран навигатора (Яндекс / 2ГИС)</label>
+          <div className="astana-road-scan-actions">
+            {!screenScanActive
+              ? <button type="button" className="primary" onClick={() => {
+                  if (window.AstanaScanner?.startScreenScan) {
+                    setScreenScanStatus("Ожидаем системное разрешение Android…");
+                    window.AstanaScanner.startScreenScan();
+                  } else {
+                    setRoadScanError("Анализ экрана доступен в установленном Android-сканере.");
+                  }
+                }}>Сканировать экран</button>
+              : <button type="button" className="stop" onClick={() => {
+                  window.AstanaScanner?.stopScreenScan?.();
+                  setScreenScanActive(false);
+                  setScreenScanStatus("Останавливаем анализ экрана…");
+                }}>Остановить экран</button>}
+          </div>
+          <small><b>{screenScanActive ? "● " : ""}{screenScanStatus}</b></small>
+          <small>Разреши захват экрана в системном окне. Если Android предложит выбор приложения, выбери Яндекс Навигатор или 2ГИС. Сохраняются только строки с дорожными подсказками — не снимки экрана и не весь текст.</small>
+          {screenScanLastMatch && <small>Последняя подсказка: {screenScanLastMatch}</small>}
+          <small>Найдено подсказок: {screenScanMatchCount}. Облако: {screenScanCloudStatus}</small>
+        </div>
         {roadScanError && <div className="astana-road-scan-error" role="status">{roadScanError}</div>}
         <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры хранятся в памяти этого телефона и не отправляются на сервер.</p>
       </section>}
