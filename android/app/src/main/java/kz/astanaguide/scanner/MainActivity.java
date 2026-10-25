@@ -122,9 +122,11 @@ public class MainActivity extends Activity {
                 JSONObject status = new JSONObject(ScreenCaptureService.getStatusJson(MainActivity.this));
                 String lastMatch = status.optString("screenScanLastMatch", "");
                 String state = status.optString("screenScanStatus", "Экран не сканируется");
-                Toast.makeText(MainActivity.this,
-                    state + (lastMatch.isEmpty() ? "" : "\nПоследняя подсказка: " + lastMatch),
-                    Toast.LENGTH_LONG).show();
+                String iconStatus = status.optString("screenScanIconStatus", "");
+                String combined = state
+                    + (iconStatus.isEmpty() ? "" : "\nЗначки: " + iconStatus)
+                    + (lastMatch.isEmpty() ? "" : "\nПоследняя подсказка: " + lastMatch);
+                Toast.makeText(MainActivity.this, combined, Toast.LENGTH_LONG).show();
             } catch (Exception ignored) {}
             return true;
         });
