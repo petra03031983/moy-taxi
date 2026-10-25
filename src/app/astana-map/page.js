@@ -1011,6 +1011,7 @@ export default function AstanaMapPage() {
   const [roadScanActive, setRoadScanActive] = useState(false);
   const [roadScanStatus, setRoadScanStatus] = useState("Камера выключена");
   const [roadScanError, setRoadScanError] = useState("");
+  const [roadScanCloudStatus, setRoadScanCloudStatus] = useState("Общая карта ещё не синхронизирована");
   const [roadScanPosition, setRoadScanPosition] = useState(null);
   const [roadScanFrameCount, setRoadScanFrameCount] = useState(0);
   const [roadScanObservationCount, setRoadScanObservationCount] = useState(0);
@@ -1058,6 +1059,7 @@ export default function AstanaMapPage() {
         const observations = Array.isArray(native.observations) ? native.observations : [];
         setRoadScanFrameCount(Number(native.framesCount || 0));
         setRoadScanObservationCount(Number(native.observationsCount || observations.length || 0));
+        setRoadScanCloudStatus(String(native.cloudSyncStatus || "Проверяем синхронизацию…"));
         if (native.lat != null && native.lng != null && Number.isFinite(Number(native.lat)) && Number.isFinite(Number(native.lng))) {
           const fix = {
             lat: Number(native.lat),
@@ -2531,6 +2533,23 @@ export default function AstanaMapPage() {
             }
           } catch {}
         }
+        // Fetch shared observations too, so detections from other scanners can appear here.
+        try {
+          const response = await fetch("/api/road-observations?limit=1500", {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const cloudItems = Array.isArray(payload?.observations) ? payload.observations : [];
+            const merged = new Map(observations.map(item => [String(item.id || item.source_id), item]));
+            for (const item of cloudItems) merged.set(String(item.id || item.source_id), item);
+            observations = Array.from(merged.values());
+          }
+        } catch (error) {
+          // The local map must continue working when the cloud is offline.
+          console.warn("[Astana Guide] Shared road observations unavailable", error);
+        }
         if (cancelled || !roadScanLayerRef.current) return;
         const group = roadScanLayerRef.current;
         const L = window.L;
@@ -2568,6 +2587,14 @@ export default function AstanaMapPage() {
     void loadSavedRoadScanMarkers();
     return () => { cancelled = true; };
   }, [leafletReady, roadScanRevision]);
+
+  useEffect(() => {
+    if (!leafletReady) return;
+    const interval = window.setInterval(() => {
+      setRoadScanRevision(value => value + 1);
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [leafletReady]);
 
   useEffect(() => {
     if (!leafletReady || !mapRef.current || !roadObjectsLayerRef.current) return;
@@ -3619,6 +3646,7 @@ export default function AstanaMapPage() {
         <div className="astana-road-scan-gps">
           <span>GPS: {roadScanPosition ? `${roadScanPosition.lat.toFixed(6)}, ${roadScanPosition.lng.toFixed(6)}` : "ожидание координат"}</span>
           {roadScanPosition && <small>Точность ±{Math.round(roadScanPosition.accuracy || 0)} м</small>}
+          {nativeScannerAvailable && <small>Облако: {roadScanCloudStatus}</small>}
         </div>
         <div className="astana-road-scan-counters">
           <div><b>{roadScanFrameCount}</b><small>кадров сохранено</small></div>
