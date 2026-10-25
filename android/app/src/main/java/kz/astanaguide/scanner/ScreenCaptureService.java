@@ -60,6 +60,8 @@ public class ScreenCaptureService extends Service {
     private static final long OCR_INTERVAL_MS = 4500L;
     private static final long MAX_GPS_AGE_MS = 25000L;
     private static final float MAX_GPS_ACCURACY_M = 60.0f;
+    // Icon-only pass-by evidence may be recorded at lower confidence up to this GPS radius.
+    private static final float MAX_ICON_GPS_ACCURACY_M = 150.0f;
     private static final int MAX_LOCAL_EVIDENCE = 80;
     private static final String CLOUD_ENDPOINT = "https://qyejqovxwniqlcsspmbc.supabase.co/rest/v1/road_screen_evidence?on_conflict=source_id";
     private static final String SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
@@ -329,19 +331,21 @@ public class ScreenCaptureService extends Service {
             // Save a map point only when the graphic marker has moved close to the car/arrow.
             // Far-away icons are deliberately not assigned the vehicle's current GPS position.
             if (dx > 0.16f || dy > 0.145f) continue;
-            Location point = getFreshLocation();
+            Location point = getIconLocation();
             if (point == null) {
                 prefs.edit().putString("screenIconStatus",
-                    "Значок рядом с маркером автомобиля найден, но свежего GPS пока нет.")
+                    "Значок рядом с маркером автомобиля найден, но свежего GPS с точностью до 150 м пока нет.")
                     .apply();
                 continue;
             }
-            saveScreenIconEvidence(detection, point);
+            saveScreenIconEvidence(detection, point, result.vehicleAnchorEstimated);
             closeToVehicle = true;
         }
         if (closeToVehicle) {
             prefs.edit().putString("screenIconStatus",
-                "Графический значок прошёл рядом с маркером автомобиля; приблизительная GPS-точка сохранена для проверки.")
+                result.vehicleAnchorEstimated
+                    ? "Графический значок прошёл рядом с расчётным центром карты; черновая GPS-точка сохранена с низкой уверенностью."
+                    : "Графический значок прошёл рядом с маркером автомобиля; приблизительная GPS-точка сохранена для проверки.")
                 .apply();
         } else {
             prefs.edit().putString("screenIconStatus",
@@ -350,7 +354,7 @@ public class ScreenCaptureService extends Service {
         }
     }
 
-    private void saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point) {
+    private void saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point, boolean estimatedAnchor) {
         if (detection == null || point == null) return;
         long now = System.currentTimeMillis();
         String kind = detection.kind;
@@ -385,7 +389,12 @@ public class ScreenCaptureService extends Service {
             item.put("capturedAt", Instant.ofEpochMilli(now).toString());
             item.put("source", "screen-icon-near-vehicle");
             item.put("reviewStatus", "needs-review");
-            item.put("confidence", Math.min(0.28, Math.max(0.10, detection.confidence * 0.40)));
+            double baseConfidence = Math.min(0.28, Math.max(0.10, detection.confidence * 0.40));
+            if (point.hasAccuracy() && point.getAccuracy() > MAX_GPS_ACCURACY_M) {
+                baseConfidence = Math.min(baseConfidence, 0.10);
+            }
+            if (estimatedAnchor) baseConfidence = Math.min(baseConfidence, 0.06);
+            item.put("confidence", baseConfidence);
             item.put("syncStatus", "local-only");
         } catch (Exception ignored) { return; }
 
@@ -405,7 +414,10 @@ public class ScreenCaptureService extends Service {
                 double priorLat = prior.optDouble("observedLat", Double.NaN);
                 double priorLng = prior.optDouble("observedLng", Double.NaN);
                 if (!Double.isFinite(priorLat) || !Double.isFinite(priorLng)) continue;
-                if (distanceMeters(point.getLatitude(), point.getLongitude(), priorLat, priorLng) < 28.0) {
+                double priorAccuracy = prior.optDouble("accuracy", point.hasAccuracy() ? point.getAccuracy() : 60.0);
+                double currentAccuracy = point.hasAccuracy() ? point.getAccuracy() : 60.0;
+                double dedupeRadius = Math.min(110.0, Math.max(28.0, Math.max(priorAccuracy, currentAccuracy) * 0.65));
+                if (distanceMeters(point.getLatitude(), point.getLongitude(), priorLat, priorLng) < dedupeRadius) {
                     prefs.edit().putString("lastMatch", kind + " · " + sourceText)
                         .putLong("lastMatchAt", now)
                         .putString("screenIconStatus", "Похожий объект уже сохранён рядом; повтор не записан.")
@@ -538,11 +550,19 @@ public class ScreenCaptureService extends Service {
     }
 
     private Location getFreshLocation() {
+        return getRecentLocation(MAX_GPS_ACCURACY_M);
+    }
+
+    private Location getIconLocation() {
+        return getRecentLocation(MAX_ICON_GPS_ACCURACY_M);
+    }
+
+    private Location getRecentLocation(float maximumAccuracyMeters) {
         long now = System.currentTimeMillis();
         Location chosen = lastLocation == null ? null : new Location(lastLocation);
         if (chosen != null && now - chosen.getTime() >= 0L &&
             now - chosen.getTime() <= MAX_GPS_AGE_MS && chosen.hasAccuracy() &&
-            chosen.getAccuracy() <= MAX_GPS_ACCURACY_M) return chosen;
+            chosen.getAccuracy() <= maximumAccuracyMeters) return chosen;
 
         android.content.SharedPreferences roadPrefs = getSharedPreferences(ROAD_PREFS, MODE_PRIVATE);
         long gpsAt = roadPrefs.getLong("gpsAt", 0L);
@@ -560,7 +580,7 @@ public class ScreenCaptureService extends Service {
             if (bearing >= 0f) fromRoadScanner.setBearing(bearing);
             float speed = roadPrefs.getFloat("speedMps", -1f);
             if (speed >= 0f) fromRoadScanner.setSpeed(speed);
-            if (fromRoadScanner.hasAccuracy() && fromRoadScanner.getAccuracy() <= MAX_GPS_ACCURACY_M) return fromRoadScanner;
+            if (fromRoadScanner.hasAccuracy() && fromRoadScanner.getAccuracy() <= maximumAccuracyMeters) return fromRoadScanner;
         } catch (Exception ignored) {}
         return null;
     }

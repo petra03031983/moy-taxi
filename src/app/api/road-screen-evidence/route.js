@@ -118,7 +118,7 @@ function normalize(candidate) {
   if (text.length < 3 || !TERMS.some((term) => lowerText.includes(term))) return null;
   if (!Number.isFinite(observedLat) || observedLat < 47 || observedLat > 55) return null;
   if (!Number.isFinite(observedLng) || observedLng < 65 || observedLng > 77) return null;
-  if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 60) return null;
+  if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > (iconPassEstimate ? 150 : 60)) return null;
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 0.6) return null;
   if (!Number.isFinite(gpsCapturedAt.getTime()) || gpsCapturedAt.getTime() > now + 5 * 60 * 1000) return null;
   if (!Number.isFinite(capturedAt.getTime()) || capturedAt.getTime() > now + 5 * 60 * 1000) return null;
