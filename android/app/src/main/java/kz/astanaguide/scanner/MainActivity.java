@@ -122,11 +122,21 @@ public class MainActivity extends Activity {
                 JSONObject status = new JSONObject(ScreenCaptureService.getStatusJson(MainActivity.this));
                 String lastMatch = status.optString("screenScanLastMatch", "");
                 String state = status.optString("screenScanStatus", "Экран не сканируется");
-                String iconStatus = status.optString("screenScanIconStatus", "");
-                String combined = state
-                    + (iconStatus.isEmpty() ? "" : "\nЗначки: " + iconStatus)
-                    + (lastMatch.isEmpty() ? "" : "\nПоследняя подсказка: " + lastMatch);
-                Toast.makeText(MainActivity.this, combined, Toast.LENGTH_LONG).show();
+                String iconStatus = status.optString("screenScanIconStatus", "Графические значки ещё не анализировались.");
+                String cloudStatus = status.optString("screenScanCloudStatus", "Состояние синхронизации не сообщено.");
+                int frames = status.optInt("screenScanFrameCount", 0);
+                int savedIcons = status.optInt("screenScanIconSavedCount", 0);
+                String combined = "Кадров экрана: " + frames
+                    + "\\nГрафических наблюдений сохранено: " + savedIcons
+                    + "\\n\\n" + state
+                    + "\\n\\nЗначки: " + iconStatus
+                    + "\\n\\nОблако: " + cloudStatus
+                    + (lastMatch.isEmpty() ? "" : "\\n\\nПоследняя подсказка: " + lastMatch);
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("Астана Гид — проверка сканера")
+                    .setMessage(combined)
+                    .setPositiveButton("Понятно", (dialog, which) -> dialog.dismiss())
+                    .show();
             } catch (Exception ignored) {}
             return true;
         });
