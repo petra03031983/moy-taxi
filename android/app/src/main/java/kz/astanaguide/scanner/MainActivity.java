@@ -253,6 +253,9 @@ public class MainActivity extends Activity {
 
     private void startScreenCaptureService(int resultCode, Intent data) {
         pendingScreenCapture = false;
+        // Screen-only scanning uses MediaProjection and GPS; stop the separate physical-camera
+        // scanner to avoid unnecessary camera use, extra battery drain, and confusing indicators.
+        stopScannerService();
         Intent service = new Intent(this, ScreenCaptureService.class);
         service.setAction(ScreenCaptureService.ACTION_START);
         service.putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode);
