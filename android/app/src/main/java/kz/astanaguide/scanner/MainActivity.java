@@ -17,7 +17,11 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.view.View;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.FrameLayout;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Toast;
@@ -34,6 +38,8 @@ public class MainActivity extends Activity {
     private static final String MAP_URL = "https://astana-map-roads.vercel.app/astana-map?nativeScanner=1";
     private static final String MAP_HOST = "astana-map-roads.vercel.app";
     private WebView webView;
+    private Button screenCaptureButton;
+    private FrameLayout rootLayout;
     private boolean pendingStart = false;
     private boolean pendingScreenCapture = false;
 
@@ -80,8 +86,76 @@ public class MainActivity extends Activity {
                 callback.invoke(origin, allowed, false);
             }
         });
-        setContentView(webView);
+        rootLayout = new FrameLayout(this);
+        rootLayout.addView(webView, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // This native control remains available even when the hosted map UI is waiting for deployment.
+        screenCaptureButton = new Button(this);
+        screenCaptureButton.setAllCaps(false);
+        screenCaptureButton.setTextSize(12);
+        screenCaptureButton.setTextColor(Color.WHITE);
+        screenCaptureButton.setElevation(dp(8));
+        screenCaptureButton.setPadding(dp(8), 0, dp(8), 0);
+        GradientDrawable buttonBackground = new GradientDrawable();
+        buttonBackground.setColor(Color.rgb(30, 64, 87));
+        buttonBackground.setCornerRadius(dp(14));
+        buttonBackground.setStroke(dp(1), Color.rgb(132, 196, 225));
+        screenCaptureButton.setBackground(buttonBackground);
+        FrameLayout.LayoutParams captureButtonParams = new FrameLayout.LayoutParams(dp(116), dp(44),
+            Gravity.TOP | Gravity.END);
+        captureButtonParams.topMargin = dp(14);
+        captureButtonParams.rightMargin = dp(10);
+        rootLayout.addView(screenCaptureButton, captureButtonParams);
+        screenCaptureButton.setOnClickListener(view -> {
+            if (ScreenCaptureService.isActive(MainActivity.this)) {
+                stopScreenCaptureService();
+                Toast.makeText(MainActivity.this, "Анализ экрана остановлен", Toast.LENGTH_SHORT).show();
+                syncScreenCaptureButton();
+            } else {
+                requestScreenCapturePermission();
+                screenCaptureButton.postDelayed(this::syncScreenCaptureButton, 1000L);
+            }
+        });
+        screenCaptureButton.setOnLongClickListener(view -> {
+            try {
+                JSONObject status = new JSONObject(ScreenCaptureService.getStatusJson(MainActivity.this));
+                String lastMatch = status.optString("screenScanLastMatch", "");
+                String state = status.optString("screenScanStatus", "Экран не сканируется");
+                Toast.makeText(MainActivity.this,
+                    state + (lastMatch.isEmpty() ? "" : "\nПоследняя подсказка: " + lastMatch),
+                    Toast.LENGTH_LONG).show();
+            } catch (Exception ignored) {}
+            return true;
+        });
+        syncScreenCaptureButton();
+
+        setContentView(rootLayout);
         webView.loadUrl(MAP_URL);
+    }
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void syncScreenCaptureButton() {
+        if (screenCaptureButton == null) return;
+        boolean active = ScreenCaptureService.isActive(this);
+        screenCaptureButton.setText(active ? "■ ЭКРАН: ВКЛ" : "▣ СКАН ЭКРАНА");
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(active ? Color.rgb(22, 112, 67) : Color.rgb(30, 64, 87));
+        background.setCornerRadius(dp(14));
+        background.setStroke(dp(1), active ? Color.rgb(154, 242, 187) : Color.rgb(132, 196, 225));
+        screenCaptureButton.setBackground(background);
+        screenCaptureButton.setContentDescription(active
+            ? "Остановить анализ экрана"
+            : "Запустить анализ экрана");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        syncScreenCaptureButton();
     }
 
     private void openExternal(Uri uri) {
@@ -177,6 +251,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this,
                 "Астана Гид: экран разрешён. Переключись на Яндекс Навигатор или 2ГИС.",
                 Toast.LENGTH_LONG).show();
+            screenCaptureButton.postDelayed(this::syncScreenCaptureButton, 1200L);
         } catch (RuntimeException error) {
             ScreenCaptureService.recordExternalError(this,
                 "Не удалось запустить анализ экрана: " + (error.getMessage() == null ? "" : error.getMessage()));
