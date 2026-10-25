@@ -447,3 +447,68 @@
 .astana-road-diagnostics{position:fixed;top:88px;left:8px;z-index:1200;width:min(310px,calc(100vw - 16px));max-height:36dvh;overflow:hidden;box-sizing:border-box;padding:10px 12px;border:1px solid rgba(255,255,255,.22);border-radius:12px;background:rgba(8,12,17,.94);color:#fff;font:11px/1.35 Arial,Helvetica,sans-serif;box-shadow:0 3px 16px rgba(0,0,0,.32);pointer-events:none;overflow-wrap:anywhere}
 .astana-road-diagnostics b{display:block;margin-bottom:5px;font-size:12px;font-weight:800}
 .astana-road-diagnostics div{margin-top:3px}
+
+
+/* Phone camera + GPS road-scanning panel */
+.astana-road-scan-toggle{
+  position:absolute;top:174px;right:11px;z-index:27;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  min-width:48px;height:43px;padding:0 10px;
+  border:1px solid rgba(255,255,255,.72);border-radius:14px;
+  background:rgba(10,13,17,.94);color:#fff;
+  font:800 12px Arial,sans-serif;box-shadow:0 3px 12px #0005;
+}
+.astana-road-scan-toggle span{font-size:18px;line-height:1}
+.astana-road-scan-toggle.active{background:#087d44;border-color:#a6f0c4}
+.astana-road-scan-panel{
+  position:fixed;left:10px;right:10px;bottom:calc(env(safe-area-inset-bottom) + 12px);
+  z-index:4000;max-width:560px;max-height: min(78dvh,720px);margin:0 auto;
+  overflow:auto;overscroll-behavior:contain;box-sizing:border-box;
+  padding:14px;border:1px solid #ffffff28;border-radius:22px;
+  background:#101820;color:#f8fafc;box-shadow:0 10px 38px #0008;
+  font-family:Arial,Helvetica,sans-serif;
+}
+.astana-road-scan-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:11px}
+.astana-road-scan-header div{display:grid;gap:4px;min-width:0}
+.astana-road-scan-header b{font-size:17px;line-height:1.2}
+.astana-road-scan-header small{font-size:12px;line-height:1.35;color:#a9c1d2}
+.astana-road-scan-header>button{flex:none;width:34px;height:34px;border:0;border-radius:50%;background:#2b3946;color:#fff;font-size:25px;line-height:1}
+.astana-road-scan-preview{position:relative;width:100%;aspect-ratio:16/9;max-height:31dvh;overflow:hidden;border-radius:15px;background:#03070a}
+.astana-road-scan-preview video{display:block;width:100%;height:100%;object-fit:cover;background:#03070a}
+.astana-road-scan-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:18px;text-align:center;background:linear-gradient(150deg,#182a38,#0b1118)}
+.astana-road-scan-placeholder span{font-size:34px}
+.astana-road-scan-placeholder b{font-size:15px}
+.astana-road-scan-placeholder small{max-width:270px;color:#b9c7d1;font-size:12px;line-height:1.4}
+.astana-road-scan-live{position:absolute;top:9px;left:9px;padding:5px 8px;border-radius:99px;background:#a20d25;color:#fff;font-size:11px;font-weight:900;letter-spacing:.4px}
+.astana-road-scan-gps{display:flex;flex-direction:column;gap:4px;margin-top:10px;overflow-wrap:anywhere;font-size:12px;color:#dbe8ef}
+.astana-road-scan-gps small{color:#9db3c2}
+.astana-road-scan-counters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.astana-road-scan-counters>div{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:12px;background:#202c36}
+.astana-road-scan-counters b{font-size:22px;line-height:1;color:#b8f7cf}
+.astana-road-scan-counters small{font-size:11px;line-height:1.25;color:#cbd6de}
+.astana-road-scan-actions{display:flex;gap:8px}
+.astana-road-scan-actions button,.astana-road-scan-mark-form>button{
+  min-height:43px;border:0;border-radius:12px;padding:10px 12px;
+  background:#16894c;color:#fff;font-size:14px;font-weight:800;
+}
+.astana-road-scan-actions button{flex:1}
+.astana-road-scan-actions button.stop{background:#b42332}
+.astana-road-scan-mark-form{display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #32414d}
+.astana-road-scan-mark-form label{font-size:13px;font-weight:800}
+.astana-road-scan-mark-form select{width:100%;min-height:43px;border:1px solid #435363;border-radius:12px;padding:9px 10px;background:#202c36;color:#fff;font-size:14px}
+.astana-road-scan-mark-form>button:disabled{opacity:.45}
+.astana-road-scan-mark-form small{font-size:11px;line-height:1.45;color:#aebfca}
+.astana-road-scan-error{margin-top:9px;padding:9px 10px;border:1px solid #703641;border-radius:10px;background:#3a1c24;color:#ffd7dc;font-size:12px;line-height:1.4}
+.astana-road-scan-safety{margin:11px 0 0;color:#aebfca;font-size:11px;line-height:1.45}
+.astana-road-scan-map-icon{background:transparent;border:0}
+.astana-road-scan-map-icon span{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:2px solid #fff;border-radius:50%;background:#127f4a;box-shadow:0 2px 9px #0005;font-size:19px}
+.astana-road-scan-popup{max-width:220px;color:#18212a;font-size:12px;line-height:1.4}
+.astana-road-scan-popup b{font-size:14px}
+.astana-road-scan-popup small{color:#64717a}
+.astana-road-scan-popup p{margin:6px 0 0;color:#7b4c00}
+@media(max-width:520px){
+  .astana-road-scan-toggle{top:168px;right:9px;width:49px;height:41px;border-radius:13px;font-size:11px}
+  .astana-road-scan-panel{left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 8px);padding:12px;border-radius:19px;max-height:80dvh}
+  .astana-road-scan-header b{font-size:16px}
+  .astana-road-scan-preview{max-height:27dvh}
+}
