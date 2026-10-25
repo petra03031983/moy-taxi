@@ -40,12 +40,15 @@ public final class ScreenIconDetector {
     public static final class ScanResult {
         public final List<Detection> detections;
         public final boolean vehicleAnchorFound;
+        public final boolean vehicleAnchorEstimated;
         public final float vehicleX;
         public final float vehicleY;
 
-        ScanResult(List<Detection> detections, boolean vehicleAnchorFound, float vehicleX, float vehicleY) {
+        ScanResult(List<Detection> detections, boolean vehicleAnchorFound, boolean vehicleAnchorEstimated,
+                   float vehicleX, float vehicleY) {
             this.detections = detections;
             this.vehicleAnchorFound = vehicleAnchorFound;
+            this.vehicleAnchorEstimated = vehicleAnchorEstimated;
             this.vehicleX = vehicleX;
             this.vehicleY = vehicleY;
         }
@@ -84,7 +87,7 @@ public final class ScreenIconDetector {
 
     public static ScanResult detect(Bitmap source) {
         if (source == null || source.isRecycled() || source.getWidth() < 80 || source.getHeight() < 120) {
-            return new ScanResult(new ArrayList<>(), false, 0.5f, 0.67f);
+            return new ScanResult(new ArrayList<>(), false, false, 0.5f, 0.68f);
         }
 
         float scale = Math.min(1f, MAX_WIDTH / (float) source.getWidth());
@@ -103,12 +106,17 @@ public final class ScreenIconDetector {
 
         List<Detection> detections = new ArrayList<>();
         detectCameraBadges(red, pixels, width, height, detections);
+        detectCompositeCameraSigns(red, pixels, width, height, detections);
         detectTrafficLights(red, yellow, green, pixels, width, height, detections);
+        detectTrafficLightSequencesFromPixels(red, yellow, pixels, width, height, detections);
 
         Component vehicle = findVehicleMarker(blue, width, height);
         boolean anchorFound = vehicle != null;
+        // Navigation layouts commonly keep the vehicle arrow near the lower middle of a portrait map.
+        // Use that as a weak fallback only when a road-icon candidate exists; observations remain provisional.
+        boolean anchorEstimated = !anchorFound && !detections.isEmpty();
         float vehicleX = anchorFound ? vehicle.cx() / width : 0.5f;
-        float vehicleY = anchorFound ? vehicle.cy() / height : 0.67f;
+        float vehicleY = anchorFound ? vehicle.cy() / height : 0.68f;
 
         List<Detection> unique = new ArrayList<>();
         for (Detection detection : detections) {
@@ -125,7 +133,9 @@ public final class ScreenIconDetector {
             }
             if (!duplicate) unique.add(detection);
         }
-        return new ScanResult(unique, anchorFound, vehicleX, vehicleY);
+        boolean useEstimatedAnchor = anchorEstimated && !unique.isEmpty();
+        return new ScanResult(unique, anchorFound || useEstimatedAnchor, useEstimatedAnchor,
+            vehicleX, vehicleY);
     }
 
     private static List<Component> components(int[] pixels, int width, int height, int colorClass) {
@@ -226,6 +236,46 @@ public final class ScreenIconDetector {
         }
     }
 
+    /**
+     * Some navigation providers join the little camera badge to the red speed-limit ring into
+     * a single connected red shape. The old "small badge plus separate ring" detector misses it.
+     * Detect that compound shape conservatively by looking for a distinct upper-right red protrusion.
+     */
+    private static void detectCompositeCameraSigns(List<Component> red, int[] pixels, int width, int height,
+                                                   List<Detection> out) {
+        for (Component c : red) {
+            if (c.width() < 22 || c.width() > 58 || c.height() < 22 || c.height() > 58 ||
+                c.area < 100 || c.area > 950 ||
+                c.width() / (float) c.height() < 0.60f ||
+                c.width() / (float) c.height() > 1.55f ||
+                c.fillRatio() < 0.10 || c.fillRatio() > 0.38 ||
+                !hasLightAndDarkDetail(c, pixels, width, height)) continue;
+
+            int upperLeft = 0, upperRight = 0, lowerLeft = 0, lowerRight = 0;
+            float midX = (c.minX + c.maxX) / 2f;
+            float midY = (c.minY + c.maxY) / 2f;
+            for (int y = c.minY; y <= c.maxY; y++) {
+                for (int x = c.minX; x <= c.maxX; x++) {
+                    if (!matches(pixels[y * width + x], 1)) continue;
+                    if (x < midX && y < midY) upperLeft++;
+                    else if (x >= midX && y < midY) upperRight++;
+                    else if (x < midX) lowerLeft++;
+                    else lowerRight++;
+                }
+            }
+            boolean badgeProtrudesUpperRight = upperRight >= 30 &&
+                upperRight > upperLeft * 1.35 &&
+                upperRight > lowerRight * 1.35;
+            if (!badgeProtrudesUpperRight) continue;
+
+            // Center on the red sign rather than the small protruding badge.
+            float x = (c.minX + c.maxX) / (2f * width);
+            float y = (c.minY + c.maxY) / (2f * height);
+            out.add(new Detection("speed-camera", x, y, 0.48,
+                "compound-speed-sign-with-upper-right-camera-badge"));
+        }
+    }
+
     private static boolean hasLightAndDarkDetail(Component c, int[] pixels, int width, int height) {
         int light = 0, dark = 0;
         for (int y = Math.max(0, c.minY); y <= Math.min(height - 1, c.maxY); y++) {
@@ -261,6 +311,54 @@ public final class ScreenIconDetector {
                     float yy = (r.cy() + y.cy() + g.cy()) / (3f * height);
                     out.add(new Detection("traffic-light", x, yy, 0.48, "three-colour-traffic-light-icon"));
                 }
+            }
+        }
+    }
+
+    /**
+     * The green bulb in a navigation-map traffic-light glyph can touch the bright route line and
+     * therefore merge into a large green component. This fallback checks the pixels directly below
+     * a compact red-yellow pair instead of requiring three separate connected components.
+     */
+    private static void detectTrafficLightSequencesFromPixels(List<Component> red, List<Component> yellow,
+                                                              int[] pixels, int width, int height,
+                                                              List<Detection> out) {
+        List<Component> reds = tinyBulbs(red);
+        List<Component> yellows = tinyBulbs(yellow);
+        for (Component r : reds) {
+            if (r.width() > 8 || r.height() > 8) continue;
+            for (Component y : yellows) {
+                if (y.width() > 8 || y.height() > 8) continue;
+                float dx = Math.abs(r.cx() - y.cx());
+                float dy = y.cy() - r.cy();
+                if (dx > 4.0f || dy < 2.0f || dy > 9.0f) continue;
+
+                int centerX = Math.round((r.cx() + y.cx()) / 2f);
+                int startY = Math.max(y.maxY, r.maxY);
+                int greenCount = 0;
+                double sumGreenX = 0.0, sumGreenY = 0.0;
+                for (int py = Math.max(0, startY); py <= Math.min(height - 1, startY + 8); py++) {
+                    for (int px = Math.max(0, centerX - 3); px <= Math.min(width - 1, centerX + 3); px++) {
+                        if (matches(pixels[py * width + px], 3)) {
+                            greenCount++;
+                            sumGreenX += px;
+                            sumGreenY += py;
+                        }
+                    }
+                }
+                if (greenCount < 3) continue;
+
+                int left = Math.min(r.minX, y.minX);
+                int right = Math.max(r.maxX, y.maxX);
+                int top = Math.min(r.minY, y.minY);
+                int bottom = Math.max(r.maxY, y.maxY);
+                if (bottom - top > 12 || right - left > 8) continue;
+                if (!hasDarkHousing(left, top, right, Math.min(height - 1, bottom + 6), pixels, width, height)) continue;
+
+                float x = (float) ((r.cx() + y.cx() + sumGreenX / greenCount) / (3.0 * width));
+                float yy = (float) ((r.cy() + y.cy() + sumGreenY / greenCount) / (3.0 * height));
+                out.add(new Detection("traffic-light", x, yy, 0.42,
+                    "pixel-sampled-three-colour-traffic-light-on-route"));
             }
         }
     }
