@@ -855,6 +855,82 @@ function speakRoutePrompt(message) {
   return true;
 }
 
+const ROAD_SCAN_DB_NAME = "astana-guide-road-scan-v1";
+const ROAD_SCAN_FRAME_LIMIT = 400;
+
+function openRoadScanDatabase() {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !window.indexedDB) {
+      reject(new Error("Локальное хранилище недоступно в этом браузере."));
+      return;
+    }
+    const request = window.indexedDB.open(ROAD_SCAN_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains("frames")) {
+        const store = db.createObjectStore("frames", { keyPath: "id" });
+        store.createIndex("capturedAt", "capturedAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("observations")) {
+        const store = db.createObjectStore("observations", { keyPath: "id" });
+        store.createIndex("capturedAt", "capturedAt", { unique: false });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Не удалось открыть локальную базу сканирования."));
+    request.onblocked = () => reject(new Error("Закрой другие вкладки карты и повтори попытку."));
+  });
+}
+
+function persistRoadScanFrame(frame, observation = null) {
+  return openRoadScanDatabase().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(observation ? ["frames", "observations"] : ["frames"], "readwrite");
+    const frames = tx.objectStore("frames");
+    frames.put(frame);
+    if (observation) tx.objectStore("observations").put(observation);
+
+    // Keep a rolling local cache of frames so a long drive cannot fill the phone.
+    const keysRequest = frames.index("capturedAt").getAllKeys();
+    keysRequest.onsuccess = () => {
+      const keys = keysRequest.result || [];
+      const excess = keys.length - ROAD_SCAN_FRAME_LIMIT;
+      if (excess > 0) keys.slice(0, excess).forEach(key => frames.delete(key));
+    };
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { const error = tx.error || new Error("Не удалось сохранить кадр."); db.close(); reject(error); };
+    tx.onabort = () => { const error = tx.error || new Error("Сохранение кадра отменено."); db.close(); reject(error); };
+  }));
+}
+
+function getRoadScanData() {
+  return openRoadScanDatabase().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(["frames", "observations"], "readonly");
+    const framesCountRequest = tx.objectStore("frames").count();
+    const observationsRequest = tx.objectStore("observations").getAll();
+    let framesCount = 0;
+    let observations = [];
+    framesCountRequest.onsuccess = () => { framesCount = Number(framesCountRequest.result || 0); };
+    observationsRequest.onsuccess = () => { observations = observationsRequest.result || []; };
+    tx.oncomplete = () => { db.close(); resolve({ framesCount, observations }); };
+    tx.onerror = () => { const error = tx.error || new Error("Не удалось прочитать сохранённые наблюдения."); db.close(); reject(error); };
+  }));
+}
+
+const ROAD_SCAN_KINDS = [
+  { value: "traffic-light", label: "Светофор", icon: "🚦" },
+  { value: "camera", label: "Камера", icon: "📷" },
+  { value: "speed-sign", label: "Ограничение скорости", icon: "🔵" },
+  { value: "traffic-sign", label: "Дорожный знак", icon: "🛑" },
+  { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
+  { value: "roadwork", label: "Дорожные работы", icon: "🚧" },
+  { value: "parking", label: "Парковка", icon: "🅿️" },
+  { value: "unknown", label: "Не определено", icon: "📍" },
+];
+
+function roadScanKindLabel(value) {
+  return ROAD_SCAN_KINDS.find(item => item.value === value)?.label || "Дорожный объект";
+}
+
 export default function AstanaMapPage() {
   const mapEl = useRef(null);
   const map3dEl = useRef(null);
@@ -866,6 +942,13 @@ export default function AstanaMapPage() {
   const layersRef = useRef(null);
   const locationLayerRef = useRef(null);
   const roadObjectsLayerRef = useRef(null);
+  const roadScanLayerRef = useRef(null);
+  const roadScanVideoRef = useRef(null);
+  const roadScanStreamRef = useRef(null);
+  const roadScanIntervalRef = useRef(null);
+  const roadScanWatchRef = useRef(null);
+  const roadScanPositionRef = useRef(null);
+  const roadScanCaptureBusyRef = useRef(false);
   const roadObjectsRef = useRef([]);
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
@@ -922,6 +1005,16 @@ export default function AstanaMapPage() {
   const [cameraCatalogRevision, setCameraCatalogRevision] = useState(0);
   const [showRoadDataDiagnostics, setShowRoadDataDiagnostics] = useState(false);
   const [roadDataDiagnostics, setRoadDataDiagnostics] = useState(null);
+  const [roadScanPanelOpen, setRoadScanPanelOpen] = useState(false);
+  const [roadScanActive, setRoadScanActive] = useState(false);
+  const [roadScanStatus, setRoadScanStatus] = useState("Камера выключена");
+  const [roadScanError, setRoadScanError] = useState("");
+  const [roadScanPosition, setRoadScanPosition] = useState(null);
+  const [roadScanFrameCount, setRoadScanFrameCount] = useState(0);
+  const [roadScanObservationCount, setRoadScanObservationCount] = useState(0);
+  const [roadScanKind, setRoadScanKind] = useState("traffic-light");
+  const [roadScanBusy, setRoadScanBusy] = useState(false);
+  const [roadScanRevision, setRoadScanRevision] = useState(0);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherData, setWeatherData] = useState(null);
   const weatherLocationRef = useRef(null);
@@ -940,6 +1033,13 @@ export default function AstanaMapPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setShowRoadDataDiagnostics(params.get("debugRoads") === "1");
+  }, []);
+
+  useEffect(() => () => {
+    if (roadScanIntervalRef.current) window.clearInterval(roadScanIntervalRef.current);
+    if (roadScanWatchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(roadScanWatchRef.current);
+    roadScanStreamRef.current?.getTracks?.().forEach(track => track.stop());
+    roadScanStreamRef.current = null;
   }, []);
 
   const [voiceGuidanceEnabled, setVoiceGuidanceEnabled] = useState(false);
@@ -1143,6 +1243,7 @@ export default function AstanaMapPage() {
       layersRef.current = L.layerGroup().addTo(map);
       locationLayerRef.current = L.layerGroup().addTo(map);
       roadObjectsLayerRef.current = L.layerGroup().addTo(map);
+      roadScanLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       if (libraryLoadWatchdog !== null) {
         window.clearTimeout(libraryLoadWatchdog);
@@ -2350,6 +2451,43 @@ export default function AstanaMapPage() {
   }, []);
 
   useEffect(() => {
+    if (!leafletReady || !roadScanLayerRef.current || !window.L) return;
+    let cancelled = false;
+    const loadSavedRoadScanMarkers = async () => {
+      try {
+        const data = await getRoadScanData();
+        if (cancelled || !roadScanLayerRef.current) return;
+        const group = roadScanLayerRef.current;
+        const L = window.L;
+        group.clearLayers();
+        for (const item of data.observations || []) {
+          const lat = Number(item.lat);
+          const lng = Number(item.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          const kind = ROAD_SCAN_KINDS.find(option => option.value === item.kind) || ROAD_SCAN_KINDS[ROAD_SCAN_KINDS.length - 1];
+          const icon = L.divIcon({
+            className: "astana-road-scan-map-icon",
+            html: '<span>' + escapeHtml(kind.icon) + '</span>',
+            iconSize: [38, 38],
+            iconAnchor: [19, 19],
+          });
+          const marker = L.marker([lat, lng], { icon, zIndexOffset: 2600 });
+          const when = new Date(item.capturedAt).toLocaleString("ru-RU");
+          const accuracy = Number.isFinite(Number(item.accuracy)) ? Math.round(Number(item.accuracy)) + " м" : "неизвестна";
+          const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
+            '</b><div>Отмечено с камеры телефона</div><div>GPS: ±' + escapeHtml(accuracy) +
+            '</div><small>' + escapeHtml(when) + '</small><p>Наблюдение сохранено локально и ещё не прошло автоматическую проверку.</p></div>';
+          marker.bindPopup(popup).addTo(group);
+        }
+      } catch (error) {
+        console.warn("[Astana Guide] Could not load local road scan markers", error);
+      }
+    };
+    void loadSavedRoadScanMarkers();
+    return () => { cancelled = true; };
+  }, [leafletReady, roadScanRevision]);
+
+  useEffect(() => {
     if (!leafletReady || !mapRef.current || !roadObjectsLayerRef.current) return;
 
     let disposed = false;
@@ -3150,6 +3288,176 @@ export default function AstanaMapPage() {
     window.setTimeout(() => searchInputRef.current?.focus(), 30);
   }
 
+  async function refreshRoadScanCounts() {
+    try {
+      const data = await getRoadScanData();
+      setRoadScanFrameCount(data.framesCount);
+      setRoadScanObservationCount(data.observations.length);
+    } catch (scanError) {
+      setRoadScanError(String(scanError?.message || "Локальная база камеры недоступна."));
+    }
+  }
+
+  async function captureRoadScanFrame(markObject = false) {
+    if (roadScanCaptureBusyRef.current) return;
+    const video = roadScanVideoRef.current;
+    const position = roadScanPositionRef.current;
+    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+      if (markObject) setRoadScanError("Камера ещё запускается. Попробуй через секунду.");
+      return;
+    }
+    if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) {
+      if (markObject) setRoadScanError("Ждём GPS. Разреши геолокацию и дождись координат.");
+      setRoadScanStatus("Ожидание GPS");
+      return;
+    }
+
+    roadScanCaptureBusyRef.current = true;
+    setRoadScanBusy(true);
+    setRoadScanError("");
+    try {
+      const maxWidth = markObject ? 960 : 720;
+      const scale = Math.min(1, maxWidth / video.videoWidth);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("Не удалось подготовить кадр камеры.");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(
+        value => value ? resolve(value) : reject(new Error("Не удалось сохранить снимок камеры.")),
+        "image/jpeg",
+        markObject ? 0.72 : 0.52,
+      ));
+      const capturedAt = new Date().toISOString();
+      const id = "scan-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+      const frame = {
+        id,
+        capturedAt,
+        lat: position.lat,
+        lng: position.lng,
+        accuracy: position.accuracy,
+        heading: position.heading,
+        speedMps: position.speedMps,
+        imageBlob: blob,
+      };
+      let observation = null;
+      if (markObject) {
+        observation = {
+          id,
+          frameId: id,
+          capturedAt,
+          lat: position.lat,
+          lng: position.lng,
+          accuracy: position.accuracy,
+          heading: position.heading,
+          speedMps: position.speedMps,
+          kind: roadScanKind,
+          reviewStatus: "needs-review",
+          source: "phone-camera",
+        };
+      }
+      await persistRoadScanFrame(frame, observation);
+      setRoadScanFrameCount(value => Math.min(ROAD_SCAN_FRAME_LIMIT, value + 1));
+      if (observation) {
+        setRoadScanObservationCount(value => value + 1);
+        setRoadScanRevision(value => value + 1);
+        setRoadScanStatus("Объект сохранён с координатами");
+      } else {
+        setRoadScanStatus("Кадр сохранён · GPS привязан");
+      }
+    } catch (scanError) {
+      setRoadScanError(String(scanError?.message || "Не удалось сохранить кадр."));
+    } finally {
+      roadScanCaptureBusyRef.current = false;
+      setRoadScanBusy(false);
+    }
+  }
+
+  async function startRoadScan() {
+    setRoadScanError("");
+    setRoadScanStatus("Запрашиваем доступ к камере и GPS…");
+    try {
+      if (!window.isSecureContext) throw new Error("Камера доступна только через защищённый адрес HTTPS.");
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Этот браузер не поддерживает доступ к камере. Открой карту в Chrome.");
+      if (!navigator.geolocation) throw new Error("Геолокация недоступна в этом браузере.");
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      roadScanStreamRef.current = stream;
+      if (roadScanVideoRef.current) {
+        roadScanVideoRef.current.srcObject = stream;
+        await roadScanVideoRef.current.play().catch(() => {});
+      }
+
+      const geolocationError = error => {
+        const reason = error?.code === 1
+          ? "Нет разрешения на геолокацию. Разреши доступ к местоположению для карты."
+          : error?.code === 3
+            ? "GPS пока не отвечает. Оставь сканирование включённым до получения координат."
+            : "Не удалось получить GPS. Проверь настройки местоположения телефона.";
+        setRoadScanError(reason);
+      };
+      roadScanWatchRef.current = navigator.geolocation.watchPosition(position => {
+        const coords = position.coords;
+        const fix = {
+          lat: Number(coords.latitude),
+          lng: Number(coords.longitude),
+          accuracy: Number(coords.accuracy),
+          heading: Number.isFinite(coords.heading) ? Number(coords.heading) : null,
+          speedMps: Number.isFinite(coords.speed) ? Number(coords.speed) : null,
+        };
+        roadScanPositionRef.current = fix;
+        setRoadScanPosition(fix);
+        setRoadScanError("");
+        setRoadScanStatus("Сканирование активно · GPS подключён");
+      }, geolocationError, {
+        enableHighAccuracy: true,
+        maximumAge: 2000,
+        timeout: 15000,
+      });
+      setRoadScanActive(true);
+      setRoadScanStatus("Камера включена · ждём GPS");
+      await refreshRoadScanCounts();
+      // Collect small local evidence frames in the background; object classification is
+      // deliberately user-confirmed until an on-device recognition model is integrated.
+      roadScanIntervalRef.current = window.setInterval(() => {
+        void captureRoadScanFrame(false);
+      }, 8000);
+    } catch (scanError) {
+      setRoadScanError(String(scanError?.message || "Не удалось запустить камеру."));
+      setRoadScanStatus("Сканирование не запущено");
+      roadScanStreamRef.current?.getTracks?.().forEach(track => track.stop());
+      roadScanStreamRef.current = null;
+      if (roadScanVideoRef.current) roadScanVideoRef.current.srcObject = null;
+      setRoadScanActive(false);
+    }
+  }
+
+  function stopRoadScan() {
+    if (roadScanIntervalRef.current) window.clearInterval(roadScanIntervalRef.current);
+    roadScanIntervalRef.current = null;
+    if (roadScanWatchRef.current !== null && navigator.geolocation) navigator.geolocation.clearWatch(roadScanWatchRef.current);
+    roadScanWatchRef.current = null;
+    roadScanStreamRef.current?.getTracks?.().forEach(track => track.stop());
+    roadScanStreamRef.current = null;
+    if (roadScanVideoRef.current) roadScanVideoRef.current.srcObject = null;
+    setRoadScanActive(false);
+    setRoadScanStatus("Сканирование остановлено");
+    setRoadScanBusy(false);
+  }
+
+  function closeRoadScanPanel() {
+    stopRoadScan();
+    setRoadScanPanelOpen(false);
+  }
+
   return (
     <main className="astana-map-page">
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
@@ -3172,6 +3480,43 @@ export default function AstanaMapPage() {
         <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
         <button className={`astana-home-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"}>{map4dEnabled && map3dReady && gpsFixReady ? "LIVE" : "4D"}</button>
       </>}
+      {!roadScanPanelOpen && <button type="button" className={`astana-road-scan-toggle${roadScanActive ? " active" : ""}`} onClick={() => { setRoadScanPanelOpen(true); void refreshRoadScanCounts(); }} aria-label="Сканировать дорогу"><span>📷</span><b>СКАН</b></button>}
+      {roadScanPanelOpen && <section className="astana-road-scan-panel" role="dialog" aria-modal="true" aria-label="Сканирование дорожных объектов">
+        <header className="astana-road-scan-header">
+          <div><b>📷 Сканирование дороги</b><small>{roadScanStatus}</small></div>
+          <button type="button" onClick={closeRoadScanPanel} aria-label="Закрыть сканирование">×</button>
+        </header>
+        <div className="astana-road-scan-preview">
+          <video ref={roadScanVideoRef} autoPlay playsInline muted aria-label="Предпросмотр задней камеры телефона" />
+          {!roadScanActive && <div className="astana-road-scan-placeholder"><span>📹</span><b>Камера выключена</b><small>Нажми «Начать сканирование» и разреши доступ к камере и GPS.</small></div>}
+          {roadScanActive && <span className="astana-road-scan-live">● LIVE</span>}
+        </div>
+        <div className="astana-road-scan-gps">
+          <span>GPS: {roadScanPosition ? `${roadScanPosition.lat.toFixed(6)}, ${roadScanPosition.lng.toFixed(6)}` : "ожидание координат"}</span>
+          {roadScanPosition && <small>Точность ±{Math.round(roadScanPosition.accuracy || 0)} м</small>}
+        </div>
+        <div className="astana-road-scan-counters">
+          <div><b>{roadScanFrameCount}</b><small>кадров сохранено</small></div>
+          <div><b>{roadScanObservationCount}</b><small>отметок на карте</small></div>
+        </div>
+        <div className="astana-road-scan-actions">
+          {!roadScanActive
+            ? <button type="button" className="primary" onClick={() => void startRoadScan()}>Начать сканирование</button>
+            : <button type="button" className="stop" onClick={stopRoadScan}>Остановить камеру</button>}
+        </div>
+        {roadScanActive && <div className="astana-road-scan-mark-form">
+          <label htmlFor="astana-road-scan-kind">Что за объект?</label>
+          <select id="astana-road-scan-kind" value={roadScanKind} onChange={event => setRoadScanKind(event.target.value)}>
+            {ROAD_SCAN_KINDS.map(option => <option key={option.value} value={option.value}>{option.icon} {option.label}</option>)}
+          </select>
+          <button type="button" disabled={roadScanBusy || !roadScanPosition} onClick={() => void captureRoadScanFrame(true)}>
+            {roadScanBusy ? "Сохраняем…" : "Сохранить объект с GPS"}
+          </button>
+          <small>Сохраняется текущий кадр с координатами и отметкой. Пока объект указывается вручную — автоматическое распознавание ИИ ещё не подключено.</small>
+        </div>}
+        {roadScanError && <div className="astana-road-scan-error" role="status">{roadScanError}</div>}
+        <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры хранятся в памяти этого телефона и не отправляются на сервер.</p>
+      </section>}
 
 
 
