@@ -2,6 +2,47 @@ plugins {
     id "com.android.application"
 }
 
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.4.4'
+}
+
+def roadDetectionModel = file("src/main/assets/lite-model_efficientdet_lite0_detection_metadata_1.tflite")
+def roadDetectionModelUrl = "https://storage.googleapis.com/download.tensorflow.org/models/tflite/task_library/object_detection/rpi/lite-model_efficientdet_lite0_detection_metadata_1.tflite"
+
+tasks.register("downloadRoadDetectionModel") {
+    outputs.file(roadDetectionModel)
+    outputs.upToDateWhen {
+        roadDetectionModel.exists() && roadDetectionModel.length() > 1000000L
+    }
+    doLast {
+        if (!roadDetectionModel.exists() || roadDetectionModel.length() <= 1000000L) {
+            roadDetectionModel.parentFile.mkdirs()
+            def temporaryModel = new File(roadDetectionModel.parentFile, roadDetectionModel.name + ".download")
+            temporaryModel.delete()
+            def connection = new URL(roadDetectionModelUrl).openConnection()
+            connection.connectTimeout = 20000
+            connection.readTimeout = 90000
+            connection.setRequestProperty("User-Agent", "AstanaGuideAndroidBuild/1.0")
+            connection.inputStream.withCloseable { input ->
+                temporaryModel.withOutputStream { output -> output << input }
+            }
+            if (!temporaryModel.exists() || temporaryModel.length() <= 1000000L) {
+                temporaryModel.delete()
+                throw new GradleException("Road detection model download failed or returned an invalid file.")
+            }
+            if (roadDetectionModel.exists()) roadDetectionModel.delete()
+            if (!temporaryModel.renameTo(roadDetectionModel)) {
+                java.nio.file.Files.move(temporaryModel.toPath(), roadDetectionModel.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("downloadRoadDetectionModel")
+}
+
 android {
     namespace "kz.astanaguide.scanner"
     compileSdk 35
@@ -10,8 +51,8 @@ android {
         applicationId "kz.astanaguide.scanner"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 2
+        versionName "1.1.0"
     }
 
     compileOptions {

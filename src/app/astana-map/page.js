@@ -1011,6 +1011,7 @@ export default function AstanaMapPage() {
   const [roadScanActive, setRoadScanActive] = useState(false);
   const [roadScanStatus, setRoadScanStatus] = useState("Камера выключена");
   const [roadScanError, setRoadScanError] = useState("");
+  const [roadScanCloudStatus, setRoadScanCloudStatus] = useState("Общая карта ещё не синхронизирована");
   const [roadScanPosition, setRoadScanPosition] = useState(null);
   const [roadScanFrameCount, setRoadScanFrameCount] = useState(0);
   const [roadScanObservationCount, setRoadScanObservationCount] = useState(0);
@@ -1058,6 +1059,7 @@ export default function AstanaMapPage() {
         const observations = Array.isArray(native.observations) ? native.observations : [];
         setRoadScanFrameCount(Number(native.framesCount || 0));
         setRoadScanObservationCount(Number(native.observationsCount || observations.length || 0));
+        setRoadScanCloudStatus(String(native.cloudSyncStatus || "Проверяем синхронизацию…"));
         if (native.lat != null && native.lng != null && Number.isFinite(Number(native.lat)) && Number.isFinite(Number(native.lng))) {
           const fix = {
             lat: Number(native.lat),
@@ -2531,6 +2533,23 @@ export default function AstanaMapPage() {
             }
           } catch {}
         }
+        // Fetch shared observations too, so detections from other scanners can appear here.
+        try {
+          const response = await fetch("/api/road-observations?limit=1500", {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const cloudItems = Array.isArray(payload?.observations) ? payload.observations : [];
+            const merged = new Map(observations.map(item => [String(item.id || item.source_id), item]));
+            for (const item of cloudItems) merged.set(String(item.id || item.source_id), item);
+            observations = Array.from(merged.values());
+          }
+        } catch (error) {
+          // The local map must continue working when the cloud is offline.
+          console.warn("[Astana Guide] Shared road observations unavailable", error);
+        }
         if (cancelled || !roadScanLayerRef.current) return;
         const group = roadScanLayerRef.current;
         const L = window.L;
@@ -2549,9 +2568,16 @@ export default function AstanaMapPage() {
           const marker = L.marker([lat, lng], { icon, zIndexOffset: 2600 });
           const when = new Date(item.capturedAt).toLocaleString("ru-RU");
           const accuracy = Number.isFinite(Number(item.accuracy)) ? Math.round(Number(item.accuracy)) + " м" : "неизвестна";
+          const aiDetected = item.source === "android-ai-detection";
+          const confidence = Number(item.confidence);
+          const confidenceLine = aiDetected && Number.isFinite(confidence)
+            ? '<div>Уверенность ИИ: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
+            : '';
+          const sourceLabel = aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
           const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
-            '</b><div>Отмечено с камеры телефона</div><div>GPS: ±' + escapeHtml(accuracy) +
-            '</div><small>' + escapeHtml(when) + '</small><p>Наблюдение сохранено локально и ещё не прошло автоматическую проверку.</p></div>';
+            '</b><div>' + escapeHtml(sourceLabel) + '</div>' + confidenceLine +
+            '<div>GPS: ±' + escapeHtml(accuracy) +
+            '</div><small>' + escapeHtml(when) + '</small><p>Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.</p></div>';
           marker.bindPopup(popup).addTo(group);
         }
       } catch (error) {
@@ -2561,6 +2587,14 @@ export default function AstanaMapPage() {
     void loadSavedRoadScanMarkers();
     return () => { cancelled = true; };
   }, [leafletReady, roadScanRevision]);
+
+  useEffect(() => {
+    if (!leafletReady) return;
+    const interval = window.setInterval(() => {
+      setRoadScanRevision(value => value + 1);
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [leafletReady]);
 
   useEffect(() => {
     if (!leafletReady || !mapRef.current || !roadObjectsLayerRef.current) return;
@@ -3612,6 +3646,7 @@ export default function AstanaMapPage() {
         <div className="astana-road-scan-gps">
           <span>GPS: {roadScanPosition ? `${roadScanPosition.lat.toFixed(6)}, ${roadScanPosition.lng.toFixed(6)}` : "ожидание координат"}</span>
           {roadScanPosition && <small>Точность ±{Math.round(roadScanPosition.accuracy || 0)} м</small>}
+          {nativeScannerAvailable && <small>Облако: {roadScanCloudStatus}</small>}
         </div>
         <div className="astana-road-scan-counters">
           <div><b>{roadScanFrameCount}</b><small>кадров сохранено</small></div>
@@ -3643,7 +3678,7 @@ export default function AstanaMapPage() {
             {roadScanBusy ? "Сохраняем…" : "Сохранить объект с GPS"}
           </button>
           <small>{nativeScannerAvailable
-            ? "Кадры сохраняются нативной камерой в фоновом сервисе Android. Отметки пока выбираются вручную; распознавание ИИ подключим отдельно."
+            ? "ИИ автоматически ищет светофоры и знаки STOP. При наличии интернета найденные точки отправляются на общую карту как предварительные отметки. Ограничения скорости и большинство остальных знаков эта модель пока не распознаёт."
             : "Сохраняется текущий кадр с координатами и отметкой. Пока объект указывается вручную — автоматическое распознавание ИИ ещё не подключено."}</small>
           {nativeScannerAvailable && <button type="button" onClick={() => window.AstanaScanner.openBatterySettings()}>Настроить работу в фоне</button>}
         </div>}
