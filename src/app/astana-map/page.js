@@ -950,6 +950,7 @@ export default function AstanaMapPage() {
   const roadScanPositionRef = useRef(null);
   const roadScanCaptureBusyRef = useRef(false);
   const roadScanNativeObsCountRef = useRef(-1);
+  const roadScanNativeScreenMatchCountRef = useRef(-1);
   const roadObjectsRef = useRef([]);
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
@@ -1068,8 +1069,13 @@ export default function AstanaMapPage() {
         setScreenScanActive(Boolean(native.screenScanActive));
         setScreenScanStatus(String(native.screenScanStatus || "Экран не сканируется"));
         setScreenScanLastMatch(String(native.screenScanLastMatch || ""));
-        setScreenScanMatchCount(Number(native.screenScanMatchCount || 0));
+        const screenMatchCount = Number(native.screenScanMatchCount || 0);
+        setScreenScanMatchCount(screenMatchCount);
         setScreenScanCloudStatus(String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
+        if (screenMatchCount !== roadScanNativeScreenMatchCountRef.current) {
+          roadScanNativeScreenMatchCountRef.current = screenMatchCount;
+          setRoadScanRevision(value => value + 1);
+        }
         if (native.lat != null && native.lng != null && Number.isFinite(Number(native.lat)) && Number.isFinite(Number(native.lng))) {
           const fix = {
             lat: Number(native.lat),
