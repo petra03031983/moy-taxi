@@ -563,6 +563,10 @@ public class ScreenCaptureService extends Service {
         try { return Instant.parse(value).toEpochMilli(); } catch (Exception ignored) { return 0L; }
     }
 
+    public static boolean isActive(Context context) {
+        return context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("active", false);
+    }
+
     public static void recordExternalError(Context context, String message) {
         context.getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putString("lastError", message == null ? "" : message)
