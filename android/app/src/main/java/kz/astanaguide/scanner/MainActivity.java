@@ -127,11 +127,11 @@ public class MainActivity extends Activity {
                 int frames = status.optInt("screenScanFrameCount", 0);
                 int savedIcons = status.optInt("screenScanIconSavedCount", 0);
                 String combined = "Кадров экрана: " + frames
-                    + "\\nГрафических наблюдений сохранено: " + savedIcons
-                    + "\\n\\n" + state
-                    + "\\n\\nЗначки: " + iconStatus
-                    + "\\n\\nОблако: " + cloudStatus
-                    + (lastMatch.isEmpty() ? "" : "\\n\\nПоследняя подсказка: " + lastMatch);
+                    + "\nГрафических наблюдений сохранено: " + savedIcons
+                    + "\n\\n" + state
+                    + "\n\\nЗначки: " + iconStatus
+                    + "\n\\nОблако: " + cloudStatus
+                    + (lastMatch.isEmpty() ? "" : "\n\\nПоследняя подсказка: " + lastMatch);
                 new AlertDialog.Builder(MainActivity.this)
                     .setTitle("Астана Гид — проверка сканера")
                     .setMessage(combined)
