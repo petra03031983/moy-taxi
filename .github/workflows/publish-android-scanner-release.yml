@@ -58,8 +58,8 @@ jobs:
             Пакет: kz.astanaguide.scanner.icons
             Версия приложения: 1.4.2 (debug build для проверки распознавания графических значков).
 
-            Скачайте файл Astana-Guide-Scanner-Screen-AI-v1.4.1.apk и откройте его на телефоне.
-          files: Astana-Guide-Scanner-Screen-AI-v1.4.1.apk
+            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.2.apk и откройте его на телефоне.
+          files: Astana-Guide-Scanner-Icons-AI-v1.4.2.apk
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
