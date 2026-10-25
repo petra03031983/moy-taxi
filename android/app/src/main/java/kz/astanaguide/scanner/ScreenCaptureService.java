@@ -29,13 +29,6 @@ import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
-import com.google.android.gms.tasks.Task;
-import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.text.Text;
-import com.google.mlkit.vision.text.TextRecognition;
-import com.google.mlkit.vision.text.TextRecognizer;
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -89,7 +82,7 @@ public class ScreenCaptureService extends Service {
     private int displayHeight;
     private int densityDpi;
     private NotificationManager notificationManager;
-    private TextRecognizer recognizer;
+    private RussianScreenOcr screenOcr;
     private final java.util.concurrent.ExecutorService cloudExecutor =
         java.util.concurrent.Executors.newSingleThreadExecutor();
 
@@ -101,7 +94,17 @@ public class ScreenCaptureService extends Service {
         captureThread = new HandlerThread("AstanaGuideScreenOCR");
         captureThread.start();
         captureHandler = new Handler(captureThread.getLooper());
-        recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        screenOcr = new RussianScreenOcr(this);
+        screenOcr.initialize((ready, message) -> {
+            if (ready) {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("status", "Русский OCR готов · экран анализируется")
+                    .apply();
+                updateNotification("Русский OCR готов · ищем подсказки");
+            } else {
+                setError("Модель русского OCR не загрузилась: " + (message == null ? "ошибка" : message));
+            }
+        });
     }
 
     @Override
@@ -240,14 +243,15 @@ public class ScreenCaptureService extends Service {
                 .putInt("framesCount", getSharedPreferences(PREFS, MODE_PRIVATE).getInt("framesCount", 0) + 1)
                 .putLong("lastFrameAt", System.currentTimeMillis())
                 .apply();
-            Task<Text> task = recognizer.process(InputImage.fromBitmap(frame, 0));
-            task.addOnSuccessListener(text -> processRecognizedText(text.getText()))
-                .addOnFailureListener(error ->
-                    setError("Распознавание текста экрана не удалось: " + safeMessage(error)))
-                .addOnCompleteListener(done -> {
-                    if (!frame.isRecycled()) frame.recycle();
-                    ocrInFlight = false;
-                });
+            screenOcr.recognize(frame, (recognizedText, errorMessage) -> {
+                if (errorMessage != null) {
+                    setError("Русский OCR не смог прочитать экран: " + errorMessage);
+                } else if (recognizedText != null) {
+                    processRecognizedText(recognizedText);
+                }
+                if (!frame.isRecycled()) frame.recycle();
+                ocrInFlight = false;
+            });
         } catch (Exception error) {
             if (!bitmap.isRecycled()) bitmap.recycle();
             ocrInFlight = false;
@@ -647,9 +651,9 @@ public class ScreenCaptureService extends Service {
             try { mediaProjection.stop(); } catch (Exception ignored) {}
             mediaProjection = null;
         }
-        if (recognizer != null) {
-            try { recognizer.close(); } catch (Exception ignored) {}
-            recognizer = null;
+        if (screenOcr != null) {
+            try { screenOcr.release(); } catch (Exception ignored) {}
+            screenOcr = null;
         }
         cloudExecutor.shutdown();
         if (captureThread != null) {
