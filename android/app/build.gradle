@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation 'org.tensorflow:tensorflow-lite-task-vision:0.4.4'
     implementation 'dev.ffmpegkit-maintained:tesseract-android:5.5.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
 }
 
 def roadDetectionModel = file("src/main/assets/lite-model_efficientdet_lite0_detection_metadata_1.tflite")
