@@ -1,4 +1,8 @@
 const TABLE = "road_object_observations";
+// The publishable key is intended for client use; table access is restricted by RLS.
+// Environment variables, when configured, override these non-secret connection values.
+const DEFAULT_SUPABASE_URL = "https://qyejqovxwniqlcsspmbc.supabase.co";
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
 const MAX_BATCH_SIZE = 40;
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_KIND_LABELS = {
@@ -7,8 +11,8 @@ const ALLOWED_KIND_LABELS = {
 };
 
 function getConfig() {
-  const base = (process.env.SUPABASE_URL || "").replace(/\\/+$/, "");
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+  const base = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\\/+$/, "");
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || DEFAULT_SUPABASE_PUBLISHABLE_KEY;
   if (!base || !key) return null;
   return { base, key };
 }
