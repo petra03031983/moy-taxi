@@ -9,6 +9,8 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -33,6 +35,11 @@ import android.os.SystemClock;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.tensorflow.lite.support.image.TensorImage;
+import org.tensorflow.lite.task.core.BaseOptions;
+import org.tensorflow.lite.task.processor.Category;
+import org.tensorflow.lite.task.vision.detector.Detection;
+import org.tensorflow.lite.task.vision.detector.ObjectDetector;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -45,6 +52,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Locale;
+import java.util.List;
+import java.util.UUID;
 
 public class RoadScanService extends Service {
     public static final String ACTION_START = "kz.astanaguide.scanner.START";
@@ -78,6 +87,13 @@ public class RoadScanService extends Service {
     private File metadataFile;
     private NotificationManager notificationManager;
     private PowerManager.WakeLock wakeLock;
+    private static final String ROAD_DETECTOR_MODEL = "lite-model_efficientdet_lite0_detection_metadata_1.tflite";
+    private static final long MAX_AUTO_GPS_AGE_MS = 25000L;
+    private static final float MAX_AUTO_GPS_ACCURACY_METERS = 35.0f;
+    private static final float AUTO_DETECTION_MIN_CONFIDENCE = 0.50f;
+    private volatile ObjectDetector roadObjectDetector;
+    private boolean detectorInitializationAttempted = false;
+    private final Object detectorLock = new Object();
     private final Runnable captureLoop = new Runnable() {
         @Override public void run() {
             if (!scanning) return;
@@ -429,8 +445,166 @@ public class RoadScanService extends Service {
                 .putString("observations", list.toString());
         }
         editor.apply();
+        // Local inference is deliberately limited to classes the bundled COCO model knows:
+        // traffic lights and STOP signs. Speed-limit signs require a separate trained model.
+        detectAndSaveRoadObjects(bytes, id, point, file);
         pruneOldFrames();
         updateNotification("Сканирование работает · кадров " + count);
+    }
+
+    private ObjectDetector getRoadObjectDetector() throws Exception {
+        if (roadObjectDetector != null) return roadObjectDetector;
+        synchronized (detectorLock) {
+            if (roadObjectDetector != null) return roadObjectDetector;
+            if (detectorInitializationAttempted) {
+                throw new IllegalStateException("Модель ИИ не смогла загрузиться.");
+            }
+            detectorInitializationAttempted = true;
+            ObjectDetector.ObjectDetectorOptions options = ObjectDetector.ObjectDetectorOptions.builder()
+                .setBaseOptions(BaseOptions.builder().setNumThreads(2).build())
+                .setScoreThreshold(AUTO_DETECTION_MIN_CONFIDENCE)
+                .setMaxResults(10)
+                .setLabelAllowList(Arrays.asList("traffic light", "stop sign"))
+                .build();
+            roadObjectDetector = ObjectDetector.createFromFileAndOptions(this, ROAD_DETECTOR_MODEL, options);
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("detectorReady", true)
+                .putString("detectorStatus", "ИИ готов: светофоры и знаки STOP")
+                .apply();
+            return roadObjectDetector;
+        }
+    }
+
+    private void detectAndSaveRoadObjects(byte[] jpegBytes, String frameId, Location point, File frameFile) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (point == null || !point.hasAccuracy() ||
+            System.currentTimeMillis() - point.getTime() < 0L ||
+            System.currentTimeMillis() - point.getTime() > MAX_AUTO_GPS_AGE_MS ||
+            point.getAccuracy() > MAX_AUTO_GPS_ACCURACY_METERS) {
+            prefs.edit().putString("detectorStatus", "ИИ ждёт свежий GPS с точностью до 35 м.").apply();
+            return;
+        }
+
+        Bitmap bitmap = null;
+        try {
+            bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.length);
+            if (bitmap == null) {
+                prefs.edit().putString("detectorStatus", "ИИ пропустил кадр: не удалось прочитать изображение.").apply();
+                return;
+            }
+            ObjectDetector detector = getRoadObjectDetector();
+            List<Detection> detections = detector.detect(TensorImage.fromBitmap(bitmap));
+            int saved = 0;
+            int seen = 0;
+            String lastLabel = "";
+            float bestConfidence = 0f;
+            for (Detection detection : detections) {
+                for (Category category : detection.getCategories()) {
+                    String label = category.getLabel() == null ? "" : category.getLabel().trim().toLowerCase(Locale.US);
+                    float confidence = category.getScore();
+                    if (confidence < AUTO_DETECTION_MIN_CONFIDENCE) continue;
+                    String kind;
+                    if ("traffic light".equals(label)) {
+                        kind = "traffic-light";
+                    } else if ("stop sign".equals(label)) {
+                        kind = "traffic-sign";
+                    } else {
+                        continue;
+                    }
+                    seen++;
+                    if (confidence > bestConfidence) {
+                        bestConfidence = confidence;
+                        lastLabel = label;
+                    }
+                    if (appendAutoObservation(kind, label, confidence, frameId, frameFile, point)) saved++;
+                    break;
+                }
+            }
+            prefs.edit()
+                .putBoolean("detectorReady", true)
+                .putLong("detectorLastRunAt", System.currentTimeMillis())
+                .putString("detectorStatus", saved > 0
+                    ? "ИИ добавил " + saved + " отмет. на карту: " + lastLabel
+                    : seen > 0
+                        ? "ИИ обнаружил объект рядом с уже сохранённой отметкой."
+                        : "ИИ работает: светофор или знак STOP в кадре не найден.")
+                .apply();
+        } catch (Exception error) {
+            String message = error.getMessage() == null ? "неизвестная ошибка" : error.getMessage();
+            if (message.length() > 150) message = message.substring(0, 150);
+            prefs.edit()
+                .putBoolean("detectorReady", roadObjectDetector != null)
+                .putString("detectorStatus", "ИИ не смог обработать кадр: " + message)
+                .apply();
+        } finally {
+            if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        }
+    }
+
+    private boolean appendAutoObservation(String kind, String label, float confidence,
+                                         String frameId, File frameFile, Location point) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        JSONArray list;
+        try {
+            list = new JSONArray(prefs.getString("observations", "[]"));
+        } catch (Exception error) {
+            list = new JSONArray();
+        }
+        long now = System.currentTimeMillis();
+        for (int i = list.length() - 1; i >= 0; i--) {
+            JSONObject prior = list.optJSONObject(i);
+            if (prior == null || !kind.equals(prior.optString("kind"))) continue;
+            double priorLat = prior.optDouble("lat", Double.NaN);
+            double priorLng = prior.optDouble("lng", Double.NaN);
+            if (!Double.isFinite(priorLat) || !Double.isFinite(priorLng)) continue;
+            long priorAt = 0L;
+            try { priorAt = Instant.parse(prior.optString("capturedAt")).toEpochMilli(); }
+            catch (Exception ignored) {}
+            if (priorAt > 0L && now - priorAt >= 0L && now - priorAt < 10L * 60L * 1000L &&
+                distanceMeters(point.getLatitude(), point.getLongitude(), priorLat, priorLng) < 20.0) {
+                return false;
+            }
+        }
+
+        JSONObject observation = new JSONObject();
+        try {
+            observation.put("id", "ai_" + UUID.randomUUID());
+            observation.put("capturedAt", Instant.now().toString());
+            observation.put("lat", point.getLatitude());
+            observation.put("lng", point.getLongitude());
+            observation.put("accuracy", point.getAccuracy());
+            observation.put("heading", point.hasBearing() ? point.getBearing() : JSONObject.NULL);
+            observation.put("speedMps", point.hasSpeed() ? point.getSpeed() : JSONObject.NULL);
+            observation.put("kind", kind);
+            observation.put("detectedLabel", label);
+            observation.put("confidence", confidence);
+            observation.put("model", "EfficientDet-Lite0-COCO");
+            observation.put("frameId", frameId);
+            observation.put("framePath", frameFile.getAbsolutePath());
+            observation.put("reviewStatus", "needs-review");
+            observation.put("source", "android-ai-detection");
+            observation.put("syncStatus", "local-only");
+        } catch (Exception ignored) {}
+        list.put(observation);
+        while (list.length() > 500) list.remove(0);
+        prefs.edit()
+            .putString("observations", list.toString())
+            .putInt("observationsCount", prefs.getInt("observationsCount", 0) + 1)
+            .putInt("autoDetectionsCount", prefs.getInt("autoDetectionsCount", 0) + 1)
+            .putString("detectorLastLabel", label)
+            .putLong("detectorLastObservationAt", now)
+            .apply();
+        return true;
+    }
+
+    private static double distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+        double earth = 6371000.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLng / 2.0) * Math.sin(dLng / 2.0);
+        return earth * 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0.0, 1.0 - a)));
     }
 
     private void requestMarkedCapture(String kind) {
@@ -500,6 +674,10 @@ public class RoadScanService extends Service {
         stopScanningInternal();
         updateNotification("Сканирование остановлено");
         if (notificationManager != null) notificationManager.cancel(NOTIFICATION_ID);
+        if (roadObjectDetector != null) {
+            try { roadObjectDetector.close(); } catch (Exception ignored) {}
+            roadObjectDetector = null;
+        }
         if (cameraThread != null) {
             cameraThread.quitSafely();
             try { cameraThread.join(1000); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
@@ -571,6 +749,11 @@ public class RoadScanService extends Service {
             result.put("active", prefs.getBoolean("active", false));
             result.put("framesCount", prefs.getInt("framesCount", 0));
             result.put("observationsCount", prefs.getInt("observationsCount", 0));
+            result.put("autoDetectionsCount", prefs.getInt("autoDetectionsCount", 0));
+            result.put("detectorReady", prefs.getBoolean("detectorReady", false));
+            result.put("detectorStatus", prefs.getString("detectorStatus", "ИИ ещё не запускался"));
+            result.put("detectorLastLabel", prefs.getString("detectorLastLabel", ""));
+            result.put("detectorLastRunAt", prefs.getLong("detectorLastRunAt", 0));
             String latValue = prefs.getString("lat", "");
             String lngValue = prefs.getString("lng", "");
             result.put("lat", latValue.isEmpty() ? JSONObject.NULL : Double.parseDouble(latValue));
