@@ -104,6 +104,7 @@ public class ScreenCaptureService extends Service {
             } else {
                 setError("Модель русского OCR не загрузилась: " + (message == null ? "ошибка" : message));
             }
+            return kotlin.Unit.INSTANCE;
         });
     }
 
@@ -251,6 +252,7 @@ public class ScreenCaptureService extends Service {
                 }
                 if (!frame.isRecycled()) frame.recycle();
                 ocrInFlight = false;
+                return kotlin.Unit.INSTANCE;
             });
         } catch (Exception error) {
             if (!bitmap.isRecycled()) bitmap.recycle();
