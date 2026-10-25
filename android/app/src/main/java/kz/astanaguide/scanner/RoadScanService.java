@@ -39,6 +39,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
@@ -63,7 +64,7 @@ public class RoadScanService extends Service {
     private CameraCaptureSession captureSession;
     private ImageReader imageReader;
     private LocationManager locationManager;
-    private Location lastLocation;
+    private volatile Location lastLocation;
     private LocationListener locationListener;
     private volatile boolean scanning = false;
     private boolean captureInFlight = false;
@@ -119,6 +120,8 @@ public class RoadScanService extends Service {
                 requestMarkedCapture(kind == null ? "unknown" : kind);
             } else {
                 setLastError(this, "Сканирование остановлено. Запусти его снова.");
+                stopSelf();
+                return START_NOT_STICKY;
             }
         }
         return START_STICKY;
@@ -364,7 +367,7 @@ public class RoadScanService extends Service {
         String id = file.getName().replace(".jpg", "");
         try {
             metadata.put("id", id);
-            metadata.put("capturedAt", new Date().toISOString());
+            metadata.put("capturedAt", Instant.now().toString());
             metadata.put("lat", point == null ? JSONObject.NULL : point.getLatitude());
             metadata.put("lng", point == null ? JSONObject.NULL : point.getLongitude());
             metadata.put("accuracy", point == null ? JSONObject.NULL : point.getAccuracy());
@@ -389,7 +392,8 @@ public class RoadScanService extends Service {
             .putLong("lastCaptureAt", System.currentTimeMillis())
             .putString("lastError", "");
         if (point != null) {
-            editor.putDoubleCompat("lat", point.getLatitude());
+            editor.putString("lat", Double.toString(point.getLatitude()))
+                .putString("lng", Double.toString(point.getLongitude()));
         }
         if (kind != null) {
             JSONArray list;
@@ -517,7 +521,7 @@ public class RoadScanService extends Service {
             .setOngoing(scanning)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(new Notification.Action.Builder(null, "Остановить", stopPending).build());
+            .addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel, "Остановить", stopPending).build());
         return builder.build();
     }
 
@@ -553,8 +557,10 @@ public class RoadScanService extends Service {
             result.put("active", prefs.getBoolean("active", false));
             result.put("framesCount", prefs.getInt("framesCount", 0));
             result.put("observationsCount", prefs.getInt("observationsCount", 0));
-            result.put("lat", prefs.contains("lat") ? prefs.getFloat("lat", 0f) : JSONObject.NULL);
-            result.put("lng", prefs.contains("lng") ? prefs.getFloat("lng", 0f) : JSONObject.NULL);
+            String latValue = prefs.getString("lat", "");
+            String lngValue = prefs.getString("lng", "");
+            result.put("lat", latValue.isEmpty() ? JSONObject.NULL : Double.parseDouble(latValue));
+            result.put("lng", lngValue.isEmpty() ? JSONObject.NULL : Double.parseDouble(lngValue));
             result.put("accuracy", prefs.contains("accuracy") ? prefs.getFloat("accuracy", 0f) : JSONObject.NULL);
             result.put("gpsAt", prefs.getLong("gpsAt", 0));
             result.put("lastCaptureAt", prefs.getLong("lastCaptureAt", 0));
@@ -565,5 +571,4 @@ public class RoadScanService extends Service {
         return result.toString();
     }
 
-    private static android.util.Size chooseSizePlaceholder() { return new android.util.Size(640, 480); }
 }
