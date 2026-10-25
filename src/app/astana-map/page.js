@@ -2641,7 +2641,11 @@ export default function AstanaMapPage() {
             : '';
           const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
             '</b><div>' + escapeHtml(sourceLabel) + '</div>' + evidenceText + confidenceLine +
-            (screenEvidence ? '<div>Положение рассчитано примерно по GPS и расстоянию</div>' : '<div>GPS: ±' + escapeHtml(accuracy) + '</div>') +
+            (screenEvidence
+              ? (String(item.sourceText || '').toLowerCase().includes('near vehicle marker')
+                ? '<div>Графический значок приблизился к маркеру автомобиля; координаты по GPS приблизительные</div>'
+                : '<div>Положение рассчитано примерно по GPS и расстоянию</div>')
+              : '<div>GPS: ±' + escapeHtml(accuracy) + '</div>') +
             '<small>' + escapeHtml(when) + '</small><p>' +
             (screenEvidence
               ? 'Это приблизительная отметка, полученная с экрана навигации. Она требует ручной проверки и не является подтверждённым объектом.'
