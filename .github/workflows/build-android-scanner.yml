@@ -3,7 +3,7 @@ name: Build Astana Guide Scanner APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/astana-guide-auto-road-detection]
+    branches: [main, feature/astana-guide-auto-road-detection, feature/astana-guide-screen-capture]
     paths:
       - "android/**"
       - ".github/workflows/build-android-scanner.yml"

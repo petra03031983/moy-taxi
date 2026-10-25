@@ -950,6 +950,7 @@ export default function AstanaMapPage() {
   const roadScanPositionRef = useRef(null);
   const roadScanCaptureBusyRef = useRef(false);
   const roadScanNativeObsCountRef = useRef(-1);
+  const roadScanNativeScreenMatchCountRef = useRef(-1);
   const roadObjectsRef = useRef([]);
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
@@ -1012,6 +1013,11 @@ export default function AstanaMapPage() {
   const [roadScanStatus, setRoadScanStatus] = useState("Камера выключена");
   const [roadScanError, setRoadScanError] = useState("");
   const [roadScanCloudStatus, setRoadScanCloudStatus] = useState("Общая карта ещё не синхронизирована");
+  const [screenScanActive, setScreenScanActive] = useState(false);
+  const [screenScanStatus, setScreenScanStatus] = useState("Экран не сканируется");
+  const [screenScanLastMatch, setScreenScanLastMatch] = useState("");
+  const [screenScanMatchCount, setScreenScanMatchCount] = useState(0);
+  const [screenScanCloudStatus, setScreenScanCloudStatus] = useState("Экран ещё не синхронизирован");
   const [roadScanPosition, setRoadScanPosition] = useState(null);
   const [roadScanFrameCount, setRoadScanFrameCount] = useState(0);
   const [roadScanObservationCount, setRoadScanObservationCount] = useState(0);
@@ -1060,6 +1066,16 @@ export default function AstanaMapPage() {
         setRoadScanFrameCount(Number(native.framesCount || 0));
         setRoadScanObservationCount(Number(native.observationsCount || observations.length || 0));
         setRoadScanCloudStatus(String(native.cloudSyncStatus || "Проверяем синхронизацию…"));
+        setScreenScanActive(Boolean(native.screenScanActive));
+        setScreenScanStatus(String(native.screenScanStatus || "Экран не сканируется"));
+        setScreenScanLastMatch(String(native.screenScanLastMatch || ""));
+        const screenMatchCount = Number(native.screenScanMatchCount || 0);
+        setScreenScanMatchCount(screenMatchCount);
+        setScreenScanCloudStatus(String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
+        if (screenMatchCount !== roadScanNativeScreenMatchCountRef.current) {
+          roadScanNativeScreenMatchCountRef.current = screenMatchCount;
+          setRoadScanRevision(value => value + 1);
+        }
         if (native.lat != null && native.lng != null && Number.isFinite(Number(native.lat)) && Number.isFinite(Number(native.lng))) {
           const fix = {
             lat: Number(native.lat),
@@ -2521,19 +2537,30 @@ export default function AstanaMapPage() {
         if (window.AstanaScanner && typeof window.AstanaScanner.getStatus === "function") {
           try {
             const native = JSON.parse(window.AstanaScanner.getStatus() || "{}");
+            const merged = new Map(observations.map(item => [String(item.id || item.source_id), item]));
             if (Array.isArray(native.observations)) {
-              const nativeItems = native.observations.map(item => ({
-                ...item,
-                accuracy: Number(item.accuracy),
-                source: "android-foreground-camera",
-              }));
-              const merged = new Map(observations.map(item => [String(item.id), item]));
-              for (const item of nativeItems) merged.set(String(item.id), item);
-              observations = Array.from(merged.values());
+              for (const item of native.observations) {
+                merged.set(String(item.id), {
+                  ...item,
+                  accuracy: Number(item.accuracy),
+                  source: "android-foreground-camera",
+                });
+              }
             }
+            if (Array.isArray(native.screenScanEvidence)) {
+              for (const item of native.screenScanEvidence) {
+                merged.set(String(item.id || item.source_id), {
+                  ...item,
+                  lat: item.estimatedLat == null ? null : Number(item.estimatedLat),
+                  lng: item.estimatedLng == null ? null : Number(item.estimatedLng),
+                  source: "screen-evidence",
+                });
+              }
+            }
+            observations = Array.from(merged.values());
           } catch {}
         }
-        // Fetch shared observations too, so detections from other scanners can appear here.
+        // Fetch shared AI detections from camera scanning.
         try {
           const response = await fetch("/api/road-observations?limit=1500", {
             headers: { Accept: "application/json" },
@@ -2547,20 +2574,53 @@ export default function AstanaMapPage() {
             observations = Array.from(merged.values());
           }
         } catch (error) {
-          // The local map must continue working when the cloud is offline.
           console.warn("[Astana Guide] Shared road observations unavailable", error);
+        }
+        // Read screen OCR evidence too. Only distance-based approximate locations become pins.
+        try {
+          const response = await fetch("/api/road-screen-evidence?limit=800", {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const items = Array.isArray(payload?.observations) ? payload.observations : [];
+            const merged = new Map(observations.map(item => [String(item.id || item.source_id), item]));
+            for (const item of items) {
+              merged.set(String(item.id || item.source_id), {
+                ...item,
+                lat: item.estimatedLat == null ? null : Number(item.estimatedLat),
+                lng: item.estimatedLng == null ? null : Number(item.estimatedLng),
+                source: "screen-evidence",
+              });
+            }
+            observations = Array.from(merged.values());
+          }
+        } catch (error) {
+          console.warn("[Astana Guide] Shared screen evidence unavailable", error);
         }
         if (cancelled || !roadScanLayerRef.current) return;
         const group = roadScanLayerRef.current;
         const L = window.L;
         group.clearLayers();
         for (const item of observations) {
-          const lat = Number(item.lat);
-          const lng = Number(item.lng);
+          const screenEvidence = item.source === "screen-evidence";
+          if (screenEvidence && (item.estimatedLat == null || item.estimatedLng == null)) continue;
+          const lat = Number(screenEvidence ? item.estimatedLat : item.lat);
+          const lng = Number(screenEvidence ? item.estimatedLng : item.lng);
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-          const kind = ROAD_SCAN_KINDS.find(option => option.value === item.kind) || ROAD_SCAN_KINDS[ROAD_SCAN_KINDS.length - 1];
+          const screenKinds = {
+            "speed-camera": { label: "Возможная камера из навигации", icon: "📷" },
+            "traffic-light": { label: "Возможный светофор из навигации", icon: "🚦" },
+            "speed-limit": { label: "Возможное ограничение скорости", icon: "🔵" },
+            "roadwork": { label: "Возможные дорожные работы", icon: "🚧" },
+            "road-hazard": { label: "Возможная дорожная опасность", icon: "⚠️" },
+          };
+          const kind = screenEvidence
+            ? (screenKinds[item.kind] || { label: "Подсказка с экрана", icon: "📍" })
+            : (ROAD_SCAN_KINDS.find(option => option.value === item.kind) || ROAD_SCAN_KINDS[ROAD_SCAN_KINDS.length - 1]);
           const icon = L.divIcon({
-            className: "astana-road-scan-map-icon",
+            className: "astana-road-scan-map-icon" + (screenEvidence ? " astana-road-scan-screen-icon" : ""),
             html: '<span>' + escapeHtml(kind.icon) + '</span>',
             iconSize: [38, 38],
             iconAnchor: [19, 19],
@@ -2570,14 +2630,23 @@ export default function AstanaMapPage() {
           const accuracy = Number.isFinite(Number(item.accuracy)) ? Math.round(Number(item.accuracy)) + " м" : "неизвестна";
           const aiDetected = item.source === "android-ai-detection";
           const confidence = Number(item.confidence);
-          const confidenceLine = aiDetected && Number.isFinite(confidence)
-            ? '<div>Уверенность ИИ: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
+          const confidenceLine = Number.isFinite(confidence) && (aiDetected || screenEvidence)
+            ? '<div>Уверенность: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
             : '';
-          const sourceLabel = aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
+          const sourceLabel = screenEvidence
+            ? "Текстовое предупреждение на экране Яндекс/2ГИС"
+            : aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
+          const evidenceText = screenEvidence && item.sourceText
+            ? '<div>Текст: ' + escapeHtml(item.sourceText) + '</div>'
+            : '';
           const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
-            '</b><div>' + escapeHtml(sourceLabel) + '</div>' + confidenceLine +
-            '<div>GPS: ±' + escapeHtml(accuracy) +
-            '</div><small>' + escapeHtml(when) + '</small><p>Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.</p></div>';
+            '</b><div>' + escapeHtml(sourceLabel) + '</div>' + evidenceText + confidenceLine +
+            (screenEvidence ? '<div>Положение рассчитано примерно по GPS и расстоянию</div>' : '<div>GPS: ±' + escapeHtml(accuracy) + '</div>') +
+            '<small>' + escapeHtml(when) + '</small><p>' +
+            (screenEvidence
+              ? 'Это приблизительная отметка, полученная с экрана навигации. Она требует ручной проверки и не является подтверждённым объектом.'
+              : 'Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.') +
+            '</p></div>';
           marker.bindPopup(popup).addTo(group);
         }
       } catch (error) {
@@ -3682,6 +3751,29 @@ export default function AstanaMapPage() {
             : "Сохраняется текущий кадр с координатами и отметкой. Пока объект указывается вручную — автоматическое распознавание ИИ ещё не подключено."}</small>
           {nativeScannerAvailable && <button type="button" onClick={() => window.AstanaScanner.openBatterySettings()}>Настроить работу в фоне</button>}
         </div>}
+        <div className="astana-road-scan-mark-form">
+          <label>Экран навигатора (Яндекс / 2ГИС)</label>
+          <div className="astana-road-scan-actions">
+            {!screenScanActive
+              ? <button type="button" className="primary" onClick={() => {
+                  if (window.AstanaScanner?.startScreenScan) {
+                    setScreenScanStatus("Ожидаем системное разрешение Android…");
+                    window.AstanaScanner.startScreenScan();
+                  } else {
+                    setRoadScanError("Анализ экрана доступен в установленном Android-сканере.");
+                  }
+                }}>Сканировать экран</button>
+              : <button type="button" className="stop" onClick={() => {
+                  window.AstanaScanner?.stopScreenScan?.();
+                  setScreenScanActive(false);
+                  setScreenScanStatus("Останавливаем анализ экрана…");
+                }}>Остановить экран</button>}
+          </div>
+          <small><b>{screenScanActive ? "● " : ""}{screenScanStatus}</b></small>
+          <small>Разреши захват экрана в системном окне. Если Android предложит выбор приложения, выбери Яндекс Навигатор или 2ГИС. Сохраняются только строки с дорожными подсказками — не снимки экрана и не весь текст.</small>
+          {screenScanLastMatch && <small>Последняя подсказка: {screenScanLastMatch}</small>}
+          <small>Найдено подсказок: {screenScanMatchCount}. Облако: {screenScanCloudStatus}</small>
+        </div>
         {roadScanError && <div className="astana-road-scan-error" role="status">{roadScanError}</div>}
         <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры хранятся в памяти этого телефона и не отправляются на сервер.</p>
       </section>}

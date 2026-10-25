@@ -1,9 +1,12 @@
 plugins {
     id "com.android.application"
+    id "org.jetbrains.kotlin.android"
 }
 
 dependencies {
     implementation 'org.tensorflow:tensorflow-lite-task-vision:0.4.4'
+    implementation 'dev.ffmpegkit-maintained:tesseract-android:5.5.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
 }
 
 def roadDetectionModel = file("src/main/assets/lite-model_efficientdet_lite0_detection_metadata_1.tflite")
@@ -39,8 +42,41 @@ tasks.register("downloadRoadDetectionModel") {
     }
 }
 
+def russianOcrModel = file("src/main/assets/tessdata/rus.traineddata")
+def russianOcrModelUrl = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata"
+
+tasks.register("downloadRussianOcrModel") {
+    outputs.file(russianOcrModel)
+    outputs.upToDateWhen {
+        russianOcrModel.exists() && russianOcrModel.length() > 1000000L
+    }
+    doLast {
+        if (!russianOcrModel.exists() || russianOcrModel.length() <= 1000000L) {
+            russianOcrModel.parentFile.mkdirs()
+            def temporaryModel = new File(russianOcrModel.parentFile, russianOcrModel.name + ".download")
+            temporaryModel.delete()
+            def connection = new URL(russianOcrModelUrl).openConnection()
+            connection.connectTimeout = 20000
+            connection.readTimeout = 90000
+            connection.setRequestProperty("User-Agent", "AstanaGuideAndroidBuild/1.0")
+            connection.inputStream.withCloseable { input ->
+                temporaryModel.withOutputStream { output -> output << input }
+            }
+            if (!temporaryModel.exists() || temporaryModel.length() <= 1000000L) {
+                temporaryModel.delete()
+                throw new GradleException("Russian OCR model download failed or returned an invalid file.")
+            }
+            if (russianOcrModel.exists()) russianOcrModel.delete()
+            if (!temporaryModel.renameTo(russianOcrModel)) {
+                java.nio.file.Files.move(temporaryModel.toPath(), russianOcrModel.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+    }
+}
+
 tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn("downloadRoadDetectionModel")
+    dependsOn("downloadRoadDetectionModel", "downloadRussianOcrModel")
 }
 
 android {
@@ -51,8 +87,8 @@ android {
         applicationId "kz.astanaguide.scanner"
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 4
+        versionName "1.3.0"
     }
 
     compileOptions {

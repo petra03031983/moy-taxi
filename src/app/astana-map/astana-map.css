@@ -502,6 +502,7 @@
 .astana-road-scan-safety{margin:11px 0 0;color:#aebfca;font-size:11px;line-height:1.45}
 .astana-road-scan-map-icon{background:transparent;border:0}
 .astana-road-scan-map-icon span{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:2px solid #fff;border-radius:50%;background:#127f4a;box-shadow:0 2px 9px #0005;font-size:19px}
+.astana-road-scan-screen-icon span{border-style:dashed;background:#80551a;border-color:#ffe5a3}
 .astana-road-scan-popup{max-width:220px;color:#18212a;font-size:12px;line-height:1.4}
 .astana-road-scan-popup b{font-size:14px}
 .astana-road-scan-popup small{color:#64717a}

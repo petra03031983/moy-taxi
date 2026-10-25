@@ -3,6 +3,7 @@ package kz.astanaguide.scanner;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.media.projection.MediaProjectionManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -28,10 +29,13 @@ import java.util.List;
 
 public class MainActivity extends Activity {
     private static final int SCAN_PERMISSION_REQUEST = 4107;
+    private static final int SCREEN_SCAN_PERMISSION_REQUEST = 4108;
+    private static final int MEDIA_PROJECTION_REQUEST = 4109;
     private static final String MAP_URL = "https://astana-map-roads.vercel.app/astana-map?nativeScanner=1";
     private static final String MAP_HOST = "astana-map-roads.vercel.app";
     private WebView webView;
     private boolean pendingStart = false;
+    private boolean pendingScreenCapture = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -130,9 +134,98 @@ public class MainActivity extends Activity {
         stopService(new Intent(this, RoadScanService.class));
     }
 
+    private void requestScreenCapturePermission() {
+        List<String> missing = new ArrayList<>();
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        if (!missing.isEmpty()) {
+            pendingScreenCapture = true;
+            requestPermissions(missing.toArray(new String[0]), SCREEN_SCAN_PERMISSION_REQUEST);
+            return;
+        }
+        launchScreenCapturePrompt();
+    }
+
+    private void launchScreenCapturePrompt() {
+        try {
+            MediaProjectionManager manager =
+                (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            Intent captureIntent = manager.createScreenCaptureIntent();
+            startActivityForResult(captureIntent, MEDIA_PROJECTION_REQUEST);
+        } catch (RuntimeException error) {
+            pendingScreenCapture = false;
+            Toast.makeText(this, "Android не смог открыть разрешение на захват экрана.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void startScreenCaptureService(int resultCode, Intent data) {
+        pendingScreenCapture = false;
+        Intent service = new Intent(this, ScreenCaptureService.class);
+        service.setAction(ScreenCaptureService.ACTION_START);
+        service.putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode);
+        service.putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
+            else startService(service);
+            Toast.makeText(this,
+                "Астана Гид: экран разрешён. Переключись на Яндекс Навигатор или 2ГИС.",
+                Toast.LENGTH_LONG).show();
+        } catch (RuntimeException error) {
+            ScreenCaptureService.recordExternalError(this,
+                "Не удалось запустить анализ экрана: " + (error.getMessage() == null ? "" : error.getMessage()));
+            Toast.makeText(this, "Не удалось запустить анализ экрана.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void stopScreenCaptureService() {
+        Intent stop = new Intent(this, ScreenCaptureService.class);
+        stop.setAction(ScreenCaptureService.ACTION_STOP);
+        try {
+            startService(stop);
+        } catch (RuntimeException ignored) {
+            stopService(new Intent(this, ScreenCaptureService.class));
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != MEDIA_PROJECTION_REQUEST) return;
+        if (resultCode == RESULT_OK && data != null) {
+            startScreenCaptureService(resultCode, data);
+        } else {
+            pendingScreenCapture = false;
+            ScreenCaptureService.recordExternalError(this,
+                "Захват экрана отменён. Для чтения подсказок нужно подтвердить системный запрос.");
+            Toast.makeText(this, "Захват экрана отменён.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == SCREEN_SCAN_PERMISSION_REQUEST && pendingScreenCapture) {
+            boolean allowed = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) allowed = false;
+            }
+            if (allowed) {
+                launchScreenCapturePrompt();
+            } else {
+                pendingScreenCapture = false;
+                ScreenCaptureService.recordExternalError(this,
+                    "Для анализа экрана нужны разрешения на GPS и уведомления.");
+                Toast.makeText(this, "Разреши GPS и уведомления, чтобы включить анализ экрана.", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (requestCode != SCAN_PERMISSION_REQUEST || !pendingStart) return;
         boolean allowed = true;
         for (int result : grantResults) {
@@ -163,8 +256,29 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void startScreenScan() {
+            runOnUi(() -> requestScreenCapturePermission());
+        }
+
+        @JavascriptInterface
+        public void stopScreenScan() {
+            runOnUi(() -> stopScreenCaptureService());
+        }
+
+        @JavascriptInterface
         public String getStatus() {
-            return RoadScanService.getStatusJson(MainActivity.this);
+            try {
+                JSONObject result = new JSONObject(RoadScanService.getStatusJson(MainActivity.this));
+                JSONObject screen = new JSONObject(ScreenCaptureService.getStatusJson(MainActivity.this));
+                java.util.Iterator<String> keys = screen.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    result.put(key, screen.opt(key));
+                }
+                return result.toString();
+            } catch (Exception error) {
+                return RoadScanService.getStatusJson(MainActivity.this);
+            }
         }
 
         @JavascriptInterface
