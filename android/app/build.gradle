@@ -87,8 +87,8 @@ android {
         applicationId "kz.astanaguide.scanner"
         minSdk 26
         targetSdk 34
-        versionCode 8
-        versionName "1.4.3"
+        versionCode 9
+        versionName "1.4.4"
     }
 
     compileOptions {
@@ -98,7 +98,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix ".icons143"
+            applicationIdSuffix ".icons144"
             versionNameSuffix "-debug"
         }
         release {

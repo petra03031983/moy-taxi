@@ -677,7 +677,10 @@ public class ScreenCaptureService extends Service {
                 body.put("observed_lat", item.opt("observedLat"));
                 body.put("observed_lng", item.opt("observedLng"));
                 body.put("accuracy_m", item.opt("accuracy"));
-                body.put("gps_captured_at", item.opt("gpsAt"));
+                long gpsTimeMs = item.optLong("gpsAt", 0L);
+                body.put("gps_captured_at", gpsTimeMs > 0L
+                    ? Instant.ofEpochMilli(gpsTimeMs).toString()
+                    : JSONObject.NULL);
                 body.put("distance_ahead_m", item.opt("distanceAheadM"));
                 body.put("estimated_lat", item.opt("estimatedLat"));
                 body.put("estimated_lng", item.opt("estimatedLng"));
