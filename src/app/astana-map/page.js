@@ -2549,9 +2549,16 @@ export default function AstanaMapPage() {
           const marker = L.marker([lat, lng], { icon, zIndexOffset: 2600 });
           const when = new Date(item.capturedAt).toLocaleString("ru-RU");
           const accuracy = Number.isFinite(Number(item.accuracy)) ? Math.round(Number(item.accuracy)) + " м" : "неизвестна";
+          const aiDetected = item.source === "android-ai-detection";
+          const confidence = Number(item.confidence);
+          const confidenceLine = aiDetected && Number.isFinite(confidence)
+            ? '<div>Уверенность ИИ: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
+            : '';
+          const sourceLabel = aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
           const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
-            '</b><div>Отмечено с камеры телефона</div><div>GPS: ±' + escapeHtml(accuracy) +
-            '</div><small>' + escapeHtml(when) + '</small><p>Наблюдение сохранено локально и ещё не прошло автоматическую проверку.</p></div>';
+            '</b><div>' + escapeHtml(sourceLabel) + '</div>' + confidenceLine +
+            '<div>GPS: ±' + escapeHtml(accuracy) +
+            '</div><small>' + escapeHtml(when) + '</small><p>Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.</p></div>';
           marker.bindPopup(popup).addTo(group);
         }
       } catch (error) {
@@ -3643,7 +3650,7 @@ export default function AstanaMapPage() {
             {roadScanBusy ? "Сохраняем…" : "Сохранить объект с GPS"}
           </button>
           <small>{nativeScannerAvailable
-            ? "Кадры сохраняются нативной камерой в фоновом сервисе Android. Отметки пока выбираются вручную; распознавание ИИ подключим отдельно."
+            ? "ИИ на телефоне автоматически ищет светофоры и знаки STOP. Найденные точки добавляются на карту как предварительные отметки. Ограничения скорости и большинство остальных знаков эта модель пока не распознаёт."
             : "Сохраняется текущий кадр с координатами и отметкой. Пока объект указывается вручную — автоматическое распознавание ИИ ещё не подключено."}</small>
           {nativeScannerAvailable && <button type="button" onClick={() => window.AstanaScanner.openBatterySettings()}>Настроить работу в фоне</button>}
         </div>}
