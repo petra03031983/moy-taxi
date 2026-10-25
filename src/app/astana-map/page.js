@@ -2633,8 +2633,9 @@ export default function AstanaMapPage() {
           const confidenceLine = Number.isFinite(confidence) && (aiDetected || screenEvidence)
             ? '<div>Уверенность: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
             : '';
+          const iconEvidence = screenEvidence && String(item.sourceText || "").toLowerCase().includes("near vehicle marker");
           const sourceLabel = screenEvidence
-            ? "Текстовое предупреждение на экране Яндекс/2ГИС"
+            ? (iconEvidence ? "Графический значок в интерфейсе навигации" : "Текстовое предупреждение на экране Яндекс/2ГИС")
             : aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
           const evidenceText = screenEvidence && item.sourceText
             ? '<div>Текст: ' + escapeHtml(item.sourceText) + '</div>'
