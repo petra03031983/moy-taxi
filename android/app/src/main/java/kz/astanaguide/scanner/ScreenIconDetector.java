@@ -400,7 +400,9 @@ public final class ScreenIconDetector {
             float x = c.cx() / width, y = c.cy() / height;
             if (c.width() < 7 || c.height() < 8 || c.width() > 42 || c.height() > 58) continue;
             if (c.area < 24 || c.area > 900 || c.fillRatio() < 0.12) continue;
-            if (x < 0.28f || x > 0.72f || y < 0.32f || y > 0.82f) continue;
+            // Reject horizontal blue parking labels/buttons; the moving vehicle arrow is usually taller.
+            if (c.height() < c.width() * 0.78f) continue;
+            if (x < 0.38f || x > 0.62f || y < 0.42f || y > 0.82f) continue;
             candidates.add(c);
         }
         if (candidates.isEmpty()) return null;
