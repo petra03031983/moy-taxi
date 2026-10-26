@@ -2731,11 +2731,19 @@ export default function AstanaMapPage() {
           const lng = Number(screenEvidence ? item.estimatedLng : item.lng);
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
           const screenKinds = {
-            "speed-camera": { label: "Возможная камера из навигации", icon: "📷" },
-            "traffic-light": { label: "Возможный светофор из навигации", icon: "🚦" },
-            "speed-limit": { label: "Возможное ограничение скорости", icon: "🔵" },
-            "roadwork": { label: "Возможные дорожные работы", icon: "🚧" },
-            "road-hazard": { label: "Возможная дорожная опасность", icon: "⚠️" },
+            "speed-camera": { label: "Камера контроля скорости", icon: "📷" },
+            "surveillance-camera": { label: "Камера видеонаблюдения", icon: "🎥" },
+            "traffic-light": { label: "Светофор", icon: "🚦" },
+            "speed-limit": { label: "Знак ограничения скорости", icon: "🔵" },
+            "traffic-sign": { label: "Дорожный знак", icon: "🛑" },
+            "stop-sign": { label: "Знак STOP", icon: "🛑" },
+            "give-way-sign": { label: "Знак «Уступи дорогу»", icon: "🔻" },
+            "pedestrian-crossing": { label: "Пешеходный переход", icon: "🚸" },
+            "no-stopping": { label: "Знак «Остановка запрещена»", icon: "⛔" },
+            "no-parking": { label: "Знак «Стоянка запрещена»", icon: "🚫" },
+            "parking": { label: "Парковка", icon: "🅿️" },
+            "roadwork": { label: "Дорожные работы", icon: "🚧" },
+            "road-hazard": { label: "Дорожная опасность", icon: "⚠️" },
           };
           const kind = screenEvidence
             ? (screenKinds[item.kind] || { label: "Подсказка с экрана", icon: "📍" })
@@ -2751,8 +2759,8 @@ export default function AstanaMapPage() {
           const accuracy = Number.isFinite(Number(item.accuracy)) ? Math.round(Number(item.accuracy)) + " м" : "неизвестна";
           const aiDetected = item.source === "android-ai-detection";
           const confidence = Number(item.confidence);
-          const confidenceLine = Number.isFinite(confidence) && (aiDetected || screenEvidence)
-            ? '<div>Уверенность: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
+          const confidenceLine = !item.manual && Number.isFinite(confidence) && (aiDetected || screenEvidence)
+            ? '<div>Уверенность распознавания: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
             : '';
           const iconEvidence = screenEvidence && (
             item.detectionMethod === "icon-heuristic" ||
@@ -3913,8 +3921,16 @@ export default function AstanaMapPage() {
       if (!manualRoadLabel.trim()) {
         const labels = {
           "traffic-light": "Светофор",
-          "speed-camera": "Камера",
+          "speed-camera": "Камера контроля скорости",
+          "surveillance-camera": "Камера видеонаблюдения",
           "speed-limit": "Ограничение скорости",
+          "traffic-sign": "Дорожный знак",
+          "stop-sign": "Знак STOP",
+          "give-way-sign": "Уступи дорогу",
+          "pedestrian-crossing": "Пешеходный переход",
+          "no-stopping": "Остановка запрещена",
+          "no-parking": "Стоянка запрещена",
+          "parking": "Парковка",
           "roadwork": "Дорожные работы",
           "road-hazard": "Опасный участок",
         };
@@ -4079,12 +4095,27 @@ export default function AstanaMapPage() {
         <select id="manual-road-kind" value={manualRoadKind} onChange={event => {
           const next = event.target.value;
           setManualRoadKind(next);
-          const labels = { "traffic-light": "Светофор", "speed-camera": "Камера", "speed-limit": "Ограничение скорости", "roadwork": "Дорожные работы", "road-hazard": "Опасный участок" };
+          const labels = {
+            "traffic-light": "Светофор", "speed-camera": "Камера контроля скорости",
+            "surveillance-camera": "Камера видеонаблюдения", "speed-limit": "Ограничение скорости",
+            "traffic-sign": "Дорожный знак", "stop-sign": "Знак STOP", "give-way-sign": "Уступи дорогу",
+            "pedestrian-crossing": "Пешеходный переход", "no-stopping": "Остановка запрещена",
+            "no-parking": "Стоянка запрещена", "parking": "Парковка",
+            "roadwork": "Дорожные работы", "road-hazard": "Опасный участок",
+          };
           setManualRoadLabel(labels[next] || "Дорожный объект");
         }} style={{ width: "100%", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }}>
           <option value="traffic-light">🚦 Светофор</option>
           <option value="speed-camera">📷 Камера контроля скорости</option>
+          <option value="surveillance-camera">🎥 Камера видеонаблюдения</option>
           <option value="speed-limit">🔵 Ограничение скорости</option>
+          <option value="traffic-sign">🛑 Дорожный знак</option>
+          <option value="stop-sign">🛑 Знак STOP</option>
+          <option value="give-way-sign">🔻 Уступи дорогу</option>
+          <option value="pedestrian-crossing">🚸 Пешеходный переход</option>
+          <option value="no-stopping">⛔ Остановка запрещена</option>
+          <option value="no-parking">🚫 Стоянка запрещена</option>
+          <option value="parking">🅿️ Парковка</option>
           <option value="roadwork">🚧 Дорожные работы</option>
           <option value="road-hazard">⚠️ Опасный участок</option>
         </select>
