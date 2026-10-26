@@ -67,6 +67,49 @@ WHERE detection_method = 'text-ocr'
     )
   );
 
+DROP POLICY IF EXISTS road_screen_evidence_insert ON public.road_screen_evidence;
+CREATE POLICY road_screen_evidence_insert ON public.road_screen_evidence
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (
+    review_status = 'needs-review'
+    AND observed_lat BETWEEN 47.0 AND 55.0
+    AND observed_lng BETWEEN 65.0 AND 77.0
+    AND confidence BETWEEN 0.08 AND 0.6
+    AND (
+      (
+        detection_method = 'icon-heuristic'
+        AND coordinate_method = 'icon-pass-by-gps'
+        AND kind IN ('speed-camera', 'traffic-light')
+        AND source_text ~* '^(speed camera icon|traffic light icon) near vehicle marker, screen x=[0-9]{1,3}% y=[0-9]{1,3}%'
+        AND icon_pattern IN (
+          'compound-speed-sign-with-upper-right-camera-badge',
+          'camera-badge-on-speed-sign',
+          'three-colour-traffic-light-icon',
+          'pixel-sampled-three-colour-traffic-light-on-route'
+        )
+        AND frame_hits BETWEEN 2 AND 100
+        AND accuracy_m BETWEEN 0 AND 60
+        AND estimated_lat IS NOT NULL AND estimated_lng IS NOT NULL
+        AND distance_ahead_m IS NULL
+      )
+      OR
+      (
+        detection_method = 'text-ocr'
+        AND coordinate_method = 'distance-and-heading'
+        AND distance_ahead_m BETWEEN 15 AND 2000
+        AND estimated_lat IS NOT NULL AND estimated_lng IS NOT NULL
+        AND accuracy_m BETWEEN 0 AND 60
+        AND (
+          (kind = 'speed-camera' AND source_text ~* '(камера[[:space:]]+(контроля скорости|скорости|фиксации скорости)|контроль скорости|speed camera|speedcam|camera ahead)')
+          OR (kind = 'traffic-light' AND source_text ~* '(светофор впереди|следующий светофор|traffic light ahead)')
+          OR (kind = 'speed-limit' AND source_text ~* '(ограничение скорости|speed limit)[^0-9]{0,12}[0-9]{2,3}')
+          OR (kind = 'roadwork' AND source_text ~* '(дорожные работы впереди|ремонт дороги|road works ahead)')
+          OR (kind = 'road-hazard' AND source_text ~* '(дтп впереди|авария впереди|accident ahead|hazard ahead)')
+        )
+      )
+    )
+  );
+
 CREATE TABLE IF NOT EXISTS public.road_objects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kind text NOT NULL CHECK (kind IN ('speed-camera', 'traffic-light', 'speed-limit', 'roadwork', 'road-hazard')),
@@ -126,7 +169,6 @@ BEGIN
      OR NEW.estimated_lat IS NULL OR NEW.estimated_lng IS NULL
      OR NEW.accuracy_m > 60
      OR NEW.confidence < 0.08
-     OR NEW.frame_hits < 2
      OR NEW.source_text !~* '^(speed camera icon|traffic light icon) near vehicle marker, screen x=[0-9]{1,3}% y=[0-9]{1,3}%'
   THEN
     RETURN NEW;
