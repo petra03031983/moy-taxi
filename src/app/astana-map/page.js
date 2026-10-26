@@ -953,6 +953,7 @@ export default function AstanaMapPage() {
   const roadScanNativeObsCountRef = useRef(-1);
   const roadScanNativeScreenMatchCountRef = useRef(-1);
   const roadScanUploadedEvidenceRef = useRef(new Set());
+  const roadScanUploadedEvidenceCountRef = useRef(0);
   const roadObjectsRef = useRef([]);
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
@@ -1085,7 +1086,9 @@ export default function AstanaMapPage() {
         setScreenScanIconStatus(String(native.screenScanIconStatus || "Графические значки ещё не анализировались."));
         const screenMatchCount = Number(native.screenScanMatchCount || 0);
         setScreenScanMatchCount(screenMatchCount);
-        setScreenScanCloudStatus(String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
+        setScreenScanCloudStatus(roadScanUploadedEvidenceCountRef.current > 0
+          ? "Локальные координаты переданы на сервер: " + roadScanUploadedEvidenceCountRef.current
+          : String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
         if (screenMatchCount !== roadScanNativeScreenMatchCountRef.current) {
           roadScanNativeScreenMatchCountRef.current = screenMatchCount;
           setRoadScanRevision(value => value + 1);
@@ -2620,7 +2623,14 @@ export default function AstanaMapPage() {
                 }).then(async (response) => {
                   if (response.ok) {
                     const result = await response.json();
-                    if (result?.ok) ids.forEach((id) => roadScanUploadedEvidenceRef.current.add(id));
+                    if (result?.ok) {
+                      const acceptedIds = Array.isArray(result.sourceIds) ? result.sourceIds.map(String) : ids;
+                      acceptedIds.forEach((id) => roadScanUploadedEvidenceRef.current.add(id));
+                      roadScanUploadedEvidenceCountRef.current += Number(result.accepted || acceptedIds.length);
+                      setScreenScanCloudStatus(
+                        "Локальные координаты переданы на сервер: " + roadScanUploadedEvidenceCountRef.current
+                      );
+                    }
                   } else if (response.status === 400) {
                     // A rejected batch is not useful to retry every minute.
                     ids.forEach((id) => roadScanUploadedEvidenceRef.current.add(id));
