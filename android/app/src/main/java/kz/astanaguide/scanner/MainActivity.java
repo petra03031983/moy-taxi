@@ -125,9 +125,15 @@ public class MainActivity extends Activity {
                 String iconStatus = status.optString("screenScanIconStatus", "Графические значки ещё не анализировались.");
                 String cloudStatus = status.optString("screenScanCloudStatus", "Состояние синхронизации не сообщено.");
                 int frames = status.optInt("screenScanFrameCount", 0);
+                int candidateFrames = status.optInt("screenScanIconCandidateFrames", 0);
+                int candidates = status.optInt("screenScanIconCandidatesTotal", 0);
+                int tracks = status.optInt("screenScanTrackCount", 0);
                 int savedIcons = status.optInt("screenScanIconSavedCount", 0);
                 String combined = "Кадров экрана: " + frames
-                    + "\nГрафических наблюдений сохранено: " + savedIcons
+                    + "\nКадров с графическими кандидатами: " + candidateFrames
+                    + "\nГрафических кандидатов: " + candidates
+                    + "\nЗначков отслеживается: " + tracks
+                    + "\nGPS-точек сохранено: " + savedIcons
                     + "\n\n" + state
                     + "\n\nЗначки: " + iconStatus
                     + "\n\nОблако: " + cloudStatus
