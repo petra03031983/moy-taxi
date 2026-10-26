@@ -29,7 +29,7 @@ async function callDatabase(config, path, options = {}) {
     ...options,
     headers: {
       apikey: config.key,
-      Authorization: "Bearer " + config.key,
+      // Publishable keys are not JWTs. Keep them in apikey only; RLS applies the anon role.
       Accept: "application/json",
       ...(options.headers || {}),
     },
