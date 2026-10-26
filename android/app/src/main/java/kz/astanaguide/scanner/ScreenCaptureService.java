@@ -317,6 +317,7 @@ public class ScreenCaptureService extends Service {
                 .putInt("screenIconCandidatesTotal", prefs.getInt("screenIconCandidatesTotal", 0) + count);
         }
         counter.apply();
+        pruneExpiredScreenIconTracks(now);
 
         if (count == 0) {
             prefs.edit().putString("screenIconStatus", "Последний кадр: графические значки камеры/светофора не найдены.")
@@ -380,6 +381,27 @@ public class ScreenCaptureService extends Service {
             prefs.edit().putString("screenIconStatus",
                 "Графических кандидатов в последнем кадре: " + count + ". Отслеживаем их движение по карте.")
                 .apply();
+        }
+    }
+
+    private void pruneExpiredScreenIconTracks(long now) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        synchronized (EVIDENCE_LOCK) {
+            try {
+                JSONArray existing = new JSONArray(prefs.getString("screenIconTracks", "[]"));
+                JSONArray kept = new JSONArray();
+                for (int i = 0; i < existing.length(); i++) {
+                    JSONObject candidate = existing.optJSONObject(i);
+                    if (candidate == null) continue;
+                    long lastAt = candidate.optLong("lastAt", 0L);
+                    if (lastAt > 0L && now - lastAt >= 0L && now - lastAt <= 45_000L) kept.put(candidate);
+                }
+                if (kept.length() != existing.length()) {
+                    prefs.edit().putString("screenIconTracks", kept.toString()).apply();
+                }
+            } catch (Exception error) {
+                prefs.edit().putString("screenIconStatus", "Не удалось обновить список отслеживаемых значков: " + safeMessage(error)).apply();
+            }
         }
     }
 
