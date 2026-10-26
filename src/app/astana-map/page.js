@@ -1022,6 +1022,7 @@ export default function AstanaMapPage() {
   const [screenScanIconCandidateFrames, setScreenScanIconCandidateFrames] = useState(0);
   const [screenScanIconCandidatesTotal, setScreenScanIconCandidatesTotal] = useState(0);
   const [screenScanIconSavedCount, setScreenScanIconSavedCount] = useState(0);
+  const [screenScanTrackCount, setScreenScanTrackCount] = useState(0);
   const [screenScanIconStatus, setScreenScanIconStatus] = useState("Графические значки ещё не анализировались.");
   const [roadScanPosition, setRoadScanPosition] = useState(null);
   const [roadScanFrameCount, setRoadScanFrameCount] = useState(0);
@@ -1078,6 +1079,7 @@ export default function AstanaMapPage() {
         setScreenScanIconCandidateFrames(Number(native.screenScanIconCandidateFrames || 0));
         setScreenScanIconCandidatesTotal(Number(native.screenScanIconCandidatesTotal || 0));
         setScreenScanIconSavedCount(Number(native.screenScanIconSavedCount || 0));
+        setScreenScanTrackCount(Number(native.screenScanTrackCount || 0));
         setScreenScanIconStatus(String(native.screenScanIconStatus || "Графические значки ещё не анализировались."));
         const screenMatchCount = Number(native.screenScanMatchCount || 0);
         setScreenScanMatchCount(screenMatchCount);
@@ -3795,14 +3797,14 @@ export default function AstanaMapPage() {
                 }}>Остановить экран</button>}
           </div>
           <small><b>{screenScanActive ? "● " : ""}{screenScanStatus}</b></small>
-          <small>Кадров экрана: {screenScanFrameCount} · кадров с кандидатами: {screenScanIconCandidateFrames} · графических кандидатов: {screenScanIconCandidatesTotal} · сохранено GPS-точек: {screenScanIconSavedCount}</small>
+          <small>Кадров экрана: {screenScanFrameCount} · кадров с кандидатами: {screenScanIconCandidateFrames} · графических кандидатов: {screenScanIconCandidatesTotal} · значков отслеживается: {screenScanTrackCount} · сохранено GPS-точек: {screenScanIconSavedCount}</small>
           <small>Диагностика значков: {screenScanIconStatus}</small>
           <small>Разреши захват экрана в системном окне. Если Android предложит выбор приложения, выбери Яндекс Навигатор или 2ГИС. Сканер анализирует значки локально; полные снимки экрана не сохраняются и не отправляются.</small>
           {screenScanLastMatch && <small>Последняя подсказка: {screenScanLastMatch}</small>}
           <small>Текстовых/экранных подсказок: {screenScanMatchCount}. Облако: {screenScanCloudStatus}</small>
         </div>
         {roadScanError && <div className="astana-road-scan-error" role="status">{roadScanError}</div>}
-        <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры хранятся в памяти этого телефона и не отправляются на сервер.</p>
+        <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры задней камеры хранятся на телефоне; на сервер отправляются только предварительные метаданные объектов. Полные снимки экрана навигатора не загружаются.</p>
       </section>}
 
 
