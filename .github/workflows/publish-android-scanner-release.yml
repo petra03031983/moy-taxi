@@ -55,7 +55,7 @@ jobs:
             Версия 1.4.8: исправлена фильтрация графических значков, исправлен HTTP 401 при отправке наблюдений, увеличена очередь локальных координат. Пакет совпадает с установленным сканером 1.4.4, чтобы сохранить данные приложения при обновлении.
 
             Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.8.apk и установите поверх прежнего сканера. Данные приложения должны сохраниться.
-          files: Astana-Guide-Scanner-Icons-AI-v1.4.6.apk
+          files: Astana-Guide-Scanner-Icons-AI-v1.4.8.apk
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
