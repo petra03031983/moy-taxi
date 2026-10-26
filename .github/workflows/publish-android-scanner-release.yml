@@ -41,20 +41,20 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Prepare APK for release
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Astana-Guide-Scanner-Icons-AI-v1.4.6.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Astana-Guide-Scanner-Icons-AI-v1.4.8.apk
 
       - name: Publish downloadable APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: astana-guide-screen-icons-1.4.6-mobile
-          name: "Астана Гид — сканер значков 1.4.6"
+          tag_name: astana-guide-screen-icons-1.4.8-mobile
+          name: "Астана Гид — сканер значков 1.4.8"
           body: |
             Установочный APK для Android.
 
-            Пакет: kz.astanaguide.scanner.icons146
-            Версия приложения: 1.4.6 (debug build: фильтр ложных OCR-срабатываний, структурированные координаты и направление, отдельная база дорожных объектов).
+            Пакет: kz.astanaguide.scanner.icons144
+            Версия 1.4.8: исправлена фильтрация графических значков, исправлен HTTP 401 при отправке наблюдений, увеличена очередь локальных координат. Пакет совпадает с установленным сканером 1.4.4, чтобы сохранить данные приложения при обновлении.
 
-            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.6.apk и откройте его на телефоне.
+            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.8.apk и установите поверх прежнего сканера. Данные приложения должны сохраниться.
           files: Astana-Guide-Scanner-Icons-AI-v1.4.6.apk
           fail_on_unmatched_files: true
           draft: false
