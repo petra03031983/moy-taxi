@@ -63,9 +63,12 @@ public class ScreenCaptureService extends Service {
     private static final float MAX_GPS_ACCURACY_M = 60.0f;
     // Icon-only pass-by evidence may be recorded at lower confidence up to this GPS radius.
     private static final float MAX_ICON_GPS_ACCURACY_M = 150.0f;
-    private static final int MAX_LOCAL_EVIDENCE = 80;
+    private static final int MAX_LOCAL_EVIDENCE = 1000;
+    private static final int MAX_PENDING_CLOUD_EVIDENCE = 2000;
     private static final String CLOUD_ENDPOINT = "https://qyejqovxwniqlcsspmbc.supabase.co/rest/v1/road_screen_evidence?on_conflict=source_id";
     private static final String SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
+    // Legacy anon JWT is required in Authorization; publishable keys must stay in apikey only.
+    private static final String SUPABASE_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZWpxb3Z4d25pcWxjc3NwbWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjUyMDQsImV4cCI6MjEwNzU0MTIwNH0.MPXdt6Rm8cS88Ocb8NS9qqAbblCq7fWQOreE2-aiTe4";
     private static final Object EVIDENCE_LOCK = new Object();
     private static final Pattern DISTANCE_PATTERN = Pattern.compile(
         "(?:через\\s*)?(\\d{1,4}(?:[.,]\\d+)?)\\s*(км|м)\\b",
@@ -330,7 +333,7 @@ public class ScreenCaptureService extends Service {
         long now = System.currentTimeMillis();
         List<ScreenIconDetector.Detection> trustedDetections = new ArrayList<>();
         if (result.detections != null) {
-            for (ScreenIconDetector.Detection detection : trustedDetections) {
+            for (ScreenIconDetector.Detection detection : result.detections) {
                 if (isTrustedIconPattern(detection)) trustedDetections.add(detection);
             }
         }
@@ -374,7 +377,7 @@ public class ScreenCaptureService extends Service {
         boolean savedAny = false;
         boolean closeButWaiting = false;
         int tracked = 0;
-        for (ScreenIconDetector.Detection detection : result.detections) {
+        for (ScreenIconDetector.Detection detection : trustedDetections) {
             JSONObject track = updateScreenIconTrack(detection, result, point, now);
             if (track == null) continue;
             int hits = track.optInt("hits", 1);
@@ -863,7 +866,7 @@ public class ScreenCaptureService extends Service {
                 if (row != null && sourceId.equals(row.optString("source_id"))) { exists = true; break; }
             }
             if (!exists) pending.put(evidenceItem);
-            while (pending.length() > 200) pending.remove(0);
+            while (pending.length() > MAX_PENDING_CLOUD_EVIDENCE) pending.remove(0);
             prefs.edit().putString("pendingCloud", pending.toString()).apply();
         }
         flushPendingCloudEvidence();
@@ -921,7 +924,7 @@ public class ScreenCaptureService extends Service {
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY);
-                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_PUBLISHABLE_KEY);
+                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_JWT);
                 connection.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal");
                 byte[] bytes = body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 connection.setFixedLengthStreamingMode(bytes.length);
