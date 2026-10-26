@@ -330,6 +330,12 @@ public class ScreenCaptureService extends Service {
                 .apply();
             return;
         }
+        if (result.vehicleAnchorEstimated) {
+            prefs.edit().putString("screenIconStatus",
+                "Графический кандидат замечен, но маркер автомобиля не распознан уверенно; GPS-точка не отправляется.")
+                .apply();
+            return;
+        }
 
         Location point = getIconLocation();
         if (point == null) {
@@ -513,7 +519,9 @@ public class ScreenCaptureService extends Service {
             .append("% y=")
             .append(Math.round(detection.y * 100f))
             .append("%");
-        if (point.hasBearing()) text.append(", heading=").append(Math.round(point.getBearing())).append("deg");
+        if (point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f) {
+            text.append(", heading=").append(Math.round(point.getBearing())).append("deg");
+        }
         text.append(", hits=").append(track == null ? 1 : track.optInt("hits", 1));
         text.append(", approaching=").append(track != null && track.optInt("approaches", 0) > 0 ? "yes" : "no");
         text.append(", pattern=").append(detection.pattern == null ? "graphic" : detection.pattern);
@@ -531,6 +539,13 @@ public class ScreenCaptureService extends Service {
             item.put("observedLng", point.getLongitude());
             item.put("accuracy", point.getAccuracy());
             item.put("gpsAt", point.getTime());
+            item.put("travelHeadingDegrees",
+                point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f
+                    ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
+            item.put("detectionMethod", "icon-heuristic");
+            item.put("coordinateMethod", "icon-pass-by-gps");
+            item.put("iconPattern", detection.pattern == null ? "legacy-icon-pass-by-gps" : detection.pattern);
+            item.put("frameHits", Math.max(1, Math.min(100, track == null ? 1 : track.optInt("hits", 1))));
             item.put("distanceAheadM", JSONObject.NULL);
             // The icon is saved only when it is close to the detected vehicle marker.
             // This is an approximate pass-by point, not an exact surveyed camera coordinate.
@@ -674,6 +689,13 @@ public class ScreenCaptureService extends Service {
             item.put("observedLng", point == null ? JSONObject.NULL : point.getLongitude());
             item.put("accuracy", point == null ? JSONObject.NULL : point.getAccuracy());
             item.put("gpsAt", point == null ? 0 : point.getTime());
+            item.put("travelHeadingDegrees",
+                point != null && point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f
+                    ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
+            item.put("detectionMethod", "text-ocr");
+            item.put("coordinateMethod", estimateLat == null ? "unknown" : "distance-and-heading");
+            item.put("iconPattern", JSONObject.NULL);
+            item.put("frameHits", 1);
             item.put("distanceAheadM", distanceAhead == null ? JSONObject.NULL : distanceAhead);
             item.put("estimatedLat", estimateLat == null ? JSONObject.NULL : estimateLat);
             item.put("estimatedLng", estimateLng == null ? JSONObject.NULL : estimateLng);
@@ -714,7 +736,7 @@ public class ScreenCaptureService extends Service {
                 .apply();
         }
 
-        if (point != null) {
+        if (point != null && estimateLat != null && estimateLng != null) {
             cloudExecutor.execute(() -> queueAndSync(item));
         }
         updateNotification("Экран анализируется · подсказок " +
@@ -858,6 +880,13 @@ public class ScreenCaptureService extends Service {
                 body.put("estimated_lng", item.opt("estimatedLng"));
                 body.put("captured_at", item.optString("capturedAt"));
                 body.put("confidence", item.optDouble("confidence", 0.0));
+                body.put("detection_method", item.optString("detectionMethod", "text-ocr"));
+                body.put("travel_heading_degrees", item.isNull("travelHeadingDegrees")
+                    ? JSONObject.NULL : item.opt("travelHeadingDegrees"));
+                body.put("icon_pattern", item.isNull("iconPattern")
+                    ? JSONObject.NULL : item.opt("iconPattern"));
+                body.put("frame_hits", item.optInt("frameHits", 1));
+                body.put("coordinate_method", item.optString("coordinateMethod", "unknown"));
                 connection = (HttpURLConnection) new URL(CLOUD_ENDPOINT).openConnection();
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(5000);
