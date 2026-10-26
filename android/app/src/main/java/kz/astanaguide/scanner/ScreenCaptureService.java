@@ -65,7 +65,9 @@ public class ScreenCaptureService extends Service {
     private static final float MAX_ICON_GPS_ACCURACY_M = 150.0f;
     private static final int MAX_LOCAL_EVIDENCE = 80;
     private static final String CLOUD_ENDPOINT = "https://qyejqovxwniqlcsspmbc.supabase.co/rest/v1/road_screen_evidence?on_conflict=source_id";
+    // Publishable keys belong in apikey; PostgREST's Authorization header needs a JWT.
     private static final String SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
+    private static final String SUPABASE_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZWpxb3Z4d25pcWxjc3NwbWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjUyMDQsImV4cCI6MjEwNzU0MTIwNH0.MPXdt6Rm8cS88Ocb8NS9qqAbblCq7fWQOreE2-aiTe4";
     private static final Object EVIDENCE_LOCK = new Object();
     private static final Pattern DISTANCE_PATTERN = Pattern.compile(
         "(?:через\\s*)?(\\d{1,4}(?:[.,]\\d+)?)\\s*(км|м)\\b",
@@ -869,6 +871,113 @@ public class ScreenCaptureService extends Service {
         flushPendingCloudEvidence();
     }
 
+    private boolean prepareCloudEvidencePayload(JSONObject item, JSONObject body) throws Exception {
+        String sourceText = item.optString("sourceText", "").replaceAll("\\s+", " ").trim();
+        String kind = item.optString("kind", "");
+        double observedLat = item.optDouble("observedLat", Double.NaN);
+        double observedLng = item.optDouble("observedLng", Double.NaN);
+        double accuracy = item.optDouble("accuracy", Double.NaN);
+        double confidence = item.optDouble("confidence", 0.0);
+        double estimatedLat = item.optDouble("estimatedLat", Double.NaN);
+        double estimatedLng = item.optDouble("estimatedLng", Double.NaN);
+        Double distanceAhead = item.isNull("distanceAheadM") ? null : item.optDouble("distanceAheadM", Double.NaN);
+        long gpsTimeMs = item.optLong("gpsAt", 0L);
+        String capturedAt = item.optString("capturedAt", "");
+        boolean coordsOkay = Double.isFinite(observedLat) && observedLat >= 47 && observedLat <= 55
+            && Double.isFinite(observedLng) && observedLng >= 65 && observedLng <= 77
+            && Double.isFinite(accuracy) && accuracy >= 0 && accuracy <= 150
+            && Double.isFinite(estimatedLat) && estimatedLat >= 47 && estimatedLat <= 55
+            && Double.isFinite(estimatedLng) && estimatedLng >= 65 && estimatedLng <= 77;
+        if (!coordsOkay || gpsTimeMs <= 0L || parseTime(capturedAt) <= 0L || confidence < 0 || confidence > 0.6) {
+            return false;
+        }
+
+        java.util.regex.Matcher iconMatcher = Pattern.compile(
+            "^(speed camera icon|traffic light icon) near vehicle marker, screen x=([0-9]{1,3})% y=([0-9]{1,3})%",
+            Pattern.CASE_INSENSITIVE).matcher(sourceText);
+        if (iconMatcher.find()) {
+            boolean isCamera = "speed-camera".equals(kind) && "speed camera icon".equalsIgnoreCase(iconMatcher.group(1));
+            boolean isTrafficLight = "traffic-light".equals(kind) && "traffic light icon".equalsIgnoreCase(iconMatcher.group(1));
+            if (!isCamera && !isTrafficLight) return false;
+
+            String pattern = item.optString("iconPattern", "");
+            if (pattern.isEmpty() || "null".equals(pattern)) {
+                java.util.regex.Matcher patternMatcher = Pattern.compile("pattern=([a-z0-9-]+)", Pattern.CASE_INSENSITIVE).matcher(sourceText);
+                if (patternMatcher.find()) pattern = patternMatcher.group(1);
+            }
+            if (isCamera && !("compound-speed-sign-with-upper-right-camera-badge".equals(pattern)
+                    || "camera-badge-on-speed-sign".equals(pattern))) {
+                pattern = "legacy-icon-pass-by-gps";
+            }
+            if (isTrafficLight && !("three-colour-traffic-light-icon".equals(pattern)
+                    || "pixel-sampled-three-colour-traffic-light-on-route".equals(pattern))) {
+                pattern = "legacy-icon-pass-by-gps";
+            }
+
+            int hits = item.optInt("frameHits", 0);
+            if (hits <= 0) {
+                java.util.regex.Matcher hitsMatcher = Pattern.compile("hits=([0-9]{1,3})", Pattern.CASE_INSENSITIVE).matcher(sourceText);
+                hits = hitsMatcher.find() ? Integer.parseInt(hitsMatcher.group(1)) : 2;
+            }
+            hits = Math.max(2, Math.min(100, hits));
+
+            Object heading = item.isNull("travelHeadingDegrees") ? JSONObject.NULL : item.opt("travelHeadingDegrees");
+            if (heading == JSONObject.NULL) {
+                java.util.regex.Matcher headingMatcher = Pattern.compile("heading=([0-9]{1,3})deg", Pattern.CASE_INSENSITIVE).matcher(sourceText);
+                if (headingMatcher.find()) {
+                    int value = Integer.parseInt(headingMatcher.group(1));
+                    if (value >= 0 && value <= 359) heading = value;
+                }
+            }
+            body.put("detection_method", "icon-heuristic");
+            body.put("coordinate_method", "icon-pass-by-gps");
+            body.put("icon_pattern", pattern);
+            body.put("frame_hits", hits);
+            body.put("travel_heading_degrees", heading);
+            body.put("distance_ahead_m", JSONObject.NULL);
+            return true;
+        }
+
+        // Old builds also queued OCR from our own controls and unrelated app labels.
+        // Only keep a genuine actionable road alert with a distance-based estimated point.
+        if (estimatedLat < 47 || estimatedLat > 55 || estimatedLng < 65 || estimatedLng > 77
+            || accuracy > 60 || distanceAhead == null || !Double.isFinite(distanceAhead)
+            || distanceAhead < 15 || distanceAhead > 2000) return false;
+        String normalized = sourceText.toLowerCase(Locale.ROOT).replace('ё', 'е');
+        boolean actionable =
+            ("speed-camera".equals(kind) && Pattern.compile("(камера\\s+(контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\\s*camera|speedcam|camera ahead)").matcher(normalized).find())
+            || ("traffic-light".equals(kind) && Pattern.compile("(светофор впереди|следующий светофор|traffic light ahead)").matcher(normalized).find())
+            || ("speed-limit".equals(kind) && Pattern.compile("(ограничение скорости|speed limit)\\D{0,12}\\d{2,3}").matcher(normalized).find())
+            || ("roadwork".equals(kind) && Pattern.compile("(дорожные работы|ремонт дороги|перекрытие дороги|road works)").matcher(normalized).find())
+            || ("road-hazard".equals(kind) && Pattern.compile("(дтп впереди|авария впереди|опасность впереди|происшествие впереди|accident ahead|hazard ahead)").matcher(normalized).find());
+        if (!actionable) return false;
+        body.put("detection_method", "text-ocr");
+        body.put("coordinate_method", "distance-and-heading");
+        body.put("icon_pattern", JSONObject.NULL);
+        body.put("frame_hits", 1);
+        return true;
+    }
+
+    private void discardPendingCloudItem(android.content.SharedPreferences prefs, JSONObject item, String status) {
+        synchronized (EVIDENCE_LOCK) {
+            JSONArray current;
+            try { current = new JSONArray(prefs.getString("pendingCloud", "[]")); }
+            catch (Exception ignored) { current = new JSONArray(); }
+            JSONArray remaining = new JSONArray();
+            String sourceId = item.optString("source_id", item.optString("id", ""));
+            for (int i = 0; i < current.length(); i++) {
+                JSONObject row = current.optJSONObject(i);
+                if (row == null) continue;
+                String rowId = row.optString("source_id", row.optString("id", ""));
+                if (!sourceId.equals(rowId)) remaining.put(row);
+            }
+            prefs.edit().putString("pendingCloud", remaining.toString())
+                .putInt("cloudSkippedCount", prefs.getInt("cloudSkippedCount", 0) + 1)
+                .putString("cloudStatus", status + " Осталось в очереди: " + remaining.length())
+                .apply();
+        }
+    }
+
     private void flushPendingCloudEvidence() {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         while (active) {
@@ -913,6 +1022,11 @@ public class ScreenCaptureService extends Service {
                     ? JSONObject.NULL : item.opt("iconPattern"));
                 body.put("frame_hits", item.optInt("frameHits", 1));
                 body.put("coordinate_method", item.optString("coordinateMethod", "unknown"));
+                if (!prepareCloudEvidencePayload(item, body)) {
+                    discardPendingCloudItem(prefs, item,
+                        "Пропущены старые подсказки без надёжного типа/координат; отправляю пригодные объекты.");
+                    continue;
+                }
                 connection = (HttpURLConnection) new URL(CLOUD_ENDPOINT).openConnection();
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(5000);
@@ -921,7 +1035,7 @@ public class ScreenCaptureService extends Service {
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY);
-                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_PUBLISHABLE_KEY);
+                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_JWT);
                 connection.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal");
                 byte[] bytes = body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 connection.setFixedLengthStreamingMode(bytes.length);
