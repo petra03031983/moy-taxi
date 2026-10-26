@@ -98,7 +98,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix ".icons146"
+            applicationIdSuffix ".icons144"
             versionNameSuffix "-debug"
         }
         release {
