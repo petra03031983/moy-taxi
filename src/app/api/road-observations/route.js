@@ -31,7 +31,7 @@ function jsonResponse(payload, status = 200) {
 function apiHeaders(key, extra = {}) {
   return {
     apikey: key,
-    Authorization: `Bearer ${key}`,
+    // Publishable API keys are not JWTs; Supabase resolves the anon role from apikey and RLS.
     Accept: "application/json",
     ...extra,
   };
