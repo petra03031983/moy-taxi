@@ -647,6 +647,13 @@ public class RoadScanService extends Service {
     private void flushPendingCloudObservations() {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         while (true) {
+            String accessKey = prefs.getString("accessKey", "");
+            if (accessKey == null || accessKey.trim().length() < 32) {
+                prefs.edit().putString("cloudSyncStatus",
+                    "Координаты сохранены на телефоне; открой «Астана Гид» и введи личный ключ базы.")
+                    .apply();
+                return;
+            }
             JSONArray pending;
             synchronized (CLOUD_QUEUE_LOCK) {
                 try { pending = new JSONArray(prefs.getString("pendingCloudObservations", "[]")); }
@@ -693,6 +700,7 @@ public class RoadScanService extends Service {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
+                connection.setRequestProperty("X-Astana-Guide-Key", accessKey);
                 JSONObject payload = new JSONObject();
                 payload.put("observations", batch);
                 byte[] body = payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
