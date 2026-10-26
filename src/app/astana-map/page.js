@@ -1018,6 +1018,12 @@ export default function AstanaMapPage() {
   const [screenScanLastMatch, setScreenScanLastMatch] = useState("");
   const [screenScanMatchCount, setScreenScanMatchCount] = useState(0);
   const [screenScanCloudStatus, setScreenScanCloudStatus] = useState("Экран ещё не синхронизирован");
+  const [screenScanFrameCount, setScreenScanFrameCount] = useState(0);
+  const [screenScanIconCandidateFrames, setScreenScanIconCandidateFrames] = useState(0);
+  const [screenScanIconCandidatesTotal, setScreenScanIconCandidatesTotal] = useState(0);
+  const [screenScanIconSavedCount, setScreenScanIconSavedCount] = useState(0);
+  const [screenScanTrackCount, setScreenScanTrackCount] = useState(0);
+  const [screenScanIconStatus, setScreenScanIconStatus] = useState("Графические значки ещё не анализировались.");
   const [roadScanPosition, setRoadScanPosition] = useState(null);
   const [roadScanFrameCount, setRoadScanFrameCount] = useState(0);
   const [roadScanObservationCount, setRoadScanObservationCount] = useState(0);
@@ -1069,6 +1075,12 @@ export default function AstanaMapPage() {
         setScreenScanActive(Boolean(native.screenScanActive));
         setScreenScanStatus(String(native.screenScanStatus || "Экран не сканируется"));
         setScreenScanLastMatch(String(native.screenScanLastMatch || ""));
+        setScreenScanFrameCount(Number(native.screenScanFrameCount || 0));
+        setScreenScanIconCandidateFrames(Number(native.screenScanIconCandidateFrames || 0));
+        setScreenScanIconCandidatesTotal(Number(native.screenScanIconCandidatesTotal || 0));
+        setScreenScanIconSavedCount(Number(native.screenScanIconSavedCount || 0));
+        setScreenScanTrackCount(Number(native.screenScanTrackCount || 0));
+        setScreenScanIconStatus(String(native.screenScanIconStatus || "Графические значки ещё не анализировались."));
         const screenMatchCount = Number(native.screenScanMatchCount || 0);
         setScreenScanMatchCount(screenMatchCount);
         setScreenScanCloudStatus(String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
@@ -3478,6 +3490,17 @@ export default function AstanaMapPage() {
         const observations = Array.isArray(native.observations) ? native.observations : [];
         setRoadScanFrameCount(Number(native.framesCount || 0));
         setRoadScanObservationCount(Number(native.observationsCount || observations.length || 0));
+        setScreenScanActive(Boolean(native.screenScanActive));
+        setScreenScanStatus(String(native.screenScanStatus || "Экран не сканируется"));
+        setScreenScanLastMatch(String(native.screenScanLastMatch || ""));
+        setScreenScanFrameCount(Number(native.screenScanFrameCount || 0));
+        setScreenScanIconCandidateFrames(Number(native.screenScanIconCandidateFrames || 0));
+        setScreenScanIconCandidatesTotal(Number(native.screenScanIconCandidatesTotal || 0));
+        setScreenScanIconSavedCount(Number(native.screenScanIconSavedCount || 0));
+        setScreenScanTrackCount(Number(native.screenScanTrackCount || 0));
+        setScreenScanIconStatus(String(native.screenScanIconStatus || "Графические значки ещё не анализировались."));
+        setScreenScanMatchCount(Number(native.screenScanMatchCount || 0));
+        setScreenScanCloudStatus(String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
         if (native.lat != null && native.lng != null && Number.isFinite(Number(native.lat)) && Number.isFinite(Number(native.lng))) {
           const fix = { lat: Number(native.lat), lng: Number(native.lng), accuracy: Number(native.accuracy || 0), heading: null, speedMps: null };
           roadScanPositionRef.current = fix;
@@ -3723,8 +3746,8 @@ export default function AstanaMapPage() {
           {nativeScannerAvailable && <small>Облако: {roadScanCloudStatus}</small>}
         </div>
         <div className="astana-road-scan-counters">
-          <div><b>{roadScanFrameCount}</b><small>кадров сохранено</small></div>
-          <div><b>{roadScanObservationCount}</b><small>отметок на карте</small></div>
+          <div><b>{roadScanFrameCount}</b><small>кадров задней камеры</small></div>
+          <div><b>{roadScanObservationCount}</b><small>предварительных точек камеры</small></div>
         </div>
         <div className="astana-road-scan-actions">
           {!roadScanActive
@@ -3775,12 +3798,14 @@ export default function AstanaMapPage() {
                 }}>Остановить экран</button>}
           </div>
           <small><b>{screenScanActive ? "● " : ""}{screenScanStatus}</b></small>
-          <small>Разреши захват экрана в системном окне. Если Android предложит выбор приложения, выбери Яндекс Навигатор или 2ГИС. Сохраняются только строки с дорожными подсказками — не снимки экрана и не весь текст.</small>
+          <small>Кадров экрана: {screenScanFrameCount} · кадров с кандидатами: {screenScanIconCandidateFrames} · графических кандидатов: {screenScanIconCandidatesTotal} · значков отслеживается: {screenScanTrackCount} · сохранено GPS-точек: {screenScanIconSavedCount}</small>
+          <small>Диагностика значков: {screenScanIconStatus}</small>
+          <small>Разреши захват экрана в системном окне. Если Android предложит выбор приложения, выбери Яндекс Навигатор или 2ГИС. Сканер анализирует значки локально; полные снимки экрана не сохраняются и не отправляются.</small>
           {screenScanLastMatch && <small>Последняя подсказка: {screenScanLastMatch}</small>}
-          <small>Найдено подсказок: {screenScanMatchCount}. Облако: {screenScanCloudStatus}</small>
+          <small>Текстовых/экранных подсказок: {screenScanMatchCount}. Облако: {screenScanCloudStatus}</small>
         </div>
         {roadScanError && <div className="astana-road-scan-error" role="status">{roadScanError}</div>}
-        <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры хранятся в памяти этого телефона и не отправляются на сервер.</p>
+        <p className="astana-road-scan-safety">Настрой камеру до начала движения. Не нажимай кнопки за рулём. Кадры задней камеры хранятся на телефоне; на сервер отправляются только предварительные метаданные объектов. Полные снимки экрана навигатора не загружаются.</p>
       </section>}
 
 
