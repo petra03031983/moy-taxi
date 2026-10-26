@@ -1,6 +1,6 @@
 import { callAstanaRpc, readAccessKey, privateApiError } from "../_lib/astanaAccess.js";
 
-const ALLOWED_KINDS = new Set(["speed-camera", "traffic-light", "speed-limit", "roadwork", "road-hazard"]);
+const ALLOWED_KINDS = new Set(["speed-camera", "surveillance-camera", "traffic-light", "speed-limit", "traffic-sign", "stop-sign", "give-way-sign", "pedestrian-crossing", "no-stopping", "no-parking", "parking", "roadwork", "road-hazard"]);
 
 function json(payload, status = 200) {
   return Response.json(payload, {
