@@ -2645,7 +2645,18 @@ export default function AstanaMapPage() {
           const confidenceLine = Number.isFinite(confidence) && (aiDetected || screenEvidence)
             ? '<div>Уверенность: ' + escapeHtml(Math.round(confidence * 100)) + '%</div>'
             : '';
-          const iconEvidence = screenEvidence && String(item.sourceText || "").toLowerCase().includes("near vehicle marker");
+          const iconEvidence = screenEvidence && (
+            item.detectionMethod === "icon-heuristic" ||
+            String(item.sourceText || "").toLowerCase().includes("near vehicle marker")
+          );
+          const travelHeading = Number(item.travelHeadingDegrees ?? item.directionDegrees);
+          const directionLine = screenEvidence && Number.isFinite(travelHeading) && travelHeading >= 0 && travelHeading <= 359
+            ? '<div>Направление движения при обнаружении: примерно ' + escapeHtml(Math.round(travelHeading)) + '°</div>'
+            : '';
+          const observationCount = Number(item.observationCount);
+          const observationLine = screenEvidence && Number.isFinite(observationCount) && observationCount > 0
+            ? '<div>Наблюдений по этому месту: ' + escapeHtml(observationCount) + '</div>'
+            : '';
           const sourceLabel = screenEvidence
             ? (iconEvidence ? "Графический значок в интерфейсе навигации" : "Текстовое предупреждение на экране Яндекс/2ГИС")
             : aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
@@ -2653,9 +2664,9 @@ export default function AstanaMapPage() {
             ? '<div>Текст: ' + escapeHtml(item.sourceText) + '</div>'
             : '';
           const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
-            '</b><div>' + escapeHtml(sourceLabel) + '</div>' + evidenceText + confidenceLine +
+            '</b><div>' + escapeHtml(sourceLabel) + '</div>' + evidenceText + confidenceLine + directionLine + observationLine +
             (screenEvidence
-              ? (String(item.sourceText || '').toLowerCase().includes('near vehicle marker')
+              ? (iconEvidence
                 ? '<div>Графический значок приблизился к маркеру автомобиля; координаты по GPS приблизительные</div>'
                 : '<div>Положение рассчитано примерно по GPS и расстоянию</div>')
               : '<div>GPS: ±' + escapeHtml(accuracy) + '</div>') +
