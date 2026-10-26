@@ -1,7 +1,6 @@
 import { callAstanaRpc, readAccessKey, privateApiError } from "../_lib/astanaAccess.js";
 
 const MAX_BATCH_SIZE = 40;
-const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_KIND_LABELS = {
   "traffic-light": "traffic light",
   "traffic-sign": "stop sign",
@@ -65,7 +64,7 @@ function normalizeCandidate(candidate) {
   if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 35) return null;
   if (!Number.isFinite(confidence) || confidence < 0.5 || confidence > 1) return null;
   if (!Number.isFinite(capturedAt.getTime()) || capturedAt.getTime() > now + 5 * 60 * 1000) return null;
-  if (now - capturedAt.getTime() > MAX_AGE_MS) return null;
+  // Keep valid historic records; the private scanner queue may be synced later.
 
   return {
     source_id: sourceId,
