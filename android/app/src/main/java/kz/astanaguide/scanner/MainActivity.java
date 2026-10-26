@@ -353,6 +353,18 @@ public class MainActivity extends Activity {
 
     private final class ScannerBridge {
         @JavascriptInterface
+        public boolean setAccessKey(String key) {
+            String value = key == null ? "" : key.trim();
+            if (value.length() < 32 || value.length() > 256) return false;
+            // Store only in app-private SharedPreferences. Never include it in getStatus().
+            getSharedPreferences("astana_screen_scan", MODE_PRIVATE).edit()
+                .putString("accessKey", value).apply();
+            getSharedPreferences("road_scan_status", MODE_PRIVATE).edit()
+                .putString("accessKey", value).apply();
+            return true;
+        }
+
+        @JavascriptInterface
         public void startScanning() {
             runOnUi(() -> requestScannerPermissionsAndStart());
         }
