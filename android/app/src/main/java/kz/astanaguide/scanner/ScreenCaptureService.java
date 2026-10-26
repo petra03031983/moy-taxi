@@ -57,7 +57,7 @@ public class ScreenCaptureService extends Service {
     private static final String ROAD_PREFS = "road_scan_status";
     private static final String CHANNEL_ID = "astana_guide_screen_scan";
     private static final int NOTIFICATION_ID = 7402;
-    private static final long OCR_INTERVAL_MS = 4500L;
+    private static final long OCR_INTERVAL_MS = 3000L;
     private static final long MAX_GPS_AGE_MS = 25000L;
     private static final float MAX_GPS_ACCURACY_M = 60.0f;
     // Icon-only pass-by evidence may be recorded at lower confidence up to this GPS radius.
@@ -364,8 +364,8 @@ public class ScreenCaptureService extends Service {
                 continue;
             }
 
-            saveScreenIconEvidence(detection, point, result.vehicleAnchorEstimated, track);
-            savedAny = true;
+            boolean saved = saveScreenIconEvidence(detection, point, result.vehicleAnchorEstimated, track);
+            savedAny = savedAny || saved;
         }
 
         if (savedAny) {
@@ -409,7 +409,7 @@ public class ScreenCaptureService extends Service {
                 double ddx = detection.x - candidate.optDouble("x", -10.0);
                 double ddy = detection.y - candidate.optDouble("y", -10.0);
                 double distance = Math.sqrt(ddx * ddx * 1.35 + ddy * ddy);
-                if (Math.abs(ddx) <= 0.18 && Math.abs(ddy) <= 0.22 && distance < bestDistance) {
+                if (Math.abs(ddx) <= 0.22 && Math.abs(ddy) <= 0.26 && distance < bestDistance) {
                     bestDistance = distance;
                     best = candidate;
                     bestIndex = keptIndex;
@@ -474,8 +474,8 @@ public class ScreenCaptureService extends Service {
         return Math.sqrt(dx * dx + dy * dy);
     }
 
-    private void saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point, boolean estimatedAnchor, JSONObject track) {
-        if (detection == null || point == null) return;
+    private boolean saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point, boolean estimatedAnchor, JSONObject track) {
+        if (detection == null || point == null) return false;
         long now = System.currentTimeMillis();
         String kind = detection.kind;
         String label = "speed-camera".equals(kind) ? "speed camera icon" : "traffic light icon";
@@ -518,7 +518,7 @@ public class ScreenCaptureService extends Service {
             if (estimatedAnchor) baseConfidence = Math.min(baseConfidence, 0.06);
             item.put("confidence", baseConfidence);
             item.put("syncStatus", "local-only");
-        } catch (Exception ignored) { return; }
+        } catch (Exception ignored) { return false; }
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         synchronized (EVIDENCE_LOCK) {
@@ -544,7 +544,7 @@ public class ScreenCaptureService extends Service {
                         .putLong("lastMatchAt", now)
                         .putString("screenIconStatus", "Похожий объект уже сохранён рядом; повтор не записан.")
                         .apply();
-                    return;
+                    return false;
                 }
             }
 
@@ -563,6 +563,7 @@ public class ScreenCaptureService extends Service {
         cloudExecutor.execute(() -> queueAndSync(item));
         updateNotification("Анализ экрана · графических наблюдений " +
             prefs.getInt("screenIconSavedCount", 0) + " · точки требуют проверки");
+        return true;
     }
 
     private static double distanceMeters(double lat1, double lng1, double lat2, double lng2) {
