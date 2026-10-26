@@ -58,8 +58,8 @@ jobs:
             Пакет: kz.astanaguide.scanner.icons146
             Версия приложения: 1.4.6 (debug build: фильтр ложных OCR-срабатываний, структурированные координаты и направление, отдельная база дорожных объектов).
 
-            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.5.apk и откройте его на телефоне.
-          files: Astana-Guide-Scanner-Icons-AI-v1.4.5.apk
+            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.6.apk и откройте его на телефоне.
+          files: Astana-Guide-Scanner-Icons-AI-v1.4.6.apk
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
