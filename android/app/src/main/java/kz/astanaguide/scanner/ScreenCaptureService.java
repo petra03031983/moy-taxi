@@ -309,52 +309,167 @@ public class ScreenCaptureService extends Service {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         long now = System.currentTimeMillis();
         int count = result.detections == null ? 0 : result.detections.size();
-        prefs.edit().putLong("screenIconLastScanAt", now)
-            .putInt("screenIconLastFrameCount", count).apply();
+        android.content.SharedPreferences.Editor counter = prefs.edit()
+            .putLong("screenIconLastScanAt", now)
+            .putInt("screenIconLastFrameCount", count);
+        if (count > 0) {
+            counter.putInt("screenIconCandidateFrames", prefs.getInt("screenIconCandidateFrames", 0) + 1)
+                .putInt("screenIconCandidatesTotal", prefs.getInt("screenIconCandidatesTotal", 0) + count);
+        }
+        counter.apply();
 
         if (count == 0) {
-            prefs.edit().putString("screenIconStatus", "На последнем кадре значки камеры/светофора не распознаны.")
-                .apply();
-            return;
-        }
-        if (!result.vehicleAnchorFound) {
-            prefs.edit().putString("screenIconStatus",
-                "Значки замечены, но маркер автомобиля на карте не найден; координаты не записываем.")
+            prefs.edit().putString("screenIconStatus", "Последний кадр: графические значки камеры/светофора не найдены.")
                 .apply();
             return;
         }
 
-        boolean closeToVehicle = false;
+        Location point = getIconLocation();
+        if (point == null) {
+            prefs.edit().putString("screenIconStatus",
+                "Найдено графических кандидатов: " + count + ", но нет свежего GPS с точностью до 150 м.")
+                .apply();
+            return;
+        }
+
+        boolean savedAny = false;
+        boolean closeButWaiting = false;
+        int tracked = 0;
         for (ScreenIconDetector.Detection detection : result.detections) {
+            JSONObject track = updateScreenIconTrack(detection, result, point, now);
+            if (track == null) continue;
+            int hits = track.optInt("hits", 1);
+            int approaches = track.optInt("approaches", 0);
             float dx = Math.abs(detection.x - result.vehicleX);
             float dy = Math.abs(detection.y - result.vehicleY);
-            // Save a map point only when the graphic marker has moved close to the car/arrow.
-            // Far-away icons are deliberately not assigned the vehicle's current GPS position.
-            if (dx > 0.16f || dy > 0.145f) continue;
-            Location point = getIconLocation();
-            if (point == null) {
-                prefs.edit().putString("screenIconStatus",
-                    "Значок рядом с маркером автомобиля найден, но свежего GPS с точностью до 150 м пока нет.")
-                    .apply();
+            boolean closeToVehicle = dx <= 0.16f && dy <= 0.145f;
+            if (!closeToVehicle) continue;
+            closeButWaiting = true;
+
+            double movedMeters = Double.NaN;
+            if (track.has("firstLat") && track.has("firstLng")) {
+                movedMeters = distanceMeters(
+                    point.getLatitude(), point.getLongitude(),
+                    track.optDouble("firstLat", point.getLatitude()),
+                    track.optDouble("firstLng", point.getLongitude()));
+            }
+            boolean gpsMoved = Double.isFinite(movedMeters) && movedMeters >= 20.0
+                && point.hasAccuracy() && point.getAccuracy() <= 60.0f;
+            boolean moving = point.hasSpeed() && point.getSpeed() >= 1.4f;
+            // Do not save a static screen marker from a single frame. It must be seen repeatedly
+            // and approach the vehicle anchor, or have reliable GPS movement while passing.
+            boolean passEvidence = hits >= 2 && (approaches >= 1 || gpsMoved || (hits >= 4 && moving));
+            if (!passEvidence) {
+                tracked++;
                 continue;
             }
-            saveScreenIconEvidence(detection, point, result.vehicleAnchorEstimated);
-            closeToVehicle = true;
+
+            saveScreenIconEvidence(detection, point, result.vehicleAnchorEstimated, track);
+            savedAny = true;
         }
-        if (closeToVehicle) {
+
+        if (savedAny) {
             prefs.edit().putString("screenIconStatus",
-                result.vehicleAnchorEstimated
-                    ? "Графический значок прошёл рядом с расчётным центром карты; черновая GPS-точка сохранена с низкой уверенностью."
-                    : "Графический значок прошёл рядом с маркером автомобиля; приблизительная GPS-точка сохранена для проверки.")
+                "Распознаны значки, отслежены на нескольких кадрах и сохранены как приблизительные GPS-точки.")
+                .apply();
+        } else if (closeButWaiting) {
+            prefs.edit().putString("screenIconStatus",
+                "Графические значки найдены возле маркера; сверяем повторные кадры и движение перед сохранением.")
                 .apply();
         } else {
             prefs.edit().putString("screenIconStatus",
-                "Графические значки найдены; ждём, пока один из них приблизится к маркеру автомобиля.")
+                "Графических кандидатов в последнем кадре: " + count + ". Отслеживаем их движение по карте.")
                 .apply();
         }
     }
 
-    private void saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point, boolean estimatedAnchor) {
+    private JSONObject updateScreenIconTrack(ScreenIconDetector.Detection detection,
+                                             ScreenIconDetector.ScanResult result,
+                                             Location point, long now) {
+        if (detection == null || result == null) return null;
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        synchronized (EVIDENCE_LOCK) {
+            JSONArray tracks;
+            try { tracks = new JSONArray(prefs.getString("screenIconTracks", "[]")); }
+            catch (Exception ignored) { tracks = new JSONArray(); }
+
+            JSONArray kept = new JSONArray();
+            JSONObject best = null;
+            int bestIndex = -1;
+            double bestDistance = Double.MAX_VALUE;
+            for (int i = 0; i < tracks.length(); i++) {
+                JSONObject candidate = tracks.optJSONObject(i);
+                if (candidate == null) continue;
+                long lastAt = candidate.optLong("lastAt", 0L);
+                if (lastAt <= 0L || now - lastAt < 0L || now - lastAt > 45_000L) continue;
+                int keptIndex = kept.length();
+                kept.put(candidate);
+                if (!detection.kind.equals(candidate.optString("kind"))) continue;
+                double ddx = detection.x - candidate.optDouble("x", -10.0);
+                double ddy = detection.y - candidate.optDouble("y", -10.0);
+                double distance = Math.sqrt(ddx * ddx * 1.35 + ddy * ddy);
+                if (Math.abs(ddx) <= 0.18 && Math.abs(ddy) <= 0.22 && distance < bestDistance) {
+                    bestDistance = distance;
+                    best = candidate;
+                    bestIndex = keptIndex;
+                }
+            }
+
+            double currentDistanceToAnchor = screenDistance(detection.x, detection.y,
+                result.vehicleX, result.vehicleY);
+            JSONObject track;
+            if (best != null) {
+                track = new JSONObject(best.toString());
+                float oldX = (float) track.optDouble("x", detection.x);
+                float oldY = (float) track.optDouble("y", detection.y);
+                double previousDistance = screenDistance(oldX, oldY, result.vehicleX, result.vehicleY);
+                int approaches = track.optInt("approaches", 0);
+                if (previousDistance - currentDistanceToAnchor >= 0.008) approaches++;
+                track.put("approaches", approaches);
+                track.put("hits", track.optInt("hits", 1) + 1);
+                track.put("bestDistance", Math.min(track.optDouble("bestDistance", currentDistanceToAnchor),
+                    currentDistanceToAnchor));
+                track.put("x", detection.x);
+                track.put("y", detection.y);
+                track.put("lastAt", now);
+                track.put("lastPattern", detection.pattern == null ? "graphic" : detection.pattern);
+                if (bestIndex >= 0) kept.put(bestIndex, track);
+            } else {
+                track = new JSONObject();
+                track.put("id", UUID.randomUUID().toString());
+                track.put("kind", detection.kind);
+                track.put("x", detection.x);
+                track.put("y", detection.y);
+                track.put("firstX", detection.x);
+                track.put("firstY", detection.y);
+                track.put("hits", 1);
+                track.put("approaches", 0);
+                track.put("bestDistance", currentDistanceToAnchor);
+                track.put("firstAt", now);
+                track.put("lastAt", now);
+                track.put("lastPattern", detection.pattern == null ? "graphic" : detection.pattern);
+                track.put("anchorEstimated", result.vehicleAnchorEstimated);
+                if (point.hasAccuracy() && point.getAccuracy() <= 150.0f) {
+                    track.put("firstLat", point.getLatitude());
+                    track.put("firstLng", point.getLongitude());
+                    track.put("firstAccuracy", point.getAccuracy());
+                }
+                kept.put(track);
+            }
+
+            while (kept.length() > 40) kept.remove(0);
+            prefs.edit().putString("screenIconTracks", kept.toString()).apply();
+            return track;
+        }
+    }
+
+    private static double screenDistance(float x, float y, float anchorX, float anchorY) {
+        double dx = (x - anchorX) * 1.15;
+        double dy = y - anchorY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    private void saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point, boolean estimatedAnchor, JSONObject track) {
         if (detection == null || point == null) return;
         long now = System.currentTimeMillis();
         String kind = detection.kind;
@@ -366,6 +481,8 @@ public class ScreenCaptureService extends Service {
             .append(Math.round(detection.y * 100f))
             .append("%");
         if (point.hasBearing()) text.append(", heading=").append(Math.round(point.getBearing())).append("deg");
+        text.append(", hits=").append(track == null ? 1 : track.optInt("hits", 1));
+        text.append(", approaching=").append(track != null && track.optInt("approaches", 0) > 0 ? "yes" : "no");
         text.append(", pattern=").append(detection.pattern == null ? "graphic" : detection.pattern);
         String sourceText = text.toString();
         if (sourceText.length() > 150) sourceText = sourceText.substring(0, 150);
@@ -776,6 +893,10 @@ public class ScreenCaptureService extends Service {
             result.put("screenScanPendingCount", new JSONArray(prefs.getString("pendingCloud", "[]")).length());
             result.put("screenScanIconStatus", prefs.getString("screenIconStatus", "Графические значки ещё не анализировались."));
             result.put("screenScanIconSavedCount", prefs.getInt("screenIconSavedCount", 0));
+            result.put("screenScanIconCandidateFrames", prefs.getInt("screenIconCandidateFrames", 0));
+            result.put("screenScanIconCandidatesTotal", prefs.getInt("screenIconCandidatesTotal", 0));
+            result.put("screenScanIconCandidatesLastFrame", prefs.getInt("screenIconLastFrameCount", 0));
+            result.put("screenScanTrackCount", new JSONArray(prefs.getString("screenIconTracks", "[]")).length());
             result.put("screenScanEvidence", new JSONArray(prefs.getString("evidence", "[]")));
         } catch (Exception ignored) {}
         return result.toString();
