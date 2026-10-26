@@ -39,6 +39,7 @@ import java.net.URL;
 import java.nio.ByteBuffer;
 import java.text.Normalizer;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -221,9 +222,15 @@ public class ScreenCaptureService extends Service {
         Bitmap bitmap = null;
         try {
             long now = android.os.SystemClock.elapsedRealtime();
-            if (!active || ocrInFlight || now - lastOcrAt < OCR_INTERVAL_MS) {
+            if (!active || ocrInFlight || now - lastOcrAt < OCR_INTERVAL_MS ||
+                getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("scannerAppForeground", false)) {
                 image = reader.acquireLatestImage();
                 if (image != null) image.close();
+                if (active && getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("scannerAppForeground", false)) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString("screenIconStatus", "Ожидаю перехода в 2ГИС/Яндекс; собственный экран «Астана Гид» пропускается.")
+                        .apply();
+                }
                 return;
             }
             image = reader.acquireLatestImage();
@@ -304,11 +311,30 @@ public class ScreenCaptureService extends Service {
         }
     }
 
+    private static boolean isTrustedIconPattern(ScreenIconDetector.Detection detection) {
+        if (detection == null || detection.pattern == null) return false;
+        if ("speed-camera".equals(detection.kind)) {
+            return "compound-speed-sign-with-upper-right-camera-badge".equals(detection.pattern)
+                || "camera-badge-on-speed-sign".equals(detection.pattern);
+        }
+        if ("traffic-light".equals(detection.kind)) {
+            return "three-colour-traffic-light-icon".equals(detection.pattern)
+                || "pixel-sampled-three-colour-traffic-light-on-route".equals(detection.pattern);
+        }
+        return false;
+    }
+
     private void processScreenIcons(ScreenIconDetector.ScanResult result) {
         if (!active || result == null) return;
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        int count = result.detections == null ? 0 : result.detections.size();
+        List<ScreenIconDetector.Detection> trustedDetections = new ArrayList<>();
+        if (result.detections != null) {
+            for (ScreenIconDetector.Detection detection : trustedDetections) {
+                if (isTrustedIconPattern(detection)) trustedDetections.add(detection);
+            }
+        }
+        int count = trustedDetections.size();
         android.content.SharedPreferences.Editor counter = prefs.edit()
             .putLong("screenIconLastScanAt", now)
             .putInt("screenIconLastFrameCount", count);
@@ -324,11 +350,23 @@ public class ScreenCaptureService extends Service {
                 .apply();
             return;
         }
+        if (result.vehicleAnchorEstimated) {
+            prefs.edit().putString("screenIconStatus",
+                "Графический кандидат замечен, но маркер автомобиля не распознан уверенно; GPS-точка не отправляется.")
+                .apply();
+            return;
+        }
 
         Location point = getIconLocation();
         if (point == null) {
             prefs.edit().putString("screenIconStatus",
-                "Найдено графических кандидатов: " + count + ", но нет свежего GPS с точностью до 150 м.")
+                "Найдено графических кандидатов: " + count + ", но нет свежего GPS с точностью до 60 м.")
+                .apply();
+            return;
+        }
+        if (!point.hasAccuracy() || point.getAccuracy() > MAX_GPS_ACCURACY_M) {
+            prefs.edit().putString("screenIconStatus",
+                "Значки найдены, но точность GPS хуже 60 м; точку пока не отправляем.")
                 .apply();
             return;
         }
@@ -507,7 +545,9 @@ public class ScreenCaptureService extends Service {
             .append("% y=")
             .append(Math.round(detection.y * 100f))
             .append("%");
-        if (point.hasBearing()) text.append(", heading=").append(Math.round(point.getBearing())).append("deg");
+        if (point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f) {
+            text.append(", heading=").append(Math.round(point.getBearing())).append("deg");
+        }
         text.append(", hits=").append(track == null ? 1 : track.optInt("hits", 1));
         text.append(", approaching=").append(track != null && track.optInt("approaches", 0) > 0 ? "yes" : "no");
         text.append(", pattern=").append(detection.pattern == null ? "graphic" : detection.pattern);
@@ -525,6 +565,13 @@ public class ScreenCaptureService extends Service {
             item.put("observedLng", point.getLongitude());
             item.put("accuracy", point.getAccuracy());
             item.put("gpsAt", point.getTime());
+            item.put("travelHeadingDegrees",
+                point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f
+                    ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
+            item.put("detectionMethod", "icon-heuristic");
+            item.put("coordinateMethod", "icon-pass-by-gps");
+            item.put("iconPattern", detection.pattern == null ? "legacy-icon-pass-by-gps" : detection.pattern);
+            item.put("frameHits", Math.max(1, Math.min(100, track == null ? 1 : track.optInt("hits", 1))));
             item.put("distanceAheadM", JSONObject.NULL);
             // The icon is saved only when it is close to the detected vehicle marker.
             // This is an approximate pass-by point, not an exact surveyed camera coordinate.
@@ -606,17 +653,38 @@ public class ScreenCaptureService extends Service {
         return s;
     }
 
+    private static boolean isScannerInterfaceText(String s) {
+        String[] blocked = {
+            "астана гид", "сканер", "координат", "направление", "на карте",
+            "графических наблюдений", "кадров экрана", "кадров сохранено",
+            "отметок на карте", "требующей проверки", "подсказка", "облако",
+            "светофор/знак", "камера/светофор", "сохранить объект", "объект с gps",
+            "фоновая камера", "камера активна", "экран анализируется",
+            "whatsapp", "wa business", "значки найдены", "значки камеры",
+            "распознаны", "gps подключен", "gps подключён", "маркер автомобиля",
+            "speed camera icon", "traffic light icon"
+        };
+        for (String phrase : blocked) {
+            if (s.contains(phrase)) return true;
+        }
+        return false;
+    }
+
     private static String classifyRoadHint(String line) {
-        String s = line.toLowerCase(Locale.ROOT).replace('ё', 'е');
-        if (s.contains("камера") || s.contains("контроля скорости") ||
-            s.contains("speed camera") || s.contains("speedcam")) return "speed-camera";
-        if (s.contains("светофор") || s.contains("traffic light")) return "traffic-light";
-        if ((s.contains("ограничение скорости") || s.contains("скорость")) &&
-            Pattern.compile("\\d{2,3}").matcher(s).find()) return "speed-limit";
-        if (s.contains("дорожные работы") || s.contains("ремонт дороги") ||
-            s.contains("перекрытие") || s.contains("road works")) return "roadwork";
-        if (s.contains("дтп") || s.contains("авария") || s.contains("опасность") ||
-            s.contains("происшествие") || s.contains("accident") || s.contains("hazard")) return "road-hazard";
+        String s = line.toLowerCase(Locale.ROOT).replace('ё', 'е')
+            .replaceAll("\\s+", " ").trim();
+        if (s.length() < 3 || isScannerInterfaceText(s)) return null;
+
+        if (Pattern.compile("(?:камера\\s+(?:контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\\s*camera|speedcam|camera ahead)")
+            .matcher(s).find()) return "speed-camera";
+        if (Pattern.compile("(?:светофор впереди|следующий светофор|traffic light ahead)")
+            .matcher(s).find()) return "traffic-light";
+        if (Pattern.compile("(?:ограничение скорости|speed limit)\\D{0,12}[0-9]{2,3}")
+            .matcher(s).find()) return "speed-limit";
+        if (Pattern.compile("(?:дорожные работы|ремонт дороги|перекрытие дороги|road works)")
+            .matcher(s).find()) return "roadwork";
+        if (Pattern.compile("(?:дтп впереди|авария впереди|опасность впереди|происшествие впереди|accident ahead|hazard ahead)")
+            .matcher(s).find()) return "road-hazard";
         return null;
     }
 
@@ -647,6 +715,13 @@ public class ScreenCaptureService extends Service {
             item.put("observedLng", point == null ? JSONObject.NULL : point.getLongitude());
             item.put("accuracy", point == null ? JSONObject.NULL : point.getAccuracy());
             item.put("gpsAt", point == null ? 0 : point.getTime());
+            item.put("travelHeadingDegrees",
+                point != null && point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f
+                    ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
+            item.put("detectionMethod", "text-ocr");
+            item.put("coordinateMethod", estimateLat == null ? "unknown" : "distance-and-heading");
+            item.put("iconPattern", JSONObject.NULL);
+            item.put("frameHits", 1);
             item.put("distanceAheadM", distanceAhead == null ? JSONObject.NULL : distanceAhead);
             item.put("estimatedLat", estimateLat == null ? JSONObject.NULL : estimateLat);
             item.put("estimatedLng", estimateLng == null ? JSONObject.NULL : estimateLng);
@@ -687,7 +762,7 @@ public class ScreenCaptureService extends Service {
                 .apply();
         }
 
-        if (point != null) {
+        if (point != null && estimateLat != null && estimateLng != null) {
             cloudExecutor.execute(() -> queueAndSync(item));
         }
         updateNotification("Экран анализируется · подсказок " +
@@ -831,6 +906,13 @@ public class ScreenCaptureService extends Service {
                 body.put("estimated_lng", item.opt("estimatedLng"));
                 body.put("captured_at", item.optString("capturedAt"));
                 body.put("confidence", item.optDouble("confidence", 0.0));
+                body.put("detection_method", item.optString("detectionMethod", "text-ocr"));
+                body.put("travel_heading_degrees", item.isNull("travelHeadingDegrees")
+                    ? JSONObject.NULL : item.opt("travelHeadingDegrees"));
+                body.put("icon_pattern", item.isNull("iconPattern")
+                    ? JSONObject.NULL : item.opt("iconPattern"));
+                body.put("frame_hits", item.optInt("frameHits", 1));
+                body.put("coordinate_method", item.optString("coordinateMethod", "unknown"));
                 connection = (HttpURLConnection) new URL(CLOUD_ENDPOINT).openConnection();
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(5000);

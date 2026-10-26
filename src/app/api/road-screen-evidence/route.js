@@ -6,12 +6,6 @@ const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_KINDS = new Set([
   "speed-camera", "traffic-light", "speed-limit", "roadwork", "road-hazard",
 ]);
-const TERMS = [
-  "камера", "светофор", "ограничение скорости", "скорость",
-  "дтп", "авария", "дорожные работы", "ремонт дороги",
-  "перекрытие", "контроля скорости", "speed camera", "speedcam",
-  "traffic light", "road works", "accident", "hazard",
-];
 
 function getConfig() {
   let base = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
@@ -51,35 +45,49 @@ export async function GET(request) {
   const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(800, Math.floor(requestedLimit))) : 500;
   const since = new Date(Date.now() - MAX_AGE_MS).toISOString();
   const params = new URLSearchParams({
-    select: "source_id,kind,source_text,observed_lat,observed_lng,accuracy_m,gps_captured_at,distance_ahead_m,estimated_lat,estimated_lng,confidence,captured_at,review_status",
+    select: "id,kind,lat,lng,travel_heading_degrees,accuracy_m,confidence,detection_method,coordinate_method,icon_pattern,observation_count,first_seen_at,last_seen_at,review_status",
     review_status: "in.(needs-review,approved)",
-    captured_at: "gte." + since,
-    order: "captured_at.desc",
+    last_seen_at: "gte." + since,
+    order: "last_seen_at.desc",
     limit: String(limit),
   });
 
   try {
-    const response = await callDatabase(config, TABLE + "?" + params.toString());
-    if (!response.ok) return jsonResponse({ ok: false, error: "Could not load screen evidence." }, 502);
+    const response = await callDatabase(config, "road_objects?" + params.toString());
+    if (!response.ok) return jsonResponse({ ok: false, error: "Could not load canonical road objects." }, 502);
     const rows = await response.json();
-    const observations = Array.isArray(rows) ? rows.map((row) => ({
-      id: row.source_id,
-      source_id: row.source_id,
-      kind: row.kind,
-      sourceText: row.source_text,
-      observedLat: Number(row.observed_lat),
-      observedLng: Number(row.observed_lng),
-      accuracy: Number(row.accuracy_m),
-      gpsAt: new Date(row.gps_captured_at).getTime(),
-      distanceAheadM: row.distance_ahead_m == null ? null : Number(row.distance_ahead_m),
-      estimatedLat: row.estimated_lat == null ? null : Number(row.estimated_lat),
-      estimatedLng: row.estimated_lng == null ? null : Number(row.estimated_lng),
-      confidence: Number(row.confidence),
-      capturedAt: row.captured_at,
-      reviewStatus: row.review_status,
-      source: "screen-evidence",
-      syncStatus: "synced",
-    })) : [];
+    const observations = Array.isArray(rows) ? rows.map((row) => {
+      const heading = row.travel_heading_degrees == null ? null : Number(row.travel_heading_degrees);
+      const lat = Number(row.lat);
+      const lng = Number(row.lng);
+      return {
+        id: "road-object-" + row.id,
+        source_id: row.id,
+        kind: row.kind,
+        sourceText: "Графическое наблюдение · повторных проездов: " + Number(row.observation_count || 1)
+          + (row.icon_pattern ? " · шаблон: " + row.icon_pattern : ""),
+        observedLat: lat,
+        observedLng: lng,
+        accuracy: Number(row.accuracy_m),
+        gpsAt: new Date(row.last_seen_at).getTime(),
+        distanceAheadM: null,
+        estimatedLat: lat,
+        estimatedLng: lng,
+        confidence: Number(row.confidence),
+        capturedAt: row.last_seen_at,
+        firstSeenAt: row.first_seen_at,
+        lastSeenAt: row.last_seen_at,
+        directionDegrees: heading,
+        travelHeadingDegrees: heading,
+        observationCount: Number(row.observation_count || 1),
+        detectionMethod: row.detection_method,
+        coordinateMethod: row.coordinate_method,
+        iconPattern: row.icon_pattern,
+        reviewStatus: row.review_status,
+        source: "screen-evidence",
+        syncStatus: "synced",
+      };
+    }) : [];
     return jsonResponse({ ok: true, observations });
   } catch {
     return jsonResponse({ ok: false, error: "Screen evidence service is temporarily unavailable." }, 502);
@@ -98,6 +106,14 @@ function normalize(candidate) {
   const kind = String(candidate.kind || "");
   const text = String(candidate.source_text || candidate.sourceText || "").replace(/\s+/g, " ").trim().slice(0, 160);
   const lowerText = text.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
+  const detectionMethod = String(candidate.detection_method ?? candidate.detectionMethod ?? "text-ocr");
+  const coordinateMethod = String(candidate.coordinate_method ?? candidate.coordinateMethod ?? "unknown");
+  const iconPattern = candidate.icon_pattern == null && candidate.iconPattern == null
+    ? null : String(candidate.icon_pattern ?? candidate.iconPattern).slice(0, 100);
+  const rawHeading = candidate.travel_heading_degrees ?? candidate.travelHeadingDegrees ?? candidate.directionDegrees;
+  const travelHeading = rawHeading == null || rawHeading === "" ? null : Number(rawHeading);
+  const rawHits = candidate.frame_hits ?? candidate.frameHits ?? 1;
+  const frameHits = Number(rawHits);
   const observedLat = Number(candidate.observed_lat ?? candidate.observedLat);
   const observedLng = Number(candidate.observed_lng ?? candidate.observedLng);
   const accuracy = Number(candidate.accuracy_m ?? candidate.accuracy);
@@ -110,24 +126,52 @@ function normalize(candidate) {
   const estimateLngValue = candidate.estimated_lng ?? candidate.estimatedLng;
   const estimatedLat = estimateLatValue == null ? null : Number(estimateLatValue);
   const estimatedLng = estimateLngValue == null ? null : Number(estimateLngValue);
-  // Icon-only observations are located when the marker passes near the detected vehicle marker.
-  const iconPassEstimate = lowerText.includes("near vehicle marker");
   const now = Date.now();
 
   if (!sourceId || sourceId.length < 8 || !ALLOWED_KINDS.has(kind)) return null;
-  if (text.length < 3 || !TERMS.some((term) => lowerText.includes(term))) return null;
+  if (text.length < 3 || text.length > 160) return null;
   if (!Number.isFinite(observedLat) || observedLat < 47 || observedLat > 55) return null;
   if (!Number.isFinite(observedLng) || observedLng < 65 || observedLng > 77) return null;
-  if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > (iconPassEstimate ? 150 : 60)) return null;
-  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 0.6) return null;
+  if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 150) return null;
+  if (!Number.isFinite(confidence) || confidence < 0.08 || confidence > 0.6) return null;
   if (!Number.isFinite(gpsCapturedAt.getTime()) || gpsCapturedAt.getTime() > now + 5 * 60 * 1000) return null;
   if (!Number.isFinite(capturedAt.getTime()) || capturedAt.getTime() > now + 5 * 60 * 1000) return null;
   if (now - capturedAt.getTime() > MAX_AGE_MS) return null;
+  if (!Number.isFinite(frameHits) || frameHits < 1 || frameHits > 100) return null;
+  if (travelHeading != null && (!Number.isInteger(travelHeading) || travelHeading < 0 || travelHeading > 359)) return null;
   if (distanceAheadM != null && (!Number.isFinite(distanceAheadM) || distanceAheadM < 15 || distanceAheadM > 2000)) return null;
   if ((estimatedLat == null) !== (estimatedLng == null)) return null;
   if (estimatedLat != null && (!Number.isFinite(estimatedLat) || estimatedLat < 47 || estimatedLat > 55)) return null;
   if (estimatedLng != null && (!Number.isFinite(estimatedLng) || estimatedLng < 65 || estimatedLng > 77)) return null;
-  if (distanceAheadM == null && (estimatedLat != null || estimatedLng != null) && !iconPassEstimate) return null;
+
+  if (detectionMethod === "icon-heuristic") {
+    const iconMatch = /^(speed camera icon|traffic light icon) near vehicle marker, screen x=\d{1,3}% y=\d{1,3}%/i.test(text);
+    const cameraPatterns = new Set([
+      "compound-speed-sign-with-upper-right-camera-badge",
+      "camera-badge-on-speed-sign",
+    ]);
+    const trafficPatterns = new Set([
+      "three-colour-traffic-light-icon",
+      "pixel-sampled-three-colour-traffic-light-on-route",
+    ]);
+    const patternAllowed = kind === "speed-camera"
+      ? cameraPatterns.has(iconPattern)
+      : kind === "traffic-light" && trafficPatterns.has(iconPattern);
+    if (!iconMatch || !patternAllowed) return null;
+    if (coordinateMethod !== "icon-pass-by-gps" || frameHits < 2 || accuracy > 60) return null;
+    if (estimatedLat == null || estimatedLng == null || distanceAheadM != null) return null;
+  } else if (detectionMethod === "text-ocr") {
+    const strictTextAlert =
+      (kind === "speed-camera" && /(камера\s+(контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\s*camera|speedcam|camera ahead)/i.test(lowerText)) ||
+      (kind === "traffic-light" && /(светофор впереди|следующий светофор|traffic light ahead)/i.test(lowerText)) ||
+      (kind === "speed-limit" && /(ограничение скорости|speed limit)\D{0,12}\d{2,3}/i.test(lowerText)) ||
+      (kind === "roadwork" && /(дорожные работы|ремонт дороги|перекрытие дороги|road works)/i.test(lowerText)) ||
+      (kind === "road-hazard" && /(дтп впереди|авария впереди|опасность впереди|происшествие впереди|accident ahead|hazard ahead)/i.test(lowerText));
+    if (!strictTextAlert || coordinateMethod !== "distance-and-heading") return null;
+    if (distanceAheadM == null || estimatedLat == null || estimatedLng == null || accuracy > 60) return null;
+  } else {
+    return null;
+  }
 
   return {
     source_id: sourceId,
@@ -143,9 +187,13 @@ function normalize(candidate) {
     confidence,
     captured_at: capturedAt.toISOString(),
     review_status: "needs-review",
+    detection_method: detectionMethod,
+    travel_heading_degrees: travelHeading,
+    icon_pattern: iconPattern,
+    frame_hits: frameHits,
+    coordinate_method: coordinateMethod,
   };
 }
-
 export async function POST(request) {
   const config = getConfig();
   if (!config) return jsonResponse({ ok: false, error: "Screen evidence service is not configured." }, 503);
