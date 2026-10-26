@@ -65,10 +65,7 @@ public class ScreenCaptureService extends Service {
     private static final float MAX_ICON_GPS_ACCURACY_M = 150.0f;
     private static final int MAX_LOCAL_EVIDENCE = 1000;
     private static final int MAX_PENDING_CLOUD_EVIDENCE = 2000;
-    private static final String CLOUD_ENDPOINT = "https://qyejqovxwniqlcsspmbc.supabase.co/rest/v1/road_screen_evidence?on_conflict=source_id";
-    private static final String SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
-    // Legacy anon JWT is required in Authorization; publishable keys must stay in apikey only.
-    private static final String SUPABASE_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZWpxb3Z4d25pcWxjc3NwbWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjUyMDQsImV4cCI6MjEwNzU0MTIwNH0.MPXdt6Rm8cS88Ocb8NS9qqAbblCq7fWQOreE2-aiTe4";
+    private static final String CLOUD_ENDPOINT = "https://astana-map-roads.vercel.app/api/road-screen-evidence";
     private static final Object EVIDENCE_LOCK = new Object();
     private static final Pattern DISTANCE_PATTERN = Pattern.compile(
         "(?:через\\s*)?(\\d{1,4}(?:[.,]\\d+)?)\\s*(км|м)\\b",
@@ -875,6 +872,13 @@ public class ScreenCaptureService extends Service {
     private void flushPendingCloudEvidence() {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         while (active) {
+            String accessKey = prefs.getString("accessKey", "");
+            if (accessKey == null || accessKey.trim().length() < 32) {
+                prefs.edit().putString("cloudStatus",
+                    "Координаты сохранены на телефоне; открой «Астана Гид» и введи личный ключ базы.")
+                    .apply();
+                return;
+            }
             JSONArray pending;
             synchronized (EVIDENCE_LOCK) {
                 try { pending = new JSONArray(prefs.getString("pendingCloud", "[]")); }
@@ -923,9 +927,7 @@ public class ScreenCaptureService extends Service {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
-                connection.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY);
-                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_JWT);
-                connection.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal");
+                connection.setRequestProperty("X-Astana-Guide-Key", accessKey);
                 byte[] bytes = body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 connection.setFixedLengthStreamingMode(bytes.length);
                 try (OutputStream output = connection.getOutputStream()) { output.write(bytes); }
