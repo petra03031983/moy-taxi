@@ -173,7 +173,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        getSharedPreferences("astana_screen_scan", MODE_PRIVATE).edit()
+            .putBoolean("scannerAppForeground", true)
+            .apply();
         syncScreenCaptureButton();
+    }
+
+    @Override
+    protected void onPause() {
+        getSharedPreferences("astana_screen_scan", MODE_PRIVATE).edit()
+            .putBoolean("scannerAppForeground", false)
+            .apply();
+        super.onPause();
     }
 
     private void openExternal(Uri uri) {
