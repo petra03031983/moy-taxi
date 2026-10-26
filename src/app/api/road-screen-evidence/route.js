@@ -95,11 +95,19 @@ function normalize(candidate) {
   const kind = String(candidate.kind || "");
   const text = String(candidate.source_text || candidate.sourceText || "").replace(/\s+/g, " ").trim().slice(0, 160);
   const lowerText = text.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
-  const detectionMethod = String(candidate.detection_method ?? candidate.detectionMethod ?? "text-ocr");
-  const coordinateMethod = String(candidate.coordinate_method ?? candidate.coordinateMethod ?? "unknown");
-  const iconPattern = candidate.icon_pattern == null && candidate.iconPattern == null
-    ? null : String(candidate.icon_pattern ?? candidate.iconPattern).slice(0, 100);
-  const rawHeading = candidate.travel_heading_degrees ?? candidate.travelHeadingDegrees ?? candidate.directionDegrees;
+  // Scanner 1.4.4 retained icon coordinates locally before it added structured metadata.
+  // Recover only the old explicit icon labels/patterns; do not turn arbitrary OCR into a pin.
+  const legacyIconMatch = /^(speed camera icon|traffic light icon) near vehicle marker, screen x=\\d{1,3}% y=\\d{1,3}%/i.test(text);
+  const legacyPatternMatch = text.match(/(?:^|,\\s*)pattern=([a-z0-9-]+)/i);
+  const legacyIconPattern = legacyPatternMatch ? legacyPatternMatch[1].slice(0, 100) : null;
+  const detectionMethod = String(candidate.detection_method ?? candidate.detectionMethod ?? (legacyIconMatch ? "icon-heuristic" : "text-ocr"));
+  const coordinateMethod = String(candidate.coordinate_method ?? candidate.coordinateMethod ?? (legacyIconMatch ? "icon-pass-by-gps" : "unknown"));
+  const suppliedPattern = candidate.icon_pattern ?? candidate.iconPattern;
+  const iconPattern = suppliedPattern == null || suppliedPattern === ""
+    ? legacyIconPattern : String(suppliedPattern).slice(0, 100);
+  const textHeading = text.match(/heading=(\\d{1,3})deg/i);
+  const rawHeading = candidate.travel_heading_degrees ?? candidate.travelHeadingDegrees ?? candidate.directionDegrees
+    ?? (textHeading ? Number(textHeading[1]) : null);
   const travelHeading = rawHeading == null || rawHeading === "" ? null : Number(rawHeading);
   const rawHits = candidate.frame_hits ?? candidate.frameHits ?? 1;
   const frameHits = Number(rawHits);
@@ -147,7 +155,7 @@ function normalize(candidate) {
       ? cameraPatterns.has(iconPattern)
       : kind === "traffic-light" && trafficPatterns.has(iconPattern);
     if (!iconMatch || !patternAllowed) return null;
-    if (coordinateMethod !== "icon-pass-by-gps" || frameHits < 2 || accuracy > 60) return null;
+    if (coordinateMethod !== "icon-pass-by-gps" || frameHits < 1 || accuracy > 60) return null;
     if (estimatedLat == null || estimatedLng == null || distanceAheadM != null) return null;
   } else if (detectionMethod === "text-ocr") {
     const strictTextAlert =
