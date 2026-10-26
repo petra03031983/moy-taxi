@@ -51,35 +51,49 @@ export async function GET(request) {
   const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(800, Math.floor(requestedLimit))) : 500;
   const since = new Date(Date.now() - MAX_AGE_MS).toISOString();
   const params = new URLSearchParams({
-    select: "source_id,kind,source_text,observed_lat,observed_lng,accuracy_m,gps_captured_at,distance_ahead_m,estimated_lat,estimated_lng,confidence,captured_at,review_status",
+    select: "id,kind,lat,lng,travel_heading_degrees,accuracy_m,confidence,detection_method,coordinate_method,icon_pattern,observation_count,first_seen_at,last_seen_at,review_status",
     review_status: "in.(needs-review,approved)",
-    captured_at: "gte." + since,
-    order: "captured_at.desc",
+    last_seen_at: "gte." + since,
+    order: "last_seen_at.desc",
     limit: String(limit),
   });
 
   try {
-    const response = await callDatabase(config, TABLE + "?" + params.toString());
-    if (!response.ok) return jsonResponse({ ok: false, error: "Could not load screen evidence." }, 502);
+    const response = await callDatabase(config, "road_objects?" + params.toString());
+    if (!response.ok) return jsonResponse({ ok: false, error: "Could not load canonical road objects." }, 502);
     const rows = await response.json();
-    const observations = Array.isArray(rows) ? rows.map((row) => ({
-      id: row.source_id,
-      source_id: row.source_id,
-      kind: row.kind,
-      sourceText: row.source_text,
-      observedLat: Number(row.observed_lat),
-      observedLng: Number(row.observed_lng),
-      accuracy: Number(row.accuracy_m),
-      gpsAt: new Date(row.gps_captured_at).getTime(),
-      distanceAheadM: row.distance_ahead_m == null ? null : Number(row.distance_ahead_m),
-      estimatedLat: row.estimated_lat == null ? null : Number(row.estimated_lat),
-      estimatedLng: row.estimated_lng == null ? null : Number(row.estimated_lng),
-      confidence: Number(row.confidence),
-      capturedAt: row.captured_at,
-      reviewStatus: row.review_status,
-      source: "screen-evidence",
-      syncStatus: "synced",
-    })) : [];
+    const observations = Array.isArray(rows) ? rows.map((row) => {
+      const heading = row.travel_heading_degrees == null ? null : Number(row.travel_heading_degrees);
+      const lat = Number(row.lat);
+      const lng = Number(row.lng);
+      return {
+        id: "road-object-" + row.id,
+        source_id: row.id,
+        kind: row.kind,
+        sourceText: "Графическое наблюдение · повторных проездов: " + Number(row.observation_count || 1)
+          + (row.icon_pattern ? " · шаблон: " + row.icon_pattern : ""),
+        observedLat: lat,
+        observedLng: lng,
+        accuracy: Number(row.accuracy_m),
+        gpsAt: new Date(row.last_seen_at).getTime(),
+        distanceAheadM: null,
+        estimatedLat: lat,
+        estimatedLng: lng,
+        confidence: Number(row.confidence),
+        capturedAt: row.last_seen_at,
+        firstSeenAt: row.first_seen_at,
+        lastSeenAt: row.last_seen_at,
+        directionDegrees: heading,
+        travelHeadingDegrees: heading,
+        observationCount: Number(row.observation_count || 1),
+        detectionMethod: row.detection_method,
+        coordinateMethod: row.coordinate_method,
+        iconPattern: row.icon_pattern,
+        reviewStatus: row.review_status,
+        source: "screen-evidence",
+        syncStatus: "synced",
+      };
+    }) : [];
     return jsonResponse({ ok: true, observations });
   } catch {
     return jsonResponse({ ok: false, error: "Screen evidence service is temporarily unavailable." }, 502);
