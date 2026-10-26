@@ -631,7 +631,7 @@ public class RoadScanService extends Service {
                     }
                 }
                 if (!exists) pending.put(pendingItem);
-                while (pending.length() > 300) pending.remove(0);
+                while (pending.length() > 1500) pending.remove(0);
                 prefs.edit().putString("pendingCloudObservations", pending.toString())
                     .putString("cloudSyncStatus", "Есть новые наблюдения для отправки")
                     .commit();
