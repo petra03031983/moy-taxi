@@ -16,8 +16,8 @@ import java.util.List;
  */
 public final class ScreenIconDetector {
     private static final int MAX_WIDTH = 480;
-    private static final int MAX_RED_BADGE_SIZE = 15;
-    private static final int MAX_LIGHT_COMPONENT_SIZE = 10;
+    private static final int MAX_RED_BADGE_SIZE = 18;
+    private static final int MAX_LIGHT_COMPONENT_SIZE = 12;
 
     private ScreenIconDetector() {}
 
@@ -112,16 +112,14 @@ public final class ScreenIconDetector {
 
         Component vehicle = findVehicleMarker(blue, width, height);
         boolean anchorFound = vehicle != null;
-        // Navigation layouts commonly keep the vehicle arrow near the lower middle of a portrait map.
-        // Use that as a weak fallback only when a road-icon candidate exists; observations remain provisional.
         boolean anchorEstimated = !anchorFound && !detections.isEmpty();
         float vehicleX = anchorFound ? vehicle.cx() / width : 0.5f;
         float vehicleY = anchorFound ? vehicle.cy() / height : 0.68f;
 
         List<Detection> unique = new ArrayList<>();
         for (Detection detection : detections) {
-            if (detection.y < 0.04f || detection.y > 0.84f ||
-                detection.x < 0.04f || detection.x > 0.96f) continue;
+            if (detection.y < 0.04f || detection.y > 0.90f ||
+                detection.x < 0.03f || detection.x > 0.97f) continue;
             boolean duplicate = false;
             for (Detection prior : unique) {
                 if (prior.kind.equals(detection.kind) &&
@@ -154,9 +152,7 @@ public final class ScreenIconDetector {
                 int index = queue[head++];
                 int x = index % width;
                 int y = index / width;
-                if (!(x == component.minX && y == component.minY && component.area == 1)) {
-                    component.add(x, y);
-                }
+                if (!(x == component.minX && y == component.minY && component.area == 1)) component.add(x, y);
                 for (int dy = -1; dy <= 1; dy++) {
                     int ny = y + dy;
                     if (ny < 0 || ny >= height) continue;
@@ -180,10 +176,10 @@ public final class ScreenIconDetector {
     private static boolean matches(int color, int colorClass) {
         int r = Color.red(color), g = Color.green(color), b = Color.blue(color);
         switch (colorClass) {
-            case 1: return r >= 150 && r > g * 1.38 && r > b * 1.24;
-            case 2: return r >= 155 && g >= 120 && b < 145 && r > b * 1.25 && g > b * 1.12;
-            case 3: return g >= 112 && g > r * 1.20 && g > b * 1.08;
-            case 4: return b >= 120 && b > r * 1.22 && b > g * 1.12;
+            case 1: return r >= 135 && r > g * 1.28 && r > b * 1.18;
+            case 2: return r >= 145 && g >= 105 && b < 155 && r > b * 1.16 && g > b * 1.06;
+            case 3: return g >= 100 && g > r * 1.15 && g > b * 1.05;
+            case 4: return b >= 110 && b > r * 1.18 && b > g * 1.08;
             default: return false;
         }
     }
@@ -193,21 +189,17 @@ public final class ScreenIconDetector {
         List<Component> small = new ArrayList<>();
         List<Component> rings = new ArrayList<>();
         for (Component c : red) {
-            if (c.width() >= 4 && c.height() >= 4 &&
+            if (c.width() >= 3 && c.height() >= 3 &&
                 c.width() <= MAX_RED_BADGE_SIZE && c.height() <= MAX_RED_BADGE_SIZE &&
-                c.area >= 7 && c.area <= 130 &&
-                c.width() / (float) c.height() >= 0.50f &&
-                c.width() / (float) c.height() <= 2.0f &&
-                hasLightAndDarkDetail(c, pixels, width, height)) {
-                small.add(c);
-            }
-            if (c.width() >= 14 && c.height() >= 14 &&
-                c.width() <= 48 && c.height() <= 48 && c.area >= 25 &&
-                c.width() / (float) c.height() >= 0.62f &&
-                c.width() / (float) c.height() <= 1.48f &&
-                c.fillRatio() >= 0.08 && c.fillRatio() <= 0.78) {
-                rings.add(c);
-            }
+                c.area >= 5 && c.area <= 170 &&
+                c.width() / (float) c.height() >= 0.45f &&
+                c.width() / (float) c.height() <= 2.2f &&
+                hasLightAndDarkDetail(c, pixels, width, height)) small.add(c);
+            if (c.width() >= 12 && c.height() >= 12 &&
+                c.width() <= 60 && c.height() <= 60 && c.area >= 20 &&
+                c.width() / (float) c.height() >= 0.55f &&
+                c.width() / (float) c.height() <= 1.65f &&
+                c.fillRatio() >= 0.05 && c.fillRatio() <= 0.82) rings.add(c);
         }
 
         for (Component badge : small) {
@@ -216,39 +208,26 @@ public final class ScreenIconDetector {
             for (Component ring : rings) {
                 float dx = badge.cx() - ring.cx();
                 float dy = badge.cy() - ring.cy();
-                if (dx < ring.width() * 0.18f || dx > ring.width() * 0.95f) continue;
-                if (dy > -ring.height() * 0.08f || dy < -ring.height() * 0.95f) continue;
+                if (dx < ring.width() * 0.10f || dx > ring.width() * 1.10f) continue;
+                if (dy > ring.height() * 0.12f || dy < -ring.height() * 1.10f) continue;
                 double distance = Math.abs(dx / ring.width() - 0.48) + Math.abs(dy / ring.height() + 0.42);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    matchingRing = ring;
-                }
+                if (distance < bestDistance) { bestDistance = distance; matchingRing = ring; }
             }
             if (matchingRing != null) {
-                // Use the speed-sign center as the marker position, not the tiny camera badge.
                 out.add(new Detection("speed-camera", matchingRing.cx() / width,
-                    matchingRing.cy() / height, 0.62, "camera-badge-on-speed-sign"));
-            } else {
-                // A small red icon is only a weak candidate until it passes close to the vehicle marker.
-                out.add(new Detection("speed-camera", badge.cx() / width,
-                    badge.cy() / height, 0.32, "unmatched-red-camera-like-badge"));
+                    matchingRing.cy() / height, 0.66, "camera-badge-on-speed-sign"));
             }
         }
     }
 
-    /**
-     * Some navigation providers join the little camera badge to the red speed-limit ring into
-     * a single connected red shape. The old "small badge plus separate ring" detector misses it.
-     * Detect that compound shape conservatively by looking for a distinct upper-right red protrusion.
-     */
     private static void detectCompositeCameraSigns(List<Component> red, int[] pixels, int width, int height,
                                                    List<Detection> out) {
         for (Component c : red) {
-            if (c.width() < 22 || c.width() > 58 || c.height() < 22 || c.height() > 58 ||
-                c.area < 100 || c.area > 950 ||
-                c.width() / (float) c.height() < 0.60f ||
-                c.width() / (float) c.height() > 1.55f ||
-                c.fillRatio() < 0.10 || c.fillRatio() > 0.38 ||
+            if (c.width() < 18 || c.width() > 68 || c.height() < 18 || c.height() > 68 ||
+                c.area < 70 || c.area > 1200 ||
+                c.width() / (float) c.height() < 0.50f ||
+                c.width() / (float) c.height() > 1.75f ||
+                c.fillRatio() < 0.06 || c.fillRatio() > 0.55 ||
                 !hasLightAndDarkDetail(c, pixels, width, height)) continue;
 
             int upperLeft = 0, upperRight = 0, lowerLeft = 0, lowerRight = 0;
@@ -263,15 +242,13 @@ public final class ScreenIconDetector {
                     else lowerRight++;
                 }
             }
-            boolean badgeProtrudesUpperRight = upperRight >= 30 &&
-                upperRight > upperLeft * 1.35 &&
-                upperRight > lowerRight * 1.35;
+            boolean badgeProtrudesUpperRight = upperRight >= 18 &&
+                upperRight > upperLeft * 1.18 && upperRight > lowerRight * 1.18;
             if (!badgeProtrudesUpperRight) continue;
 
-            // Center on the red sign rather than the small protruding badge.
             float x = (c.minX + c.maxX) / (2f * width);
             float y = (c.minY + c.maxY) / (2f * height);
-            out.add(new Detection("speed-camera", x, y, 0.48,
+            out.add(new Detection("speed-camera", x, y, 0.50,
                 "compound-speed-sign-with-upper-right-camera-badge"));
         }
     }
@@ -283,8 +260,8 @@ public final class ScreenIconDetector {
                 int p = pixels[y * width + x];
                 int r = Color.red(p), g = Color.green(p), b = Color.blue(p);
                 int lum = (r * 30 + g * 59 + b * 11) / 100;
-                if (lum > 180 && Math.abs(r - g) < 65 && Math.abs(g - b) < 65) light++;
-                if (lum < 95) dark++;
+                if (lum > 165 && Math.abs(r - g) < 75 && Math.abs(g - b) < 75) light++;
+                if (lum < 110) dark++;
             }
         }
         return light >= 2 && dark >= 1;
@@ -292,72 +269,47 @@ public final class ScreenIconDetector {
 
     private static void detectTrafficLights(List<Component> red, List<Component> yellow, List<Component> green,
                                             int[] pixels, int width, int height, List<Detection> out) {
-        List<Component> reds = tinyBulbs(red);
-        List<Component> yellows = tinyBulbs(yellow);
-        List<Component> greens = tinyBulbs(green);
-
-        for (Component r : reds) {
-            for (Component y : yellows) {
-                if (!closeBulbs(r, y)) continue;
-                for (Component g : greens) {
-                    if (!closeBulbs(r, g) || !closeBulbs(y, g)) continue;
-                    int left = Math.min(r.minX, Math.min(y.minX, g.minX));
-                    int right = Math.max(r.maxX, Math.max(y.maxX, g.maxX));
-                    int top = Math.min(r.minY, Math.min(y.minY, g.minY));
-                    int bottom = Math.max(r.maxY, Math.max(y.maxY, g.maxY));
-                    if (bottom - top > 18 || right - left > 9) continue;
-                    if (!hasDarkHousing(left, top, right, bottom, pixels, width, height)) continue;
-                    float x = (r.cx() + y.cx() + g.cx()) / (3f * width);
-                    float yy = (r.cy() + y.cy() + g.cy()) / (3f * height);
-                    out.add(new Detection("traffic-light", x, yy, 0.48, "three-colour-traffic-light-icon"));
-                }
-            }
+        List<Component> reds = tinyBulbs(red), yellows = tinyBulbs(yellow), greens = tinyBulbs(green);
+        for (Component r : reds) for (Component y : yellows) for (Component g : greens) {
+            if (!closeBulbs(r, y) || !closeBulbs(r, g) || !closeBulbs(y, g)) continue;
+            int left = Math.min(r.minX, Math.min(y.minX, g.minX));
+            int right = Math.max(r.maxX, Math.max(y.maxX, g.maxX));
+            int top = Math.min(r.minY, Math.min(y.minY, g.minY));
+            int bottom = Math.max(r.maxY, Math.max(y.maxY, g.maxY));
+            if (bottom - top > 22 || right - left > 12) continue;
+            if (!hasDarkHousing(left, top, right, bottom, pixels, width, height)) continue;
+            float x = (r.cx() + y.cx() + g.cx()) / (3f * width);
+            float yy = (r.cy() + y.cy() + g.cy()) / (3f * height);
+            out.add(new Detection("traffic-light", x, yy, 0.50, "three-colour-traffic-light-icon"));
         }
     }
 
-    /**
-     * The green bulb in a navigation-map traffic-light glyph can touch the bright route line and
-     * therefore merge into a large green component. This fallback checks the pixels directly below
-     * a compact red-yellow pair instead of requiring three separate connected components.
-     */
     private static void detectTrafficLightSequencesFromPixels(List<Component> red, List<Component> yellow,
                                                               int[] pixels, int width, int height,
                                                               List<Detection> out) {
-        List<Component> reds = tinyBulbs(red);
-        List<Component> yellows = tinyBulbs(yellow);
+        List<Component> reds = tinyBulbs(red), yellows = tinyBulbs(yellow);
         for (Component r : reds) {
-            if (r.width() > 8 || r.height() > 8) continue;
             for (Component y : yellows) {
-                if (y.width() > 8 || y.height() > 8) continue;
+                if (r.width() > 10 || r.height() > 10 || y.width() > 10 || y.height() > 10) continue;
                 float dx = Math.abs(r.cx() - y.cx());
                 float dy = y.cy() - r.cy();
-                if (dx > 4.0f || dy < 2.0f || dy > 9.0f) continue;
-
+                if (dx > 6.0f || dy < 1.5f || dy > 11.0f) continue;
                 int centerX = Math.round((r.cx() + y.cx()) / 2f);
                 int startY = Math.max(y.maxY, r.maxY);
-                int greenCount = 0;
-                double sumGreenX = 0.0, sumGreenY = 0.0;
-                for (int py = Math.max(0, startY); py <= Math.min(height - 1, startY + 8); py++) {
-                    for (int px = Math.max(0, centerX - 3); px <= Math.min(width - 1, centerX + 3); px++) {
-                        if (matches(pixels[py * width + px], 3)) {
-                            greenCount++;
-                            sumGreenX += px;
-                            sumGreenY += py;
-                        }
+                int greenCount = 0; double sumGreenX = 0.0, sumGreenY = 0.0;
+                for (int py = Math.max(0, startY); py <= Math.min(height - 1, startY + 10); py++) {
+                    for (int px = Math.max(0, centerX - 4); px <= Math.min(width - 1, centerX + 4); px++) {
+                        if (matches(pixels[py * width + px], 3)) { greenCount++; sumGreenX += px; sumGreenY += py; }
                     }
                 }
-                if (greenCount < 3) continue;
-
-                int left = Math.min(r.minX, y.minX);
-                int right = Math.max(r.maxX, y.maxX);
-                int top = Math.min(r.minY, y.minY);
-                int bottom = Math.max(r.maxY, y.maxY);
-                if (bottom - top > 12 || right - left > 8) continue;
-                if (!hasDarkHousing(left, top, right, Math.min(height - 1, bottom + 6), pixels, width, height)) continue;
-
+                if (greenCount < 2) continue;
+                int left = Math.min(r.minX, y.minX), right = Math.max(r.maxX, y.maxX);
+                int top = Math.min(r.minY, y.minY), bottom = Math.max(r.maxY, y.maxY);
+                if (bottom - top > 15 || right - left > 11) continue;
+                if (!hasDarkHousing(left, top, right, Math.min(height - 1, bottom + 8), pixels, width, height)) continue;
                 float x = (float) ((r.cx() + y.cx() + sumGreenX / greenCount) / (3.0 * width));
                 float yy = (float) ((r.cy() + y.cy() + sumGreenY / greenCount) / (3.0 * height));
-                out.add(new Detection("traffic-light", x, yy, 0.42,
+                out.add(new Detection("traffic-light", x, yy, 0.44,
                     "pixel-sampled-three-colour-traffic-light-on-route"));
             }
         }
@@ -367,42 +319,39 @@ public final class ScreenIconDetector {
         List<Component> result = new ArrayList<>();
         for (Component c : components) {
             if (c.width() <= MAX_LIGHT_COMPONENT_SIZE && c.height() <= MAX_LIGHT_COMPONENT_SIZE &&
-                c.area >= 2 && c.area <= 55 && c.fillRatio() >= 0.10) result.add(c);
+                c.area >= 2 && c.area <= 80 && c.fillRatio() >= 0.08) result.add(c);
         }
         return result;
     }
 
     private static boolean closeBulbs(Component a, Component b) {
-        return Math.abs(a.cx() - b.cx()) <= 5.0f &&
-            Math.abs(a.cy() - b.cy()) >= 1.5f && Math.abs(a.cy() - b.cy()) <= 15.0f;
+        return Math.abs(a.cx() - b.cx()) <= 6.0f &&
+            Math.abs(a.cy() - b.cy()) >= 1.0f && Math.abs(a.cy() - b.cy()) <= 17.0f;
     }
 
     private static boolean hasDarkHousing(int left, int top, int right, int bottom,
                                           int[] pixels, int width, int height) {
-        int x0 = Math.max(0, left - 2), x1 = Math.min(width - 1, right + 2);
-        int y0 = Math.max(0, top - 2), y1 = Math.min(height - 1, bottom + 2);
+        int x0 = Math.max(0, left - 3), x1 = Math.min(width - 1, right + 3);
+        int y0 = Math.max(0, top - 3), y1 = Math.min(height - 1, bottom + 3);
         int dark = 0, total = 0;
-        for (int y = y0; y <= y1; y++) {
-            for (int x = x0; x <= x1; x++) {
-                int p = pixels[y * width + x];
-                int r = Color.red(p), g = Color.green(p), b = Color.blue(p);
-                int lum = (r * 30 + g * 59 + b * 11) / 100;
-                if (lum < 90 && Math.abs(r - g) < 55 && Math.abs(g - b) < 55) dark++;
-                total++;
-            }
+        for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) {
+            int p = pixels[y * width + x];
+            int r = Color.red(p), g = Color.green(p), b = Color.blue(p);
+            int lum = (r * 30 + g * 59 + b * 11) / 100;
+            if (lum < 100 && Math.abs(r - g) < 65 && Math.abs(g - b) < 65) dark++;
+            total++;
         }
-        return total > 0 && dark / (double) total >= 0.08;
+        return total > 0 && dark / (double) total >= 0.05;
     }
 
     private static Component findVehicleMarker(List<Component> blue, int width, int height) {
         List<Component> candidates = new ArrayList<>();
         for (Component c : blue) {
             float x = c.cx() / width, y = c.cy() / height;
-            if (c.width() < 7 || c.height() < 8 || c.width() > 42 || c.height() > 58) continue;
-            if (c.area < 24 || c.area > 900 || c.fillRatio() < 0.12) continue;
-            // Reject horizontal blue parking labels/buttons; the moving vehicle arrow is usually taller.
-            if (c.height() < c.width() * 0.78f) continue;
-            if (x < 0.38f || x > 0.62f || y < 0.42f || y > 0.82f) continue;
+            if (c.width() < 6 || c.height() < 7 || c.width() > 48 || c.height() > 64) continue;
+            if (c.area < 18 || c.area > 1000 || c.fillRatio() < 0.10) continue;
+            if (c.height() < c.width() * 0.68f) continue;
+            if (x < 0.34f || x > 0.66f || y < 0.38f || y > 0.86f) continue;
             candidates.add(c);
         }
         if (candidates.isEmpty()) return null;
