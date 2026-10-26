@@ -65,7 +65,9 @@ public class ScreenCaptureService extends Service {
     private static final float MAX_ICON_GPS_ACCURACY_M = 150.0f;
     private static final int MAX_LOCAL_EVIDENCE = 80;
     private static final String CLOUD_ENDPOINT = "https://qyejqovxwniqlcsspmbc.supabase.co/rest/v1/road_screen_evidence?on_conflict=source_id";
+    // Publishable keys belong in apikey; PostgREST's Authorization header needs a JWT.
     private static final String SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
+    private static final String SUPABASE_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZWpxb3Z4d25pcWxjc3NwbWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjUyMDQsImV4cCI6MjEwNzU0MTIwNH0.MPXdt6Rm8cS88Ocb8NS9qqAbblCq7fWQOreE2-aiTe4";
     private static final Object EVIDENCE_LOCK = new Object();
     private static final Pattern DISTANCE_PATTERN = Pattern.compile(
         "(?:через\\s*)?(\\d{1,4}(?:[.,]\\d+)?)\\s*(км|м)\\b",
@@ -921,7 +923,7 @@ public class ScreenCaptureService extends Service {
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
                 connection.setRequestProperty("apikey", SUPABASE_PUBLISHABLE_KEY);
-                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_PUBLISHABLE_KEY);
+                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_JWT);
                 connection.setRequestProperty("Prefer", "resolution=ignore-duplicates,return=minimal");
                 byte[] bytes = body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 connection.setFixedLengthStreamingMode(bytes.length);
