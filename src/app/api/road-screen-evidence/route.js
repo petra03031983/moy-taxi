@@ -1,6 +1,7 @@
 const TABLE = "road_screen_evidence";
 const DEFAULT_SUPABASE_URL = "https://qyejqovxwniqlcsspmbc.supabase.co";
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YjssgR_0Of2b5dhqsSfG_Q_EnYTkrOn";
+const DEFAULT_SUPABASE_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5ZWpxb3Z4d25pcWxjc3NwbWJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5NjUyMDQsImV4cCI6MjEwNzU0MTIwNH0.MPXdt6Rm8cS88Ocb8NS9qqAbblCq7fWQOreE2-aiTe4";
 const MAX_BATCH_SIZE = 30;
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const ALLOWED_KINDS = new Set([
@@ -11,7 +12,8 @@ function getConfig() {
   let base = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
   while (base.endsWith("/")) base = base.slice(0, -1);
   const key = process.env.SUPABASE_PUBLISHABLE_KEY || DEFAULT_SUPABASE_PUBLISHABLE_KEY;
-  return base && key ? { base, key } : null;
+  const authorization = process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_JWT;
+  return base && key && authorization ? { base, key, authorization } : null;
 }
 
 function jsonResponse(payload, status = 200) {
@@ -29,7 +31,7 @@ async function callDatabase(config, path, options = {}) {
     ...options,
     headers: {
       apikey: config.key,
-      Authorization: "Bearer " + config.key,
+      Authorization: "Bearer " + config.authorization,
       Accept: "application/json",
       ...(options.headers || {}),
     },
