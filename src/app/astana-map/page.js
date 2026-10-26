@@ -952,6 +952,7 @@ export default function AstanaMapPage() {
   const roadScanCaptureBusyRef = useRef(false);
   const roadScanNativeObsCountRef = useRef(-1);
   const roadScanNativeScreenMatchCountRef = useRef(-1);
+  const roadScanUploadedEvidenceRef = useRef(new Set());
   const roadObjectsRef = useRef([]);
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
@@ -2587,7 +2588,48 @@ export default function AstanaMapPage() {
               }
             }
             if (Array.isArray(native.screenScanEvidence)) {
-              for (const item of native.screenScanEvidence) {
+              const localEvidence = native.screenScanEvidence;
+              // Rescue retained local coordinates through this same-origin API. This avoids
+              // relying on the scanner's old direct Supabase Authorization header.
+              const uploadable = localEvidence.filter((item) => {
+                const id = String(item?.source_id || item?.sourceId || item?.id || "");
+                const kind = String(item?.kind || "");
+                const observedLat = Number(item?.observedLat ?? item?.observed_lat);
+                const observedLng = Number(item?.observedLng ?? item?.observed_lng);
+                const estimatedLat = Number(item?.estimatedLat ?? item?.estimated_lat);
+                const estimatedLng = Number(item?.estimatedLng ?? item?.estimated_lng);
+                const accuracy = Number(item?.accuracy ?? item?.accuracy_m);
+                return id.length >= 8
+                  && !roadScanUploadedEvidenceRef.current.has(id)
+                  && item?.syncStatus !== "synced"
+                  && ["speed-camera", "traffic-light", "speed-limit", "roadwork", "road-hazard"].includes(kind)
+                  && Number.isFinite(observedLat) && observedLat >= 47 && observedLat <= 55
+                  && Number.isFinite(observedLng) && observedLng >= 65 && observedLng <= 77
+                  && Number.isFinite(estimatedLat) && estimatedLat >= 47 && estimatedLat <= 55
+                  && Number.isFinite(estimatedLng) && estimatedLng >= 65 && estimatedLng <= 77
+                  && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 60;
+              });
+              for (let offset = 0; offset < uploadable.length; offset += 30) {
+                const batch = uploadable.slice(offset, offset + 30);
+                const ids = batch.map((item) => String(item.source_id || item.sourceId || item.id));
+                void fetch("/api/road-screen-evidence", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Accept: "application/json" },
+                  body: JSON.stringify({ observations: batch }),
+                  cache: "no-store",
+                }).then(async (response) => {
+                  if (response.ok) {
+                    const result = await response.json();
+                    if (result?.ok) ids.forEach((id) => roadScanUploadedEvidenceRef.current.add(id));
+                  } else if (response.status === 400) {
+                    // A rejected batch is not useful to retry every minute.
+                    ids.forEach((id) => roadScanUploadedEvidenceRef.current.add(id));
+                  }
+                }).catch(() => {
+                  // Transient network/server failures are retried on the next map refresh.
+                });
+              }
+              for (const item of localEvidence) {
                 merged.set(String(item.id || item.source_id), {
                   ...item,
                   lat: item.estimatedLat == null ? null : Number(item.estimatedLat),
