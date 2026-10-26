@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import "leaflet/dist/leaflet.css";
 
 const ASTANA = [51.1694, 71.4491];
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
@@ -1387,7 +1388,31 @@ export default function AstanaMapPage() {
       }
     }, 17000);
 
-    const loadLeafletFromFallbacks = () => {
+    const loadLeafletFromFallbacks = async () => {
+      if (cancelled) return;
+      if (window.L) {
+        loadWithRotation();
+        return;
+      }
+
+      // Prefer the copy bundled with this app. This avoids a blank map when the phone
+      // or embedded WebView cannot reach a public CDN (jsDelivr, cdnjs or unpkg).
+      try {
+        const leafletModule = await import("leaflet");
+        if (cancelled) return;
+        window.L = leafletModule.default || leafletModule;
+        if (!window.L || typeof window.L.map !== "function") {
+          throw new Error("Локальная библиотека карты загрузилась без функции map");
+        }
+        loadWithRotation();
+        return;
+      } catch (localError) {
+        console.warn("[Astana Guide] Bundled Leaflet unavailable; trying CDN fallbacks", localError);
+      }
+      loadLeafletFromCDNFallbacks();
+    };
+
+    const loadLeafletFromCDNFallbacks = () => {
       if (cancelled) return;
       if (window.L) {
         loadWithRotation();
