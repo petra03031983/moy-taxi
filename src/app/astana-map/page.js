@@ -3497,6 +3497,7 @@ export default function AstanaMapPage() {
         setScreenScanIconCandidateFrames(Number(native.screenScanIconCandidateFrames || 0));
         setScreenScanIconCandidatesTotal(Number(native.screenScanIconCandidatesTotal || 0));
         setScreenScanIconSavedCount(Number(native.screenScanIconSavedCount || 0));
+        setScreenScanTrackCount(Number(native.screenScanTrackCount || 0));
         setScreenScanIconStatus(String(native.screenScanIconStatus || "Графические значки ещё не анализировались."));
         setScreenScanMatchCount(Number(native.screenScanMatchCount || 0));
         setScreenScanCloudStatus(String(native.screenScanCloudStatus || "Экран ещё не синхронизирован"));
