@@ -310,11 +310,30 @@ public class ScreenCaptureService extends Service {
         }
     }
 
+    private static boolean isTrustedIconPattern(ScreenIconDetector.Detection detection) {
+        if (detection == null || detection.pattern == null) return false;
+        if ("speed-camera".equals(detection.kind)) {
+            return "compound-speed-sign-with-upper-right-camera-badge".equals(detection.pattern)
+                || "camera-badge-on-speed-sign".equals(detection.pattern);
+        }
+        if ("traffic-light".equals(detection.kind)) {
+            return "three-colour-traffic-light-icon".equals(detection.pattern)
+                || "pixel-sampled-three-colour-traffic-light-on-route".equals(detection.pattern);
+        }
+        return false;
+    }
+
     private void processScreenIcons(ScreenIconDetector.ScanResult result) {
         if (!active || result == null) return;
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        int count = result.detections == null ? 0 : result.detections.size();
+        List<ScreenIconDetector.Detection> trustedDetections = new ArrayList<>();
+        if (result.detections != null) {
+            for (ScreenIconDetector.Detection detection : trustedDetections) {
+                if (isTrustedIconPattern(detection)) trustedDetections.add(detection);
+            }
+        }
+        int count = trustedDetections.size();
         android.content.SharedPreferences.Editor counter = prefs.edit()
             .putLong("screenIconLastScanAt", now)
             .putInt("screenIconLastFrameCount", count);
@@ -340,7 +359,13 @@ public class ScreenCaptureService extends Service {
         Location point = getIconLocation();
         if (point == null) {
             prefs.edit().putString("screenIconStatus",
-                "Найдено графических кандидатов: " + count + ", но нет свежего GPS с точностью до 150 м.")
+                "Найдено графических кандидатов: " + count + ", но нет свежего GPS с точностью до 60 м.")
+                .apply();
+            return;
+        }
+        if (!point.hasAccuracy() || point.getAccuracy() > MAX_GPS_ACCURACY_M) {
+            prefs.edit().putString("screenIconStatus",
+                "Значки найдены, но точность GPS хуже 60 м; точку пока не отправляем.")
                 .apply();
             return;
         }
