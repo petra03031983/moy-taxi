@@ -389,9 +389,10 @@ public class ScreenCaptureService extends Service {
         if (detection == null || result == null) return null;
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         synchronized (EVIDENCE_LOCK) {
-            JSONArray tracks;
-            try { tracks = new JSONArray(prefs.getString("screenIconTracks", "[]")); }
-            catch (Exception ignored) { tracks = new JSONArray(); }
+            try {
+                JSONArray tracks;
+                try { tracks = new JSONArray(prefs.getString("screenIconTracks", "[]")); }
+                catch (Exception ignored) { tracks = new JSONArray(); }
 
             JSONArray kept = new JSONArray();
             JSONObject best = null;
@@ -458,8 +459,12 @@ public class ScreenCaptureService extends Service {
             }
 
             while (kept.length() > 40) kept.remove(0);
-            prefs.edit().putString("screenIconTracks", kept.toString()).apply();
-            return track;
+                prefs.edit().putString("screenIconTracks", kept.toString()).apply();
+                return track;
+            } catch (Exception error) {
+                prefs.edit().putString("screenIconStatus", "Не удалось обновить отслеживание значка: " + safeMessage(error)).apply();
+                return null;
+            }
         }
     }
 
