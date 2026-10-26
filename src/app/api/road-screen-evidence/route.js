@@ -104,7 +104,7 @@ function normalize(candidate) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
   const sourceId = String(candidate.source_id || candidate.sourceId || candidate.id || "").slice(0, 120);
   const kind = String(candidate.kind || "");
-  const text = String(candidate.source_text || candidate.sourceText || "").replace(/\\s+/g, " ").trim().slice(0, 160);
+  const text = String(candidate.source_text || candidate.sourceText || "").replace(/\s+/g, " ").trim().slice(0, 160);
   const lowerText = text.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
   const detectionMethod = String(candidate.detection_method ?? candidate.detectionMethod ?? "text-ocr");
   const coordinateMethod = String(candidate.coordinate_method ?? candidate.coordinateMethod ?? "unknown");
@@ -145,7 +145,7 @@ function normalize(candidate) {
   if (estimatedLng != null && (!Number.isFinite(estimatedLng) || estimatedLng < 65 || estimatedLng > 77)) return null;
 
   if (detectionMethod === "icon-heuristic") {
-    const iconMatch = /^(speed camera icon|traffic light icon) near vehicle marker, screen x=\\d{1,3}% y=\\d{1,3}%/i.test(text);
+    const iconMatch = /^(speed camera icon|traffic light icon) near vehicle marker, screen x=\d{1,3}% y=\d{1,3}%/i.test(text);
     const cameraPatterns = new Set([
       "compound-speed-sign-with-upper-right-camera-badge",
       "camera-badge-on-speed-sign",
@@ -162,9 +162,9 @@ function normalize(candidate) {
     if (estimatedLat == null || estimatedLng == null || distanceAheadM != null) return null;
   } else if (detectionMethod === "text-ocr") {
     const strictTextAlert =
-      (kind === "speed-camera" && /(камера\\s+(контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\\s*camera|speedcam|camera ahead)/i.test(lowerText)) ||
+      (kind === "speed-camera" && /(камера\s+(контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\s*camera|speedcam|camera ahead)/i.test(lowerText)) ||
       (kind === "traffic-light" && /(светофор впереди|следующий светофор|traffic light ahead)/i.test(lowerText)) ||
-      (kind === "speed-limit" && /(ограничение скорости|speed limit)\\D{0,12}\\d{2,3}/i.test(lowerText)) ||
+      (kind === "speed-limit" && /(ограничение скорости|speed limit)\D{0,12}\d{2,3}/i.test(lowerText)) ||
       (kind === "roadwork" && /(дорожные работы|ремонт дороги|перекрытие дороги|road works)/i.test(lowerText)) ||
       (kind === "road-hazard" && /(дтп впереди|авария впереди|опасность впереди|происшествие впереди|accident ahead|hazard ahead)/i.test(lowerText));
     if (!strictTextAlert || coordinateMethod !== "distance-and-heading") return null;
