@@ -1,6 +1,7 @@
 import { callAstanaRpc, readAccessKey, privateApiError } from "../_lib/astanaAccess.js";
 
 const MAX_BATCH_SIZE = 30;
+const ALLOWED_KINDS = new Set(["speed-camera", "traffic-light", "speed-limit", "roadwork", "road-hazard"]);
 
 function jsonResponse(payload, status = 200) {
   return Response.json(payload, {
@@ -133,7 +134,7 @@ function normalize(candidate) {
   if (!Number.isFinite(confidence) || confidence < 0.08 || confidence > 0.6) return null;
   if (!Number.isFinite(gpsCapturedAt.getTime()) || gpsCapturedAt.getTime() > now + 5 * 60 * 1000) return null;
   if (!Number.isFinite(capturedAt.getTime()) || capturedAt.getTime() > now + 5 * 60 * 1000) return null;
-  if (now - capturedAt.getTime() > MAX_AGE_MS) return null;
+  // Keep valid historical observations; offline scanner queues may be synced days later.
   if (!Number.isFinite(frameHits) || frameHits < 1 || frameHits > 100) return null;
   if (travelHeading != null && (!Number.isInteger(travelHeading) || travelHeading < 0 || travelHeading > 359)) return null;
   if (distanceAheadM != null && (!Number.isFinite(distanceAheadM) || distanceAheadM < 15 || distanceAheadM > 2000)) return null;
