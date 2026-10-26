@@ -1395,6 +1395,9 @@ export default function AstanaMapPage() {
       }
 
       const sources = [
+        // Serve Leaflet from the same origin first. This avoids a blank map when
+        // a mobile carrier or embedded Android WebView cannot reach public CDNs.
+        "/vendor/leaflet.js",
         "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
         "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js",
         "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
