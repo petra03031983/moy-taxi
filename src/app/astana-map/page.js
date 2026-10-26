@@ -1011,6 +1011,18 @@ export default function AstanaMapPage() {
   const [showRoadDataDiagnostics, setShowRoadDataDiagnostics] = useState(false);
   const [roadDataDiagnostics, setRoadDataDiagnostics] = useState(null);
   const [roadScanPanelOpen, setRoadScanPanelOpen] = useState(false);
+  const [mapAccessChecked, setMapAccessChecked] = useState(false);
+  const [mapAccessAllowed, setMapAccessAllowed] = useState(false);
+  const [mapAccessKeyInput, setMapAccessKeyInput] = useState("");
+  const [mapAccessError, setMapAccessError] = useState("");
+  const [mapAccessBusy, setMapAccessBusy] = useState(false);
+  const [manualRoadAddMode, setManualRoadAddMode] = useState(false);
+  const [manualRoadPosition, setManualRoadPosition] = useState(null);
+  const [manualRoadKind, setManualRoadKind] = useState("traffic-light");
+  const [manualRoadLabel, setManualRoadLabel] = useState("");
+  const [manualRoadNotes, setManualRoadNotes] = useState("");
+  const [manualRoadStatus, setManualRoadStatus] = useState("");
+  const [manualRoadBusy, setManualRoadBusy] = useState(false);
   const [nativeScannerAvailable, setNativeScannerAvailable] = useState(false);
   const [roadScanActive, setRoadScanActive] = useState(false);
   const [roadScanStatus, setRoadScanStatus] = useState("Камера выключена");
@@ -1051,6 +1063,24 @@ export default function AstanaMapPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setShowRoadDataDiagnostics(params.get("debugRoads") === "1");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/road-auth", { credentials: "same-origin", cache: "no-store" })
+      .then(response => response.json().catch(() => null))
+      .then(payload => {
+        if (cancelled) return;
+        setMapAccessAllowed(Boolean(payload?.authenticated));
+        setMapAccessChecked(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMapAccessAllowed(false);
+          setMapAccessChecked(true);
+        }
+      });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => () => {
@@ -2736,23 +2766,29 @@ export default function AstanaMapPage() {
           const observationLine = screenEvidence && Number.isFinite(observationCount) && observationCount > 0
             ? '<div>Наблюдений по этому месту: ' + escapeHtml(observationCount) + '</div>'
             : '';
-          const sourceLabel = screenEvidence
-            ? (iconEvidence ? "Графический значок в интерфейсе навигации" : "Текстовое предупреждение на экране Яндекс/2ГИС")
-            : aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
+          const sourceLabel = item.manual
+            ? "Ручная отметка владельца личной базы"
+            : screenEvidence
+              ? (iconEvidence ? "Графический значок в интерфейсе навигации" : "Текстовое предупреждение на экране Яндекс/2ГИС")
+              : aiDetected ? "Автоматически распознано ИИ на телефоне" : "Отметка с камеры телефона";
           const evidenceText = screenEvidence && item.sourceText
             ? '<div>Текст: ' + escapeHtml(item.sourceText) + '</div>'
             : '';
           const popup = '<div class="astana-road-scan-popup"><b>' + escapeHtml(kind.label) +
             '</b><div>' + escapeHtml(sourceLabel) + '</div>' + evidenceText + confidenceLine + directionLine + observationLine +
-            (screenEvidence
-              ? (iconEvidence
-                ? '<div>Графический значок приблизился к маркеру автомобиля; координаты по GPS приблизительные</div>'
-                : '<div>Положение рассчитано примерно по GPS и расстоянию</div>')
-              : '<div>GPS: ±' + escapeHtml(accuracy) + '</div>') +
+            (item.manual
+              ? '<div>Точка внесена вручную и хранится в личной базе</div>'
+              : screenEvidence
+                ? (iconEvidence
+                  ? '<div>Графический значок приблизился к маркеру автомобиля; координаты по GPS приблизительные</div>'
+                  : '<div>Положение рассчитано примерно по GPS и расстоянию</div>')
+                : '<div>GPS: ±' + escapeHtml(accuracy) + '</div>') +
             '<small>' + escapeHtml(when) + '</small><p>' +
-            (screenEvidence
-              ? 'Это приблизительная отметка, полученная с экрана навигации. Она требует ручной проверки и не является подтверждённым объектом.'
-              : 'Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.') +
+            (item.manual
+              ? 'Объект добавлен вручную в закрытую базу. Если координаты неточные, перемести или добавь правильную точку.'
+              : screenEvidence
+                ? 'Это приблизительная отметка, полученная с экрана навигации. Она требует ручной проверки и не является подтверждённым объектом.'
+                : 'Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.') +
             '</p></div>';
           marker.bindPopup(popup).addTo(group);
         }
@@ -3785,10 +3821,136 @@ export default function AstanaMapPage() {
     setRoadScanBusy(false);
   }
 
-  function closeRoadScanPanel() {
-    // Closing the map panel must not stop the native foreground service.
-    if (!window.AstanaScanner) stopRoadScan();
+  async function unlockMapAccess(event) {
+    event?.preventDefault?.();
+    if (mapAccessBusy) return;
+    setMapAccessBusy(true);
+    setMapAccessError("");
+    try {
+      const response = await fetch("/api/road-auth", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ key: mapAccessKeyInput.trim() }),
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.authenticated) {
+        setMapAccessError(payload?.error || "Ключ не принят. Проверь ввод.");
+        return;
+      }
+      try { window.AstanaScanner?.setAccessKey?.(mapAccessKeyInput.trim()); } catch {}
+      setMapAccessKeyInput("");
+      setMapAccessAllowed(true);
+      setMapAccessError("");
+    } catch {
+      setMapAccessError("Нет связи с сервером. Проверь интернет и повтори.");
+    } finally {
+      setMapAccessBusy(false);
+    }
+  }
+
+  function beginManualRoadAdd() {
     setRoadScanPanelOpen(false);
+    setManualRoadPosition(null);
+    setManualRoadStatus("Переключи карту в 2D и нажми на точное место объекта.");
+    setManualRoadAddMode(true);
+    setMap3dEnabled(false);
+  }
+
+  async function saveManualRoadObject() {
+    if (!manualRoadPosition || manualRoadBusy) return;
+    setManualRoadBusy(true);
+    setManualRoadStatus("");
+    try {
+      const response = await fetch("/api/road-manual-objects", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          kind: manualRoadKind,
+          lat: manualRoadPosition.lat,
+          lng: manualRoadPosition.lng,
+          label: manualRoadLabel.trim(),
+          notes: manualRoadNotes.trim(),
+          accuracy_m: 10,
+        }),
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        setManualRoadStatus(payload?.error || "Не удалось сохранить объект.");
+        return;
+      }
+      setManualRoadStatus(payload.duplicate
+        ? "Такой объект уже есть рядом — существующая точка обновлена."
+        : "Объект сохранён в личной базе «Астана Гид».");
+      setManualRoadPosition(null);
+      setManualRoadNotes("");
+      setManualRoadLabel("");
+      setRoadScanRevision(value => value + 1);
+      setRoadObjectsRevision(value => value + 1);
+    } catch {
+      setManualRoadStatus("Нет связи с базой. Объект пока не сохранён.");
+    } finally {
+      setManualRoadBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!leafletReady || !window.L || !mapRef.current || !manualRoadAddMode) return;
+    const map = mapRef.current;
+    const container = map.getContainer?.();
+    const previousCursor = container?.style?.cursor || "";
+    if (container?.style) container.style.cursor = "crosshair";
+    const onMapClick = event => {
+      const lat = Number(event?.latlng?.lat);
+      const lng = Number(event?.latlng?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setManualRoadPosition({ lat, lng });
+      setManualRoadAddMode(false);
+      setManualRoadStatus("Проверь координаты и сохрани объект.");
+      if (!manualRoadLabel.trim()) {
+        const labels = {
+          "traffic-light": "Светофор",
+          "speed-camera": "Камера",
+          "speed-limit": "Ограничение скорости",
+          "roadwork": "Дорожные работы",
+          "road-hazard": "Опасный участок",
+        };
+        setManualRoadLabel(labels[manualRoadKind] || "Дорожный объект");
+      }
+    };
+    map.on("click", onMapClick);
+    return () => {
+      map.off("click", onMapClick);
+      if (container?.style) container.style.cursor = previousCursor;
+    };
+  }, [leafletReady, manualRoadAddMode, manualRoadKind]);
+
+  if (!mapAccessChecked) {
+    return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 24, background: "#101820", color: "#fff", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ textAlign: "center" }}><div style={{ fontSize: 42 }}>🔐</div><h1 style={{ fontSize: 22 }}>Астана Гид</h1><p>Проверяем доступ к личной базе…</p></div>
+    </main>;
+  }
+
+  if (!mapAccessAllowed) {
+    return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 22, boxSizing: "border-box", background: "linear-gradient(150deg,#0e1720,#1c2e3c)", color: "#101820", fontFamily: "system-ui, sans-serif" }}>
+      <section style={{ width: "100%", maxWidth: 430, boxSizing: "border-box", background: "#fff", padding: 26, borderRadius: 24, boxShadow: "0 20px 70px #0006" }}>
+        <div style={{ fontSize: 38, marginBottom: 8 }}>🗺️🔒</div>
+        <h1 style={{ margin: "0 0 8px", fontSize: 25 }}>Астана Гид</h1>
+        <p style={{ margin: "0 0 22px", color: "#52616d", lineHeight: 1.5 }}>Личная база координат камер, светофоров и дорожных знаков. Введи свой ключ доступа, чтобы открыть карту.</p>
+        <form onSubmit={unlockMapAccess}>
+          <label htmlFor="astana-private-key" style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>Личный ключ базы</label>
+          <input id="astana-private-key" type="password" autoComplete="current-password" value={mapAccessKeyInput} onChange={event => setMapAccessKeyInput(event.target.value)} placeholder="Вставь ключ доступа" style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "14px 12px", border: "1px solid #a7b5bf", borderRadius: 12, fontSize: 16, marginBottom: 12 }} />
+          {mapAccessError && <p role="alert" style={{ color: "#b42318", margin: "0 0 12px" }}>{mapAccessError}</p>}
+          <button type="submit" disabled={mapAccessBusy || mapAccessKeyInput.trim().length < 32} style={{ width: "100%", padding: 14, border: 0, borderRadius: 12, background: "#126e59", color: "#fff", fontSize: 16, fontWeight: 800, opacity: mapAccessBusy ? 0.7 : 1 }}>
+            {mapAccessBusy ? "Проверяем ключ…" : "Открыть личную базу"}
+          </button>
+        </form>
+        <p style={{ color: "#6b7780", fontSize: 12, lineHeight: 1.5, margin: "18px 0 0" }}>Доступ проверяется на сервере. Не отправляй ключ другим людям.</p>
+      </section>
+    </main>;
   }
 
   return (
@@ -3870,6 +4032,10 @@ export default function AstanaMapPage() {
           {nativeScannerAvailable && <button type="button" onClick={() => window.AstanaScanner.openBatterySettings()}>Настроить работу в фоне</button>}
         </div>}
         <div className="astana-road-scan-mark-form">
+          <button type="button" onClick={beginManualRoadAdd}>📍 Добавить объект вручную на карте</button>
+          <small>Для светофоров и камер, которых нет в 2ГИС или Яндекс Навигаторе. Точка сохранится в личную базу с защитой от дубликатов.</small>
+        </div>
+        <div className="astana-road-scan-mark-form">
           <label>Экран навигатора (Яндекс / 2ГИС)</label>
           <div className="astana-road-scan-actions">
             {!screenScanActive
@@ -3900,6 +4066,38 @@ export default function AstanaMapPage() {
 
 
 
+      {manualRoadAddMode && <div style={{ position: "fixed", zIndex: 9000, left: "50%", top: 86, transform: "translateX(-50%)", width: "min(92vw,420px)", padding: 14, borderRadius: 16, background: "#fff", color: "#15222b", boxShadow: "0 8px 32px #0004", fontFamily: "system-ui,sans-serif" }}>
+        <b style={{ display: "block", marginBottom: 6 }}>Добавление дорожного объекта</b>
+        <div style={{ fontSize: 14, lineHeight: 1.4 }}>Нажми на карте ровно в месте светофора, камеры или знака.</div>
+        <div style={{ marginTop: 8, fontSize: 12, color: "#52616d" }}>Для точного выбора используй 2D-карту.</div>
+        <button type="button" onClick={() => { setManualRoadAddMode(false); setManualRoadStatus("Добавление отменено."); }} style={{ marginTop: 10, border: 0, background: "#e8edf0", padding: "9px 12px", borderRadius: 9, fontWeight: 700 }}>Отмена</button>
+      </div>}
+      {manualRoadPosition && <div role="dialog" aria-modal="true" aria-label="Сохранить дорожный объект" style={{ position: "fixed", zIndex: 9100, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(92vw,440px)", maxHeight: "86dvh", overflowY: "auto", boxSizing: "border-box", padding: 20, borderRadius: 18, background: "#fff", color: "#15222b", boxShadow: "0 12px 48px #0006", fontFamily: "system-ui,sans-serif" }}>
+        <b style={{ fontSize: 20 }}>Сохранить в личную базу</b>
+        <p style={{ fontSize: 13, color: "#52616d" }}>Координаты: {manualRoadPosition.lat.toFixed(6)}, {manualRoadPosition.lng.toFixed(6)}</p>
+        <label htmlFor="manual-road-kind" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Тип объекта</label>
+        <select id="manual-road-kind" value={manualRoadKind} onChange={event => {
+          const next = event.target.value;
+          setManualRoadKind(next);
+          const labels = { "traffic-light": "Светофор", "speed-camera": "Камера", "speed-limit": "Ограничение скорости", "roadwork": "Дорожные работы", "road-hazard": "Опасный участок" };
+          setManualRoadLabel(labels[next] || "Дорожный объект");
+        }} style={{ width: "100%", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }}>
+          <option value="traffic-light">🚦 Светофор</option>
+          <option value="speed-camera">📷 Камера контроля скорости</option>
+          <option value="speed-limit">🔵 Ограничение скорости</option>
+          <option value="roadwork">🚧 Дорожные работы</option>
+          <option value="road-hazard">⚠️ Опасный участок</option>
+        </select>
+        <label htmlFor="manual-road-label" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Название</label>
+        <input id="manual-road-label" value={manualRoadLabel} onChange={event => setManualRoadLabel(event.target.value)} maxLength={100} placeholder="Например: светофор на перекрёстке" style={{ width: "100%", boxSizing: "border-box", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }} />
+        <label htmlFor="manual-road-notes" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Заметка (необязательно)</label>
+        <textarea id="manual-road-notes" value={manualRoadNotes} onChange={event => setManualRoadNotes(event.target.value)} rows={2} maxLength={500} placeholder="Например: Талапкер, направление в город" style={{ width: "100%", boxSizing: "border-box", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }} />
+        {manualRoadStatus && <p role="status" style={{ fontSize: 13, color: "#126e59" }}>{manualRoadStatus}</p>}
+        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+          <button type="button" onClick={() => { setManualRoadPosition(null); setManualRoadStatus(""); }} style={{ flex: 1, padding: 12, border: 0, borderRadius: 10, background: "#e8edf0", fontWeight: 700 }}>Отмена</button>
+          <button type="button" disabled={manualRoadBusy || manualRoadLabel.trim().length < 2} onClick={() => void saveManualRoadObject()} style={{ flex: 1, padding: 12, border: 0, borderRadius: 10, background: "#126e59", color: "#fff", fontWeight: 800, opacity: manualRoadBusy ? 0.7 : 1 }}>{manualRoadBusy ? "Сохраняем…" : "Сохранить точку"}</button>
+        </div>
+      </div>}
       {!route && <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
         {isHomeScreen && <div className="astana-home-handle"><span /></div>}
         <div className="astana-search-home-row">
