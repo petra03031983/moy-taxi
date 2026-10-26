@@ -4,11 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/publish-android-scanner-release.yml"
       - "android/**"
-      - "src/app/api/road-screen-evidence/route.js"
-      - "src/app/astana-map/page.js"
-      - "supabase/migrations/**"
   workflow_dispatch:
 
 permissions:
