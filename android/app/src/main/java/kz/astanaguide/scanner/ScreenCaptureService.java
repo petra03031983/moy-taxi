@@ -221,9 +221,15 @@ public class ScreenCaptureService extends Service {
         Bitmap bitmap = null;
         try {
             long now = android.os.SystemClock.elapsedRealtime();
-            if (!active || ocrInFlight || now - lastOcrAt < OCR_INTERVAL_MS) {
+            if (!active || ocrInFlight || now - lastOcrAt < OCR_INTERVAL_MS ||
+                getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("scannerAppForeground", false)) {
                 image = reader.acquireLatestImage();
                 if (image != null) image.close();
+                if (active && getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("scannerAppForeground", false)) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString("screenIconStatus", "Ожидаю перехода в 2ГИС/Яндекс; собственный экран «Астана Гид» пропускается.")
+                        .apply();
+                }
                 return;
             }
             image = reader.acquireLatestImage();
@@ -606,17 +612,38 @@ public class ScreenCaptureService extends Service {
         return s;
     }
 
+    private static boolean isScannerInterfaceText(String s) {
+        String[] blocked = {
+            "астана гид", "сканер", "координат", "направление", "на карте",
+            "графических наблюдений", "кадров экрана", "кадров сохранено",
+            "отметок на карте", "требующей проверки", "подсказка", "облако",
+            "светофор/знак", "камера/светофор", "сохранить объект", "объект с gps",
+            "фоновая камера", "камера активна", "экран анализируется",
+            "whatsapp", "wa business", "значки найдены", "значки камеры",
+            "распознаны", "gps подключен", "gps подключён", "маркер автомобиля",
+            "speed camera icon", "traffic light icon"
+        };
+        for (String phrase : blocked) {
+            if (s.contains(phrase)) return true;
+        }
+        return false;
+    }
+
     private static String classifyRoadHint(String line) {
-        String s = line.toLowerCase(Locale.ROOT).replace('ё', 'е');
-        if (s.contains("камера") || s.contains("контроля скорости") ||
-            s.contains("speed camera") || s.contains("speedcam")) return "speed-camera";
-        if (s.contains("светофор") || s.contains("traffic light")) return "traffic-light";
-        if ((s.contains("ограничение скорости") || s.contains("скорость")) &&
-            Pattern.compile("\\d{2,3}").matcher(s).find()) return "speed-limit";
-        if (s.contains("дорожные работы") || s.contains("ремонт дороги") ||
-            s.contains("перекрытие") || s.contains("road works")) return "roadwork";
-        if (s.contains("дтп") || s.contains("авария") || s.contains("опасность") ||
-            s.contains("происшествие") || s.contains("accident") || s.contains("hazard")) return "road-hazard";
+        String s = line.toLowerCase(Locale.ROOT).replace('ё', 'е')
+            .replaceAll("\\s+", " ").trim();
+        if (s.length() < 3 || isScannerInterfaceText(s)) return null;
+
+        if (Pattern.compile("(?:камера\\s+(?:контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\\s*camera|speedcam|camera ahead)")
+            .matcher(s).find()) return "speed-camera";
+        if (Pattern.compile("(?:светофор впереди|следующий светофор|traffic light ahead)")
+            .matcher(s).find()) return "traffic-light";
+        if (Pattern.compile("(?:ограничение скорости|speed limit)\\D{0,12}[0-9]{2,3}")
+            .matcher(s).find()) return "speed-limit";
+        if (Pattern.compile("(?:дорожные работы|ремонт дороги|перекрытие дороги|road works)")
+            .matcher(s).find()) return "roadwork";
+        if (Pattern.compile("(?:дтп впереди|авария впереди|опасность впереди|происшествие впереди|accident ahead|hazard ahead)")
+            .matcher(s).find()) return "road-hazard";
         return null;
     }
 
