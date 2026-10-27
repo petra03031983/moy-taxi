@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
+import "./astana-map.css";
 
 const ASTANA = [51.1694, 71.4491];
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
