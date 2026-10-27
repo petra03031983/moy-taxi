@@ -24,12 +24,12 @@ jobs:
       - name: Build application
         run: npm run build
       - name: Create source-only ZIP (current tree, no Git history)
-        if: github.ref == 'refs/heads/moy-taxi-sale-only' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/moy-taxi-sale-only' && github.event_name == 'push') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'moy-taxi-sale-only')
         run: |
           git archive --format=zip --prefix=Moy_Taxi_Sale_Package/ HEAD -o Moy_Taxi_Sale_Package.zip
           sha256sum Moy_Taxi_Sale_Package.zip > Moy_Taxi_Sale_Package.zip.sha256
       - name: Upload source-only package
-        if: github.ref == 'refs/heads/moy-taxi-sale-only' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/moy-taxi-sale-only' && github.event_name == 'push') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'moy-taxi-sale-only')
         uses: actions/upload-artifact@v4
         with:
           name: Moy_Taxi_Sale_Package
