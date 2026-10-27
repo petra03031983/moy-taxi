@@ -364,9 +364,9 @@ public class ScreenCaptureService extends Service {
                 .apply();
             return;
         }
-        if (!point.hasAccuracy() || point.getAccuracy() > MAX_GPS_ACCURACY_M) {
+        if (!point.hasAccuracy() || point.getAccuracy() > MAX_ICON_GPS_ACCURACY_M) {
             prefs.edit().putString("screenIconStatus",
-                "Значки найдены, но точность GPS хуже 60 м; точку пока не отправляем.")
+                "Значки найдены, но точность GPS хуже 150 м; наблюдение пока не сохраняем.")
                 .apply();
             return;
         }
