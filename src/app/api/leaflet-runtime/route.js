@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const require = createRequire(import.meta.url);
 
-export async function GET() {
+export async function GET(request) {
   try {
     // Serve Leaflet from the installed app dependency on the same origin.
     // This avoids relying on third-party CDNs in constrained mobile browsers.
@@ -14,6 +14,14 @@ export async function GET() {
     const source = await readFile(filePath);
     if (source.byteLength < 100_000) {
       throw new Error("Leaflet runtime file is unexpectedly small");
+    }
+
+    // Safe diagnostic mode confirms whether the runtime asset exists without returning JS.
+    if (new URL(request.url).searchParams.get("check") === "1") {
+      return Response.json(
+        { ok: true, asset: "Leaflet", bytes: source.byteLength },
+        { headers: { "Cache-Control": "no-store" } }
+      );
     }
 
     return new Response(source, {
@@ -25,11 +33,11 @@ export async function GET() {
       },
     });
   } catch (error) {
+    const isCheck = new URL(request.url).searchParams.get("check") === "1";
     return Response.json(
-      {
-        error: "Не удалось прочитать встроенную библиотеку карты",
-        details: String(error?.message || "Unknown runtime error").slice(0, 240),
-      },
+      isCheck
+        ? { ok: false, error: "Leaflet runtime недоступен на сервере" }
+        : { error: "Не удалось прочитать встроенную библиотеку карты" },
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
   }
