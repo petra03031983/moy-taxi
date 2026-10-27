@@ -1535,10 +1535,13 @@ export default function AstanaMapPage() {
           if (settled || cancelled) return;
           settled = true;
           cleanup();
-          if (window.L) {
+          // A script can finish loading without exposing a usable Leaflet API.
+          // Treat that as a failed source and continue instead of leaving the map blank.
+          if (window.L && typeof window.L.map === "function") {
             script.dataset.moyLeafletLoaded = "true";
             loadWithRotation();
           } else {
+            window.L = undefined;
             script.remove();
             tryNextSource();
           }
