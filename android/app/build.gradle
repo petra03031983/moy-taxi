@@ -79,7 +79,7 @@ tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn("downloadRoadDetectionModel", "downloadRussianOcrModel")
 }
 
-// Scanner 1.4.8 keeps the installed .icons144 package so local saved coordinates survive; rebuild after release workflow fix.
+// Scanner 1.4.9 keeps the installed .icons144 package so local evidence survives during upgrade.
 android {
     namespace "kz.astanaguide.scanner"
     compileSdk 35
@@ -88,8 +88,8 @@ android {
         applicationId "kz.astanaguide.scanner"
         minSdk 26
         targetSdk 34
-        versionCode 13
-        versionName "1.4.8"
+        versionCode 14
+        versionName "1.4.9"
     }
 
     compileOptions {
