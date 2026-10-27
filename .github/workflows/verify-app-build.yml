@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - moy-taxi-sale-only
   pull_request:
     branches:
       - main
