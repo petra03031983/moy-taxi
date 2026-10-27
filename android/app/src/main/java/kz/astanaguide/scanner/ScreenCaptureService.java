@@ -63,8 +63,8 @@ public class ScreenCaptureService extends Service {
     private static final float MAX_GPS_ACCURACY_M = 60.0f;
     // Icon-only pass-by evidence may be recorded at lower confidence up to this GPS radius.
     private static final float MAX_ICON_GPS_ACCURACY_M = 150.0f;
-    private static final int MAX_LOCAL_EVIDENCE = 1000;
-    private static final int MAX_PENDING_CLOUD_EVIDENCE = 2000;
+    private static final int MAX_LOCAL_EVIDENCE = 3000;
+    private static final int MAX_PENDING_CLOUD_EVIDENCE = 3000;
     private static final String CLOUD_ENDPOINT = "https://astana-map-roads.vercel.app/api/road-screen-evidence";
     private static final Object EVIDENCE_LOCK = new Object();
     private static final Pattern DISTANCE_PATTERN = Pattern.compile(
@@ -403,7 +403,7 @@ public class ScreenCaptureService extends Service {
                 continue;
             }
 
-            boolean saved = saveScreenIconEvidence(detection, point, result.vehicleAnchorEstimated, track);
+            boolean saved = saveScreenIconEvidence(detection, result, point, result.vehicleAnchorEstimated, track);
             savedAny = savedAny || saved;
         }
 
@@ -534,7 +534,7 @@ public class ScreenCaptureService extends Service {
         return Math.sqrt(dx * dx + dy * dy);
     }
 
-    private boolean saveScreenIconEvidence(ScreenIconDetector.Detection detection, Location point, boolean estimatedAnchor, JSONObject track) {
+    private boolean saveScreenIconEvidence(ScreenIconDetector.Detection detection, ScreenIconDetector.ScanResult scanResult, Location point, boolean estimatedAnchor, JSONObject track) {
         if (detection == null || point == null) return false;
         long now = System.currentTimeMillis();
         String kind = detection.kind;
@@ -569,14 +569,24 @@ public class ScreenCaptureService extends Service {
                 point.hasBearing() && point.hasSpeed() && point.getSpeed() >= 1.4f
                     ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
             item.put("detectionMethod", "icon-heuristic");
-            item.put("coordinateMethod", "icon-pass-by-gps");
+            // GPS describes the vehicle, not the physical road object. Keep the raw
+            // observation separate until map-scale/trajectory matching estimates its location.
+            item.put("coordinateMethod", "vehicle-gps-only");
             item.put("iconPattern", detection.pattern == null ? "legacy-icon-pass-by-gps" : detection.pattern);
             item.put("frameHits", Math.max(1, Math.min(100, track == null ? 1 : track.optInt("hits", 1))));
+            item.put("trackId", track == null ? "" : track.optString("id", ""));
+            item.put("screenXRatio", detection.x);
+            item.put("screenYRatio", detection.y);
+            item.put("vehicleAnchorXRatio", scanResult == null ? JSONObject.NULL : scanResult.vehicleX);
+            item.put("vehicleAnchorYRatio", scanResult == null ? JSONObject.NULL : scanResult.vehicleY);
+            item.put("trackStartLat", track != null && track.has("firstLat") ? track.opt("firstLat") : JSONObject.NULL);
+            item.put("trackStartLng", track != null && track.has("firstLng") ? track.opt("firstLng") : JSONObject.NULL);
+            item.put("trackStartAt", track == null ? 0L : track.optLong("firstAt", 0L));
+            item.put("gpsSpeedMps", point.hasSpeed() ? point.getSpeed() : JSONObject.NULL);
+            item.put("gpsBearingDegrees", point.hasBearing() ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
             item.put("distanceAheadM", JSONObject.NULL);
-            // The icon is saved only when it is close to the detected vehicle marker.
-            // This is an approximate pass-by point, not an exact surveyed camera coordinate.
-            item.put("estimatedLat", point.getLatitude());
-            item.put("estimatedLng", point.getLongitude());
+            item.put("estimatedLat", JSONObject.NULL);
+            item.put("estimatedLng", JSONObject.NULL);
             item.put("capturedAt", Instant.ofEpochMilli(now).toString());
             item.put("source", "screen-icon-near-vehicle");
             item.put("reviewStatus", "needs-review");
@@ -595,25 +605,21 @@ public class ScreenCaptureService extends Service {
             try { evidence = new JSONArray(prefs.getString("evidence", "[]")); }
             catch (Exception error) { evidence = new JSONArray(); }
 
-            // Deduplicate repeated frames of the same physical feature without suppressing
-            // another camera/signal further along the road.
-            for (int i = evidence.length() - 1; i >= 0; i--) {
-                JSONObject prior = evidence.optJSONObject(i);
-                if (prior == null || !kind.equals(prior.optString("kind"))) continue;
-                long priorAt = parseTime(prior.optString("capturedAt"));
-                if (now - priorAt > 30 * 60_000L) continue;
-                double priorLat = prior.optDouble("observedLat", Double.NaN);
-                double priorLng = prior.optDouble("observedLng", Double.NaN);
-                if (!Double.isFinite(priorLat) || !Double.isFinite(priorLng)) continue;
-                double priorAccuracy = prior.optDouble("accuracy", point.hasAccuracy() ? point.getAccuracy() : 60.0);
-                double currentAccuracy = point.hasAccuracy() ? point.getAccuracy() : 60.0;
-                double dedupeRadius = Math.min(110.0, Math.max(28.0, Math.max(priorAccuracy, currentAccuracy) * 0.65));
-                if (distanceMeters(point.getLatitude(), point.getLongitude(), priorLat, priorLng) < dedupeRadius) {
-                    prefs.edit().putString("lastMatch", kind + " · " + sourceText)
-                        .putLong("lastMatchAt", now)
-                        .putString("screenIconStatus", "Похожий объект уже сохранён рядом; повтор не записан.")
-                        .apply();
-                    return false;
+            // Deduplicate only repeated detections from the same visual track.
+            // Do not drop a different camera/light merely because its vehicle GPS is nearby:
+            // adjacent road objects may be physically distinct and need manual review.
+            String trackId = item.optString("trackId", "");
+            if (!trackId.isEmpty()) {
+                for (int i = evidence.length() - 1; i >= 0; i--) {
+                    JSONObject prior = evidence.optJSONObject(i);
+                    if (prior == null || !kind.equals(prior.optString("kind"))) continue;
+                    if (trackId.equals(prior.optString("trackId", ""))) {
+                        prefs.edit().putString("lastMatch", kind + " · " + sourceText)
+                            .putLong("lastMatchAt", now)
+                            .putString("screenIconStatus", "Повторный кадр того же значка учтён; соседние объекты не объединяются.")
+                            .apply();
+                        return true;
+                    }
                 }
             }
 
@@ -920,6 +926,19 @@ public class ScreenCaptureService extends Service {
                     ? JSONObject.NULL : item.opt("iconPattern"));
                 body.put("frame_hits", item.optInt("frameHits", 1));
                 body.put("coordinate_method", item.optString("coordinateMethod", "unknown"));
+                body.put("track_id", item.optString("trackId", ""));
+                body.put("screen_x_ratio", item.opt("screenXRatio"));
+                body.put("screen_y_ratio", item.opt("screenYRatio"));
+                body.put("vehicle_anchor_x_ratio", item.opt("vehicleAnchorXRatio"));
+                body.put("vehicle_anchor_y_ratio", item.opt("vehicleAnchorYRatio"));
+                body.put("track_start_lat", item.opt("trackStartLat"));
+                body.put("track_start_lng", item.opt("trackStartLng"));
+                long trackStartMs = item.optLong("trackStartAt", 0L);
+                body.put("track_start_at", trackStartMs > 0L
+                    ? Instant.ofEpochMilli(trackStartMs).toString()
+                    : JSONObject.NULL);
+                body.put("vehicle_speed_mps", item.opt("gpsSpeedMps"));
+                body.put("vehicle_bearing_degrees", item.opt("gpsBearingDegrees"));
                 connection = (HttpURLConnection) new URL(CLOUD_ENDPOINT).openConnection();
                 connection.setRequestMethod("POST");
                 connection.setConnectTimeout(5000);
