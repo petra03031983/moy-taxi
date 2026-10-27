@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as LeafletModule from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 const ASTANA = [51.1694, 71.4491];
@@ -1568,7 +1569,15 @@ export default function AstanaMapPage() {
       else tryNextSource();
     };
 
-    loadLeafletFromFallbacks();
+    // Prefer the library bundled into the page's main client chunk. This avoids
+    // depending on a separately fetched dynamic chunk that can stall in mobile WebViews.
+    const bundledLeaflet = LeafletModule.default || LeafletModule;
+    if (bundledLeaflet && typeof bundledLeaflet.map === "function") {
+      window.L = bundledLeaflet;
+      loadWithRotation();
+    } else {
+      void loadLeafletFromFallbacks();
+    }
     return () => {
       cancelled = true;
       if (libraryLoadWatchdog !== null) window.clearTimeout(libraryLoadWatchdog);
