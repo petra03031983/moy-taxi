@@ -7,7 +7,8 @@ This document is an engineering checklist, not a buyer-facing claim of productio
 - Supabase project «Мой Такси» was seen as ACTIVE_HEALTHY during the audit.
 - Production Edge Function moy-taxi-api was version 55; the source in this branch now matches the live function exactly.
 - Production Edge Function moy-taxi-api-feed was version 2; its previously missing source was restored and now matches the live function exactly.
-- A core baseline, driver-verification migration, account-number migration, and trigger-function hardening migration have been added or reconstructed in this branch.
+- A core baseline, driver-verification migration, account-number migration, trigger-function hardening migration, and small index cleanup have been added or reconstructed in this branch.
+- The clean-install owner bootstrap hash was replaced in both preparation branches with a salt/hash for a fresh high-entropy random password. The raw password is kept outside the repository in a separate handoff file; it is not the current production owner's password.
 - Recent branch build workflows completed successfully before the latest migration-only commits; verify the latest workflow before merging.
 - The current production deployment is still on main. Deployments from this branch are previews and have not been promoted to production.
 
