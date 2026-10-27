@@ -956,6 +956,7 @@ export default function AstanaMapPage() {
   const roadScanUploadedEvidenceRef = useRef(new Set());
   const roadScanUploadedEvidenceCountRef = useRef(0);
   const roadObjectsRef = useRef([]);
+  const privateRoadObjectsRef = useRef([]);
   const publicCameraCatalogRef = useRef({ items: [], fetchedAt: 0 });
   const roadObjectsRequestRef = useRef({ inFlight: false, controller: null, lastRequestAt: 0 });
   const cameraWarningRef = useRef({ routeId: null, announced: new Set() });
@@ -1587,6 +1588,7 @@ export default function AstanaMapPage() {
       locationLayerRef.current = null;
       roadObjectsLayerRef.current = null;
       roadObjectsRef.current = [];
+      privateRoadObjectsRef.current = [];
       passedRouteRef.current = null;
       roadObjectsRequestRef.current.controller?.abort();
       roadObjectsRequestRef.current = { inFlight: false, controller: null, lastRequestAt: 0 };
@@ -2651,6 +2653,7 @@ export default function AstanaMapPage() {
     const loadSavedRoadScanMarkers = async () => {
       try {
         let observations = [];
+        let privateCoordinates = [];
         try {
           const data = await getRoadScanData();
           observations = Array.isArray(data.observations) ? data.observations : [];
@@ -2754,6 +2757,7 @@ export default function AstanaMapPage() {
           if (response.ok) {
             const payload = await response.json();
             const items = Array.isArray(payload?.observations) ? payload.observations : [];
+            privateCoordinates = items;
             const merged = new Map(observations.map(item => [String(item.id || item.source_id), item]));
             for (const item of items) {
               merged.set(String(item.id || item.source_id), {
@@ -2769,6 +2773,60 @@ export default function AstanaMapPage() {
           console.warn("[Astana Guide] Shared screen evidence unavailable", error);
         }
         if (cancelled || !roadScanLayerRef.current) return;
+
+        // Keep verified/private database coordinates in a shared collection too.
+        // The 3D map covers the Leaflet canvas, so markers drawn only in the
+        // Leaflet road-scan layer are invisible while the 3D mode is active.
+        privateRoadObjectsRef.current = privateCoordinates.map(item => {
+          const rawKind = String(item?.kind || "");
+          const kind = rawKind === "speed-camera" || rawKind === "surveillance-camera"
+            ? "camera"
+            : rawKind === "speed-limit"
+              ? "speed-sign"
+              : rawKind === "road-hazard"
+                ? "hazard"
+                : rawKind;
+          const lat = Number(item?.estimatedLat ?? item?.lat ?? item?.observedLat);
+          const lng = Number(item?.estimatedLng ?? item?.lng ?? item?.observedLng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng) ||
+              lat < 47 || lat > 55 || lng < 65 || lng > 77) return null;
+          const label = String(item?.label || item?.sourceText || "");
+          const typeLabels = {
+            "speed-camera": "Камера контроля скорости",
+            "surveillance-camera": "Камера видеонаблюдения",
+            "traffic-light": "Светофор",
+            "speed-limit": "Знак ограничения скорости",
+            "traffic-sign": "Дорожный знак",
+            "stop-sign": "Знак STOP",
+            "give-way-sign": "Знак «Уступи дорогу»",
+            "pedestrian-crossing": "Пешеходный переход",
+            "no-stopping": "Остановка запрещена",
+            "no-parking": "Стоянка запрещена",
+            "parking": "Парковка",
+            "roadwork": "Дорожные работы",
+            "road-hazard": "Дорожная опасность",
+          };
+          return {
+            id: String(item?.id || item?.source_id || "private-road-object"),
+            kind,
+            title: typeLabels[rawKind] || label || roadObjectTitle(kind),
+            shortLabel: roadObjectShortLabel(kind),
+            lat,
+            lng,
+            speedLimit: item?.speedLimit == null ? null : Number(item.speedLimit),
+            tags: { source: "astana-gid-private", review_status: item?.reviewStatus || "needs-review" },
+            catalogSource: "",
+            privateRoadObject: true,
+            privateReviewStatus: item?.reviewStatus || "needs-review",
+          };
+        }).filter(Boolean);
+
+        roadObjectsRef.current = [
+          ...(roadObjectsRef.current || []).filter(item => !item.privateRoadObject),
+          ...privateRoadObjectsRef.current,
+        ];
+        setRoadObjectsRevision(value => value + 1);
+
         const group = roadScanLayerRef.current;
         const L = window.L;
         group.clearLayers();
@@ -3005,7 +3063,7 @@ export default function AstanaMapPage() {
           else if (item.tags?.source === "astana-gis") deduplicatedObjects[duplicateIndex] = item;
         }
         const objects = deduplicatedObjects;
-        roadObjectsRef.current = objects;
+        roadObjectsRef.current = [...objects, ...(privateRoadObjectsRef.current || [])];
         const mappedByKind = {};
         for (const item of objects) mappedByKind[item.kind] = (mappedByKind[item.kind] || 0) + 1;
         setRoadDataDiagnostics(previous => ({
