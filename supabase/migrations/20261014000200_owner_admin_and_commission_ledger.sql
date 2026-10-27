@@ -39,5 +39,5 @@ grant all privileges on table public.platform_commissions to service_role;
 -- First owner credential is provided to the owner privately after deployment.
 -- If the row already exists, preserve the existing password and settings.
 insert into public.platform_settings(id, owner_password_salt, owner_password_hash, commission_percent)
-values (true, 'e273c1bb6b414a031727a6b4b5236863', '60d3ba1c6dbdaae9ad8bdf47718831e4b4a2cbfdebf77717a5e7b51fc156dbdc', 5)
+values (true, 'a2f49cdabc213ae3ecad7fa855616546', '78a2179cebdb1dfd2a13ee79dfbda60d5fe8aa4739cdab2b6e22bb25ebdee8c8', 5)
 on conflict (id) do nothing;
