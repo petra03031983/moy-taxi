@@ -581,7 +581,8 @@ public class ScreenCaptureService extends Service {
             item.put("vehicleAnchorYRatio", scanResult == null ? JSONObject.NULL : scanResult.vehicleY);
             item.put("trackStartLat", track != null && track.has("firstLat") ? track.opt("firstLat") : JSONObject.NULL);
             item.put("trackStartLng", track != null && track.has("firstLng") ? track.opt("firstLng") : JSONObject.NULL);
-            item.put("trackStartAt", track == null ? 0L : track.optLong("firstAt", 0L));
+            long trackStartAtMs = track == null ? 0L : track.optLong("firstAt", 0L);
+            item.put("trackStartAt", trackStartAtMs > 0L ? trackStartAtMs : JSONObject.NULL);
             item.put("gpsSpeedMps", point.hasSpeed() ? point.getSpeed() : JSONObject.NULL);
             item.put("gpsBearingDegrees", point.hasBearing() ? Math.round(point.getBearing()) % 360 : JSONObject.NULL);
             item.put("distanceAheadM", JSONObject.NULL);
