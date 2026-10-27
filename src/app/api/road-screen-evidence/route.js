@@ -124,6 +124,15 @@ function normalize(candidate) {
   const estimateLngValue = candidate.estimated_lng ?? candidate.estimatedLng;
   const estimatedLat = estimateLatValue == null ? null : Number(estimateLatValue);
   const estimatedLng = estimateLngValue == null ? null : Number(estimateLngValue);
+  // Older scanner builds wrongly copied the vehicle GPS fix into estimatedLat/Lng.
+  // Treat that exact match as an unlocated vehicle pass-by observation, not an object coordinate.
+  const estimateEqualsVehicleGps = distanceAheadM == null
+    && estimatedLat != null && estimatedLng != null
+    && Number.isFinite(observedLat) && Number.isFinite(observedLng)
+    && Math.abs(estimatedLat - observedLat) < 0.0000001
+    && Math.abs(estimatedLng - observedLng) < 0.0000001;
+  const vehicleGpsOnly = detectionMethod === "icon-heuristic"
+    && (coordinateMethod === "vehicle-gps-only" || estimateEqualsVehicleGps);
   const now = Date.now();
 
   if (!sourceId || sourceId.length < 8 || !ALLOWED_KINDS.has(kind)) return null;
@@ -131,7 +140,7 @@ function normalize(candidate) {
   if (!Number.isFinite(observedLat) || observedLat < 47 || observedLat > 55) return null;
   if (!Number.isFinite(observedLng) || observedLng < 65 || observedLng > 77) return null;
   if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 150) return null;
-  if (!Number.isFinite(confidence) || confidence < 0.08 || confidence > 0.6) return null;
+  if (!Number.isFinite(confidence) || confidence < (vehicleGpsOnly ? 0.04 : 0.08) || confidence > 0.6) return null;
   if (!Number.isFinite(gpsCapturedAt.getTime()) || gpsCapturedAt.getTime() > now + 5 * 60 * 1000) return null;
   if (!Number.isFinite(capturedAt.getTime()) || capturedAt.getTime() > now + 5 * 60 * 1000) return null;
   // Preserve older valid observations held locally while the device was offline.
@@ -156,8 +165,17 @@ function normalize(candidate) {
       ? cameraPatterns.has(iconPattern)
       : kind === "traffic-light" && trafficPatterns.has(iconPattern);
     if (!iconMatch || !patternAllowed) return null;
-    if (coordinateMethod !== "icon-pass-by-gps" || frameHits < 1 || accuracy > 60) return null;
-    if (estimatedLat == null || estimatedLng == null || distanceAheadM != null) return null;
+    if (frameHits < 1 || accuracy > 150) return null;
+    if (vehicleGpsOnly) {
+      // Retain the observation and the GPS fix, but do not promote the vehicle position
+      // into a camera/light coordinate until a distance/map-matching estimate exists.
+      if (distanceAheadM != null) return null;
+    } else {
+      if (!["icon-pass-by-gps", "distance-and-heading"].includes(coordinateMethod)) return null;
+      if (estimatedLat == null || estimatedLng == null) return null;
+      if (coordinateMethod === "distance-and-heading" && distanceAheadM == null) return null;
+      if (accuracy > 60) return null;
+    }
   } else if (detectionMethod === "text-ocr") {
     const strictTextAlert =
       (kind === "speed-camera" && /(камера\s+(контроля скорости|скорости|фиксации скорости)|контроль скорости|фиксация скорости|speed\s*camera|speedcam|camera ahead)/i.test(lowerText)) ||
@@ -180,8 +198,8 @@ function normalize(candidate) {
     accuracy_m: accuracy,
     gps_captured_at: gpsCapturedAt.toISOString(),
     distance_ahead_m: distanceAheadM,
-    estimated_lat: estimatedLat,
-    estimated_lng: estimatedLng,
+    estimated_lat: vehicleGpsOnly ? null : estimatedLat,
+    estimated_lng: vehicleGpsOnly ? null : estimatedLng,
     confidence,
     captured_at: capturedAt.toISOString(),
     review_status: "needs-review",
@@ -189,7 +207,7 @@ function normalize(candidate) {
     travel_heading_degrees: travelHeading,
     icon_pattern: iconPattern,
     frame_hits: frameHits,
-    coordinate_method: coordinateMethod,
+    coordinate_method: vehicleGpsOnly ? "vehicle-gps-only" : coordinateMethod,
   };
 }
 
