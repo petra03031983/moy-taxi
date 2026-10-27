@@ -1491,8 +1491,9 @@ export default function AstanaMapPage() {
       window.L = undefined;
 
       const sources = [
-        // Prefer same-origin assets to avoid a blank map in embedded mobile WebViews.
+        // Prefer same-origin assets and the app-hosted dependency before third-party CDNs.
         "/vendor/leaflet.js",
+        "/api/leaflet-runtime",
         "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
         "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js",
         "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
