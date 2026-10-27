@@ -409,7 +409,7 @@ public class ScreenCaptureService extends Service {
 
         if (savedAny) {
             prefs.edit().putString("screenIconStatus",
-                "Распознаны значки, отслежены на нескольких кадрах и сохранены как приблизительные GPS-точки.")
+                "Значки подтверждены несколькими кадрами; сохранены GPS-наблюдения, координата объекта уточняется отдельно.")
                 .apply();
         } else if (closeButWaiting) {
             prefs.edit().putString("screenIconStatus",
@@ -632,12 +632,12 @@ public class ScreenCaptureService extends Service {
                 .putInt("screenIconSavedCount", prefs.getInt("screenIconSavedCount", 0) + 1)
                 .putString("lastMatch", kind + " · " + sourceText)
                 .putLong("lastMatchAt", now)
-                .putString("status", "Найден графический значок; приблизительная точка сохранена как требующая проверки.")
+                .putString("status", "Сохранено GPS-наблюдение значка; точные координаты объекта ещё не вычислены.")
                 .apply();
         }
 
         cloudExecutor.execute(() -> queueAndSync(item));
-        updateNotification("Анализ экрана · графических наблюдений " +
+        updateNotification("Анализ экрана · GPS-наблюдений значков " +
             prefs.getInt("screenIconSavedCount", 0) + " · точки требуют проверки");
         return true;
     }
