@@ -1536,13 +1536,15 @@ export default function AstanaMapPage() {
           if (settled || cancelled) return;
           settled = true;
           cleanup();
-          if (window.L) {
+          // A script may return HTML/error payload with status 200 and still fire load.
+          // Only accept a source that exposes the actual Leaflet map API.
+          if (window.L && typeof window.L.map === "function") {
             script.dataset.moyLeafletLoaded = "true";
-            loadWithRotation();
-          } else {
-            script.remove();
-            tryNextSource();
+            if (loadWithRotation()) return;
           }
+          window.L = undefined;
+          script.remove();
+          tryNextSource();
         };
         script.onerror = () => {
           if (settled || cancelled) return;
