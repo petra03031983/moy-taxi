@@ -1267,11 +1267,17 @@ export default function AstanaMapPage() {
   }, [gpsFixReady]);
 
   useEffect(() => {
+    // The map's DOM container is rendered only after private access is confirmed.
+    // Start Leaflet after that transition, not during the locked/login render.
+    if (!mapAccessAllowed) return;
     let cancelled = false;
     let tileFallbackTimer = null;
     let libraryLoadWatchdog = null;
     const load = () => {
-      if (cancelled || !mapEl.current || mapRef.current) return true;
+      if (cancelled) return false;
+      // Do not report success until the real map container exists.
+      if (!mapEl.current) return false;
+      if (mapRef.current) return true;
       if (!window.L || typeof window.L.map !== "function") return false;
       try {
       const L = window.L;
@@ -1587,7 +1593,7 @@ export default function AstanaMapPage() {
       routeRef.current = null;
       arrowRef.current = null;
     };
-  }, []);
+  }, [mapAccessAllowed]);
 
   useEffect(() => {
     if (!leafletReady) return;
