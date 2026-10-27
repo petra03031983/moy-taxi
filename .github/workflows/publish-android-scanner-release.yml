@@ -41,21 +41,21 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Prepare APK for release
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk Astana-Guide-Scanner-Icons-AI-v1.4.9.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Astana-Guide-Scanner-Icons-AI-v1.4.10.apk
 
       - name: Publish downloadable APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: astana-guide-screen-icons-1.4.9-mobile
-          name: "Астана Гид — сканер значков 1.4.9"
+          tag_name: astana-guide-screen-icons-1.4.10-mobile
+          name: "Астана Гид — сканер значков 1.4.10"
           body: |
             Установочный APK для Android.
 
             Пакет: kz.astanaguide.scanner.icons144
-            Версия 1.4.9: GPS автомобиля и координаты дорожного объекта разделены; сохраняется экранная позиция значка, координаты маркера автомобиля, начало GPS-трека, скорость и направление; отдельные близкие значки больше не объединяются по одному лишь GPS-расстоянию; локальная очередь увеличена до 3000 наблюдений. Пакет совпадает с установленным сканером 1.4.4, чтобы сохранить данные приложения при обновлении.
+            Версия 1.4.10: исправлено название приложения (теперь показывает 1.4.10, а не старый номер); GPS автомобиля и координаты дорожного объекта разделены; сохраняется экранная позиция значка, координаты маркера автомобиля, начало GPS-трека, скорость и направление; отдельные близкие значки больше не объединяются по одному лишь GPS-расстоянию; локальная очередь увеличена до 3000 наблюдений. Пакет совпадает с установленным сканером 1.4.4, чтобы сохранить данные приложения при обновлении.
 
-            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.9.apk и установите поверх прежнего сканера. Данные приложения должны сохраниться.
-          files: Astana-Guide-Scanner-Icons-AI-v1.4.9.apk
+            Скачайте файл Astana-Guide-Scanner-Icons-AI-v1.4.10.apk и установите поверх прежнего сканера. Данные приложения должны сохраниться.
+          files: Astana-Guide-Scanner-Icons-AI-v1.4.10.apk
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
