@@ -1,16 +1,14 @@
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { join } from "node:path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const require = createRequire(import.meta.url);
-
 export async function GET(request) {
   try {
-    // Serve Leaflet from the installed app dependency on the same origin.
-    // This avoids relying on third-party CDNs in constrained mobile browsers.
-    const filePath = require.resolve("leaflet/dist/leaflet.js");
+    // The build script copies Leaflet into public/vendor. Read that exact built
+    // artifact instead of resolving node_modules from a serverless runtime.
+    const filePath = join(process.cwd(), "public", "vendor", "leaflet.js");
     const source = await readFile(filePath);
     if (source.byteLength < 100_000) {
       throw new Error("Leaflet runtime file is unexpectedly small");
@@ -36,7 +34,11 @@ export async function GET(request) {
     const isCheck = new URL(request.url).searchParams.get("check") === "1";
     return Response.json(
       isCheck
-        ? { ok: false, error: "Leaflet runtime недоступен на сервере" }
+        ? {
+            ok: false,
+            error: "Leaflet runtime недоступен на сервере",
+            code: String(error?.code || "unknown").slice(0, 40),
+          }
         : { error: "Не удалось прочитать встроенную библиотеку карты" },
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
