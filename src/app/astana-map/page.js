@@ -1270,7 +1270,9 @@ export default function AstanaMapPage() {
     let tileFallbackTimer = null;
     let libraryLoadWatchdog = null;
     const load = () => {
-      if (cancelled || !window.L || !mapEl.current || mapRef.current) return;
+      if (cancelled || !mapEl.current || mapRef.current) return true;
+      if (!window.L || typeof window.L.map !== "function") return false;
+      try {
       const L = window.L;
       const map = L.map(mapEl.current, {
         zoomControl: false,
@@ -1381,6 +1383,19 @@ export default function AstanaMapPage() {
       map._moySync3DCamera = sync3DCameraFromLeaflet;
       setLeafletReady(true);
       requestAnimationFrame(() => map.invalidateSize());
+      return true;
+      } catch (error) {
+        console.error("[Astana Guide] Leaflet map initialization failed", error);
+        try { mapRef.current?.remove(); } catch {}
+        mapRef.current = null;
+        if (mapEl.current) {
+          mapEl.current.innerHTML = "";
+          try { delete mapEl.current._leaflet_id; } catch {}
+        }
+        setLeafletReady(false);
+        setError("Не удалось запустить карту. Нажмите «Обновить» и повторите попытку.");
+        return false;
+      }
     };
     if (!document.querySelector('link[data-moy-leaflet="1"]')) {
       const link = document.createElement("link");
@@ -1390,12 +1405,17 @@ export default function AstanaMapPage() {
       document.head.appendChild(link);
     }
     const loadWithRotation = () => {
-      if (cancelled || !window.L) return;
+      if (cancelled || !window.L || typeof window.L.map !== "function") return false;
 
       // Do not make the whole map wait for the optional rotation plugin.
       // Paint the street map immediately, while rotation support loads in parallel.
-      load();
-      if (typeof window.L.Map?.prototype?.setBearing === "function") return;
+      const initialized = load();
+      if (!initialized) {
+        window.L = undefined;
+        loadLeafletFromCDNFallbacks();
+        return false;
+      }
+      if (typeof window.L.Map?.prototype?.setBearing === "function") return true;
 
       let rotateScript = document.querySelector('script[data-moy-leaflet-rotate-js="1"]');
       if (!rotateScript) {
@@ -1424,10 +1444,12 @@ export default function AstanaMapPage() {
 
     const loadLeafletFromFallbacks = async () => {
       if (cancelled) return;
-      if (window.L) {
+      if (window.L && typeof window.L.map === "function") {
         loadWithRotation();
         return;
       }
+      // A stale or partially loaded Leaflet global must not block recovery.
+      window.L = undefined;
 
       // Prefer the copy bundled with this app. This avoids a blank map when the phone
       // or embedded WebView cannot reach a public CDN (jsDelivr, cdnjs or unpkg).
@@ -1448,10 +1470,11 @@ export default function AstanaMapPage() {
 
     const loadLeafletFromCDNFallbacks = () => {
       if (cancelled) return;
-      if (window.L) {
+      if (window.L && typeof window.L.map === "function") {
         loadWithRotation();
         return;
       }
+      window.L = undefined;
 
       const sources = [
         // Prefer same-origin assets to avoid a blank map in embedded mobile WebViews.
@@ -1464,10 +1487,11 @@ export default function AstanaMapPage() {
 
       const tryNextSource = () => {
         if (cancelled) return;
-        if (window.L) {
+        if (window.L && typeof window.L.map === "function") {
           loadWithRotation();
           return;
         }
+        window.L = undefined;
         if (attempt >= sources.length) {
           if (libraryLoadWatchdog !== null) {
             window.clearTimeout(libraryLoadWatchdog);
@@ -1523,7 +1547,7 @@ export default function AstanaMapPage() {
       };
 
       const existingLoadedScript = document.querySelector('script[data-moy-leaflet-js="1"][data-moy-leaflet-loaded="true"]');
-      if (existingLoadedScript && window.L) loadWithRotation();
+      if (existingLoadedScript && window.L && typeof window.L.map === "function") loadWithRotation();
       else tryNextSource();
     };
 
