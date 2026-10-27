@@ -1431,6 +1431,7 @@ export default function AstanaMapPage() {
           rotateScript.dataset.moyLeafletRotateLoaded = "true";
         }, { once: true });
       }
+      return true;
     };
 
     // Do not depend on a single CDN: mobile networks and embedded browsers can
@@ -1440,7 +1441,7 @@ export default function AstanaMapPage() {
         setLocating(false);
         setError(previous => previous || "Карта долго загружается. Проверьте интернет и обновите страницу.");
       }
-    }, 17000);
+    }, 28000);
 
     const loadLeafletFromFallbacks = async () => {
       if (cancelled) return;
@@ -1453,17 +1454,30 @@ export default function AstanaMapPage() {
 
       // Prefer the copy bundled with this app. This avoids a blank map when the phone
       // or embedded WebView cannot reach a public CDN (jsDelivr, cdnjs or unpkg).
+      let localImportTimeout = null;
       try {
-        const leafletModule = await import("leaflet");
+        // A dynamic chunk can stall indefinitely in some mobile browsers. Bound the
+        // wait so same-origin and CDN script fallbacks get a chance to initialize.
+        const leafletModule = await Promise.race([
+          import("leaflet"),
+          new Promise((_, reject) => {
+            localImportTimeout = window.setTimeout(
+              () => reject(new Error("Leaflet module import timed out")),
+              3500
+            );
+          }),
+        ]);
+        if (localImportTimeout !== null) window.clearTimeout(localImportTimeout);
         if (cancelled) return;
         window.L = leafletModule.default || leafletModule;
         if (!window.L || typeof window.L.map !== "function") {
           throw new Error("Локальная библиотека карты загрузилась без функции map");
         }
-        loadWithRotation();
-        return;
+        if (loadWithRotation()) return;
+        window.L = undefined;
       } catch (localError) {
-        console.warn("[Astana Guide] Bundled Leaflet unavailable; trying CDN fallbacks", localError);
+        if (localImportTimeout !== null) window.clearTimeout(localImportTimeout);
+        console.warn("[Astana Guide] Bundled Leaflet unavailable or stalled; trying script fallbacks", localError);
       }
       loadLeafletFromCDNFallbacks();
     };
