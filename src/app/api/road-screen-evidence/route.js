@@ -133,6 +133,35 @@ function normalize(candidate) {
     && Math.abs(estimatedLng - observedLng) < 0.0000001;
   const vehicleGpsOnly = detectionMethod === "icon-heuristic"
     && (coordinateMethod === "vehicle-gps-only" || estimateEqualsVehicleGps);
+
+  const trackIdValue = candidate.track_id ?? candidate.trackId;
+  const trackId = trackIdValue == null ? null : String(trackIdValue).trim().slice(0, 120) || null;
+  const optionalRatio = (value) => {
+    if (value == null || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 && number <= 1 ? number : null;
+  };
+  const optionalRegionCoordinate = (value, min, max) => {
+    if (value == null || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= min && number <= max ? number : null;
+  };
+  const screenXRatio = optionalRatio(candidate.screen_x_ratio ?? candidate.screenXRatio);
+  const screenYRatio = optionalRatio(candidate.screen_y_ratio ?? candidate.screenYRatio);
+  const vehicleAnchorXRatio = optionalRatio(candidate.vehicle_anchor_x_ratio ?? candidate.vehicleAnchorXRatio);
+  const vehicleAnchorYRatio = optionalRatio(candidate.vehicle_anchor_y_ratio ?? candidate.vehicleAnchorYRatio);
+  const trackStartLat = optionalRegionCoordinate(candidate.track_start_lat ?? candidate.trackStartLat, 47, 55);
+  const trackStartLng = optionalRegionCoordinate(candidate.track_start_lng ?? candidate.trackStartLng, 65, 77);
+  const trackStartTimestamp = parseTimestamp(candidate.track_start_at ?? candidate.trackStartAt);
+  const trackStartAt = Number.isFinite(trackStartTimestamp.getTime()) ? trackStartTimestamp : null;
+  const rawVehicleSpeed = candidate.vehicle_speed_mps ?? candidate.vehicleSpeedMps ?? candidate.gpsSpeedMps;
+  const vehicleSpeedNumber = rawVehicleSpeed == null || rawVehicleSpeed === "" ? null : Number(rawVehicleSpeed);
+  const vehicleSpeedMps = Number.isFinite(vehicleSpeedNumber) && vehicleSpeedNumber >= 0 && vehicleSpeedNumber <= 80
+    ? vehicleSpeedNumber : null;
+  const rawVehicleBearing = candidate.vehicle_bearing_degrees ?? candidate.vehicleBearingDegrees ?? candidate.gpsBearingDegrees;
+  const vehicleBearingNumber = rawVehicleBearing == null || rawVehicleBearing === "" ? null : Number(rawVehicleBearing);
+  const vehicleBearingDegrees = Number.isInteger(vehicleBearingNumber) && vehicleBearingNumber >= 0 && vehicleBearingNumber <= 359
+    ? vehicleBearingNumber : null;
   const now = Date.now();
 
   if (!sourceId || sourceId.length < 8 || !ALLOWED_KINDS.has(kind)) return null;
@@ -208,6 +237,16 @@ function normalize(candidate) {
     icon_pattern: iconPattern,
     frame_hits: frameHits,
     coordinate_method: vehicleGpsOnly ? "vehicle-gps-only" : coordinateMethod,
+    track_id: trackId,
+    screen_x_ratio: screenXRatio,
+    screen_y_ratio: screenYRatio,
+    vehicle_anchor_x_ratio: vehicleAnchorXRatio,
+    vehicle_anchor_y_ratio: vehicleAnchorYRatio,
+    track_start_lat: trackStartLat,
+    track_start_lng: trackStartLng,
+    track_start_at: trackStartAt ? trackStartAt.toISOString() : null,
+    vehicle_speed_mps: vehicleSpeedMps,
+    vehicle_bearing_degrees: vehicleBearingDegrees,
   };
 }
 
