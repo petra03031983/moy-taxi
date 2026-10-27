@@ -2680,18 +2680,30 @@ export default function AstanaMapPage() {
                 const kind = String(item?.kind || "");
                 const observedLat = Number(item?.observedLat ?? item?.observed_lat);
                 const observedLng = Number(item?.observedLng ?? item?.observed_lng);
-                const estimatedLat = Number(item?.estimatedLat ?? item?.estimated_lat);
-                const estimatedLng = Number(item?.estimatedLng ?? item?.estimated_lng);
+                const estimateLatValue = item?.estimatedLat ?? item?.estimated_lat;
+                const estimateLngValue = item?.estimatedLng ?? item?.estimated_lng;
+                const estimatedLat = estimateLatValue == null ? null : Number(estimateLatValue);
+                const estimatedLng = estimateLngValue == null ? null : Number(estimateLngValue);
+                const distanceValue = item?.distanceAheadM ?? item?.distance_ahead_m;
+                const distanceAheadM = distanceValue == null ? null : Number(distanceValue);
+                const coordinateMethod = String(item?.coordinateMethod || item?.coordinate_method || "");
                 const accuracy = Number(item?.accuracy ?? item?.accuracy_m);
+                const isVehicleGpsOnly = coordinateMethod === "vehicle-gps-only" ||
+                  (distanceAheadM == null && estimatedLat != null && estimatedLng != null &&
+                    Number.isFinite(observedLat) && Number.isFinite(observedLng) &&
+                    Math.abs(estimatedLat - observedLat) < 0.0000001 &&
+                    Math.abs(estimatedLng - observedLng) < 0.0000001);
+                const hasEstimatedObjectLocation = !isVehicleGpsOnly &&
+                  Number.isFinite(estimatedLat) && estimatedLat >= 47 && estimatedLat <= 55 &&
+                  Number.isFinite(estimatedLng) && estimatedLng >= 65 && estimatedLng <= 77;
                 return id.length >= 8
                   && !roadScanUploadedEvidenceRef.current.has(id)
                   && item?.syncStatus !== "synced"
                   && ["speed-camera", "traffic-light", "speed-limit", "roadwork", "road-hazard"].includes(kind)
                   && Number.isFinite(observedLat) && observedLat >= 47 && observedLat <= 55
                   && Number.isFinite(observedLng) && observedLng >= 65 && observedLng <= 77
-                  && Number.isFinite(estimatedLat) && estimatedLat >= 47 && estimatedLat <= 55
-                  && Number.isFinite(estimatedLng) && estimatedLng >= 65 && estimatedLng <= 77
-                  && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 60;
+                  && (isVehicleGpsOnly || hasEstimatedObjectLocation)
+                  && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 150;
               });
               for (let offset = 0; offset < uploadable.length; offset += 30) {
                 const batch = uploadable.slice(offset, offset + 30);
