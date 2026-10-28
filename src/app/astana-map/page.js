@@ -3482,7 +3482,7 @@ export default function AstanaMapPage() {
       if (!isRoadObjectCoordinateUsable(item)) continue;
       if (item.kind !== "camera" || cameraWarningRef.current.announced.has(item.id)) continue;
       const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
-      if (!Number.isFinite(snapped.distance) || snapped.distance > 65) continue;
+      if (!Number.isFinite(snapped.distance) || snapped.distance > 18) continue;
       if (snapped.progress < routeProgressRef.current - 0.1) continue;
       const meters = routeDistanceBetweenProgress(points, routeProgressRef.current, snapped.progress);
       if (meters < 0 || meters > 850) continue;
@@ -3493,7 +3493,7 @@ export default function AstanaMapPage() {
     cameraWarningRef.current.announced.add(nearest.item.id);
     const isSpeedCamera = isSpeedEnforcementCamera(nearest.item.tags || {});
     const cameraLimit = isSpeedCamera
-      ? (parseSpeedLimitValue(nearest.item.tags?.maxspeed) || speedLimit || null)
+      ? parseSpeedLimitValue(nearest.item.tags?.maxspeed)
       : null;
     const limitText = cameraLimit ? ` Ограничение ${cameraLimit} километров в час.` : "";
     const cameraPhrase = isSpeedCamera
@@ -3534,7 +3534,8 @@ export default function AstanaMapPage() {
       if (!phrase) continue;
 
       const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
-      if (!Number.isFinite(snapped.distance) || snapped.distance > 60) continue;
+      const lateralLimit = item.kind === "traffic-light" ? 28 : item.kind === "speed-sign" ? 22 : 18;
+      if (!Number.isFinite(snapped.distance) || snapped.distance > lateralLimit) continue;
       if (snapped.progress < routeProgressRef.current - 0.1) continue;
       const meters = routeDistanceBetweenProgress(points, routeProgressRef.current, snapped.progress);
       if (meters < 25 || meters > 450) continue;
