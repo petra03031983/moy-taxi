@@ -690,6 +690,77 @@ function roadObjectIconHtml(kind, speedLimit = null) {
   return '<span class="moy-road-object-badge moy-road-object-signal" aria-label="Светофор"><i></i><i></i><i></i></span>';
 }
 
+function isRoadObjectCoordinateUsable(item) {
+  if (!item || !Number.isFinite(Number(item.lat)) || !Number.isFinite(Number(item.lng))) return false;
+
+  const reviewStatus = String(
+    item.privateReviewStatus ?? item.reviewStatus ?? item.tags?.review_status ?? ""
+  ).toLowerCase();
+  const isManual = item.manualRoadObject === true || item.manual === true;
+  if (item.privateRoadObject && !isManual &&
+      !["confirmed", "approved", "verified", "accepted"].includes(reviewStatus)) {
+    // Keep unverified scanner coordinates in the private review queue, but never
+    // present vehicle GPS as the physical location of a camera or traffic light.
+    return false;
+  }
+  if (reviewStatus === "rejected") return false;
+
+  const detectionMethod = String(item.detectionMethod ?? item.detection_method ?? "");
+  const coordinateMethod = String(item.coordinateMethod ?? item.coordinate_method ?? "");
+  const observedLat = Number(item.observedLat ?? item.observed_lat);
+  const observedLng = Number(item.observedLng ?? item.observed_lng);
+  const estimatedLat = Number(item.estimatedLat ?? item.estimated_lat ?? item.lat);
+  const estimatedLng = Number(item.estimatedLng ?? item.estimated_lng ?? item.lng);
+  const distanceValue = item.distanceAheadM ?? item.distance_ahead_m;
+  const hasDistance = distanceValue != null && distanceValue !== "" && Number.isFinite(Number(distanceValue));
+
+  const estimateIsVehicleGps = !hasDistance &&
+    Number.isFinite(observedLat) && Number.isFinite(observedLng) &&
+    Number.isFinite(estimatedLat) && Number.isFinite(estimatedLng) &&
+    Math.abs(estimatedLat - observedLat) < 0.0000001 &&
+    Math.abs(estimatedLng - observedLng) < 0.0000001;
+
+  if (detectionMethod === "icon-heuristic" &&
+      (coordinateMethod === "vehicle-gps-only" ||
+       coordinateMethod === "icon-pass-by-gps" && estimateIsVehicleGps ||
+       estimateIsVehicleGps)) {
+    return false;
+  }
+  return true;
+}
+
+function deduplicatePhysicalRoadObjects(items, toleranceMeters = 4) {
+  const result = [];
+  for (const item of items || []) {
+    if (!isRoadObjectCoordinateUsable(item)) continue;
+    const kind = String(item.kind || "");
+    if (!["camera", "traffic-light", "speed-sign"].includes(kind)) continue;
+
+    const duplicateIndex = result.findIndex(existing =>
+      existing.kind === kind &&
+      distanceBetween([existing.lat, existing.lng], [item.lat, item.lng]) <= toleranceMeters
+    );
+    if (duplicateIndex < 0) {
+      result.push(item);
+      continue;
+    }
+
+    // Prefer a manually verified object, then official/open map data. Do not merge
+    // camera + traffic-light records: they can be separate real objects at one pole.
+    const rank = candidate => {
+      if (candidate.manualRoadObject || candidate.manual) return 5;
+      const status = String(candidate.privateReviewStatus ?? candidate.reviewStatus ?? candidate.tags?.review_status ?? "").toLowerCase();
+      if (["confirmed", "approved", "verified", "accepted"].includes(status)) return 4;
+      if (candidate.catalogSource === "astana-gis") return 3;
+      if (candidate.catalogSource === "qazgeo") return 2;
+      if (candidate.privateRoadObject) return 0;
+      return 1;
+    };
+    if (rank(item) > rank(result[duplicateIndex])) result[duplicateIndex] = item;
+  }
+  return result;
+}
+
 function nextTurnArrow(step) {
   const maneuver = step?.maneuver || {};
   const modifier = String(maneuver.modifier || "").toLowerCase();
@@ -2035,21 +2106,51 @@ export default function AstanaMapPage() {
       features: locationFeatures,
     });
 
-    const roadFeatures = (roadObjectsRef.current || [])
-      .filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lng))
-      .map(item => ({
-        type: "Feature",
-        properties: {
-          id: String(item.id || ""),
-          kind: item.kind || "traffic-light",
-          label: item.shortLabel || roadObjectShortLabel(item.kind),
-          title: item.title || roadObjectTitle(item.kind),
-          speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
-          catalogSource: item.catalogSource || (item.tags?.source === "astana-gis" ? "astana-gis" : ""),
-          sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
-        },
-        geometry: { type: "Point", coordinates: [item.lng, item.lat] },
-      }));
+    const routePointsForObjects = route?.geometry?.length > 1
+      ? route.geometry.map(point => [point[1], point[0]])
+      : [];
+    const objectProgress = navigating && routeProgressRef.current >= 0 ? routeProgressRef.current : 0;
+    const mapBoundsForObjects = routePointsForObjects.length > 1
+      ? null
+      : (map3dRef.current?.getBounds?.() || mapRef.current?.getBounds?.() || null);
+
+    const routeRelevantObjects = (roadObjectsRef.current || []).filter(item => {
+      if (!isRoadObjectCoordinateUsable(item)) return false;
+      if (!["camera", "traffic-light", "speed-sign"].includes(String(item.kind || ""))) return false;
+      if (routePointsForObjects.length > 1) {
+        const snapped = snapToRoute({ lat: Number(item.lat), lng: Number(item.lng) }, routePointsForObjects);
+        // Keep real objects on the selected carriageway, not objects 2–3 lanes or
+        // an entire opposing carriageway away from the route.
+        const lateralLimit = item.kind === "traffic-light" ? 28 : item.kind === "camera" ? 18 : 22;
+        if (!Number.isFinite(snapped.distance) || snapped.distance > lateralLimit) return false;
+        const metersAhead = snapped.progress >= objectProgress
+          ? routeDistanceBetweenProgress(routePointsForObjects, objectProgress, snapped.progress)
+          : -routeDistanceBetweenProgress(routePointsForObjects, snapped.progress, objectProgress);
+        // Show the next objects along the chosen travel direction. A few metres behind
+        // are retained for map continuity; passed city-wide points are not drawn ahead.
+        return metersAhead >= -35 && metersAhead <= 5000;
+      }
+      if (mapBoundsForObjects?.contains) {
+        return mapBoundsForObjects.contains([Number(item.lng), Number(item.lat)]);
+      }
+      const center = positionRef.current || origin || { lat: ASTANA[0], lng: ASTANA[1] };
+      return distanceBetween([center.lat, center.lng], [Number(item.lat), Number(item.lng)]) <= 1800;
+    });
+
+    const uniquePhysicalRoadObjects = deduplicatePhysicalRoadObjects(routeRelevantObjects, 4);
+    const roadFeatures = uniquePhysicalRoadObjects.map(item => ({
+      type: "Feature",
+      properties: {
+        id: String(item.id || ""),
+        kind: item.kind || "traffic-light",
+        label: item.shortLabel || roadObjectShortLabel(item.kind),
+        title: item.title || roadObjectTitle(item.kind),
+        speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
+        catalogSource: item.catalogSource || (item.tags?.source === "astana-gis" ? "astana-gis" : ""),
+        sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
+      },
+      geometry: { type: "Point", coordinates: [item.lng, item.lat] },
+    }));
     setGeoJson("moy3d-road-objects", {
       type: "FeatureCollection",
       features: roadFeatures,
@@ -2821,6 +2922,13 @@ export default function AstanaMapPage() {
           return {
             id: String(item?.id || item?.source_id || "private-road-object"),
             kind,
+            manualRoadObject: item.manual === true,
+            coordinateMethod: item.coordinateMethod || item.coordinate_method || "",
+            detectionMethod: item.detectionMethod || item.detection_method || "",
+            observedLat: item.observedLat ?? item.observed_lat ?? null,
+            observedLng: item.observedLng ?? item.observed_lng ?? null,
+            distanceAheadM: item.distanceAheadM ?? item.distance_ahead_m ?? null,
+            reviewStatus: item.reviewStatus || item.review_status || "needs-review",
             title: typeLabels[rawKind] || label || roadObjectTitle(kind),
             shortLabel: roadObjectShortLabel(kind),
             lat,
@@ -2829,6 +2937,12 @@ export default function AstanaMapPage() {
             tags: { source: "astana-gid-private", review_status: item?.reviewStatus || "needs-review" },
             catalogSource: "",
             privateRoadObject: true,
+            manualRoadObject: item?.manual === true,
+            coordinateMethod: item?.coordinateMethod || item?.coordinate_method || "",
+            detectionMethod: item?.detectionMethod || item?.detection_method || "",
+            observedLat: item?.observedLat ?? item?.observed_lat ?? null,
+            observedLng: item?.observedLng ?? item?.observed_lng ?? null,
+            distanceAheadM: item?.distanceAheadM ?? item?.distance_ahead_m ?? null,
             privateReviewStatus: item?.reviewStatus || "needs-review",
           };
         }).filter(Boolean);
@@ -2845,6 +2959,11 @@ export default function AstanaMapPage() {
         for (const item of observations) {
           const screenEvidence = item.source === "screen-evidence";
           if (screenEvidence && (item.estimatedLat == null || item.estimatedLng == null)) continue;
+          if (screenEvidence && !isRoadObjectCoordinateUsable({
+            ...item,
+            lat: Number(item.estimatedLat),
+            lng: Number(item.estimatedLng),
+          })) continue;
           const lat = Number(screenEvidence ? item.estimatedLat : item.lat);
           const lng = Number(screenEvidence ? item.estimatedLng : item.lng);
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
@@ -3058,7 +3177,7 @@ export default function AstanaMapPage() {
           if (!isNearMap) continue;
           const duplicate = Array.from(unique.values()).some(existing =>
             existing.kind === "camera" &&
-            distanceBetween([existing.lat, existing.lng], [item.lat, item.lng]) < 25
+            distanceBetween([existing.lat, existing.lng], [item.lat, item.lng]) < 5
           );
           if (!duplicate) unique.set(item.id, item);
         }
@@ -3208,6 +3327,7 @@ export default function AstanaMapPage() {
     const progress = routeProgressRef.current;
     let nearest = null;
     for (const item of roadObjectsRef.current) {
+      if (!isRoadObjectCoordinateUsable(item)) continue;
       if (item.kind !== "camera") continue;
       const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
       if (!Number.isFinite(snapped.distance) || snapped.distance > 65) continue;
@@ -3237,6 +3357,7 @@ export default function AstanaMapPage() {
 
     let nearest = null;
     for (const item of roadObjectsRef.current) {
+      if (!isRoadObjectCoordinateUsable(item)) continue;
       if (item.kind !== "camera" || cameraWarningRef.current.announced.has(item.id)) continue;
       const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
       if (!Number.isFinite(snapped.distance) || snapped.distance > 65) continue;
@@ -3275,6 +3396,7 @@ export default function AstanaMapPage() {
 
     let nearest = null;
     for (const item of roadObjectsRef.current) {
+      if (!isRoadObjectCoordinateUsable(item)) continue;
       if (warningState.announced.has(item.id)) continue;
       let phrase = "";
       if (item.kind === "traffic-light") phrase = "Впереди светофор";
@@ -3343,6 +3465,7 @@ export default function AstanaMapPage() {
         // a road's generic maxspeed zone tag. Use only a numeric sign found in map data.
         let nearestSign = null;
         for (const item of roadObjectsRef.current) {
+          if (!isRoadObjectCoordinateUsable(item)) continue;
           if (item.kind !== "speed-sign" || !Number.isFinite(Number(item.speedLimit))) continue;
           const distance = distanceBetween([current.lat, current.lng], [item.lat, item.lng]);
           if (distance > 55) continue;
