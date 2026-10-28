@@ -1717,6 +1717,110 @@ export default function AstanaMapPage() {
             const labelLayerId = labelLayer ? labelLayer.id : null;
             const emptyCollection = { type: "FeatureCollection", features: [] };
 
+            // Draw recognizable navigation symbols once and use them as actual map icons.
+            // These replace colored circles and single-letter labels on the 3D/4D road layer.
+            const roundRect = (ctx, x, y, width, height, radius) => {
+              const r = Math.min(radius, width / 2, height / 2);
+              ctx.beginPath();
+              ctx.moveTo(x + r, y);
+              ctx.lineTo(x + width - r, y);
+              ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+              ctx.lineTo(x + width, y + height - r);
+              ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+              ctx.lineTo(x + r, y + height);
+              ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+              ctx.lineTo(x, y + r);
+              ctx.quadraticCurveTo(x, y, x + r, y);
+              ctx.closePath();
+            };
+            const addCanvasRoadIcon = (name, width, height, draw) => {
+              if (map.hasImage(name)) return;
+              const canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) return;
+              draw(ctx, width, height);
+              map.addImage(name, ctx.getImageData(0, 0, width, height), { pixelRatio: 2 });
+            };
+
+            addCanvasRoadIcon("astana-road-camera", 64, 64, (ctx) => {
+              ctx.save();
+              ctx.shadowColor = "rgba(0,0,0,0.38)";
+              ctx.shadowBlur = 6;
+              ctx.shadowOffsetY = 2;
+              roundRect(ctx, 7, 9, 50, 46, 12);
+              ctx.fillStyle = "#ffffff";
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.lineWidth = 3.5;
+              ctx.strokeStyle = "#d92c3a";
+              ctx.stroke();
+              roundRect(ctx, 15, 24, 34, 22, 5);
+              ctx.fillStyle = "#273441";
+              ctx.fill();
+              roundRect(ctx, 22, 19, 14, 8, 3);
+              ctx.fillStyle = "#273441";
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(32, 35, 8.3, 0, Math.PI * 2);
+              ctx.fillStyle = "#ffffff";
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(32, 35, 5.1, 0, Math.PI * 2);
+              ctx.fillStyle = "#1479b8";
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(30.2, 33.1, 1.7, 0, Math.PI * 2);
+              ctx.fillStyle = "#dff5ff";
+              ctx.fill();
+              ctx.restore();
+            });
+
+            addCanvasRoadIcon("astana-road-traffic-light", 56, 80, (ctx) => {
+              ctx.save();
+              ctx.shadowColor = "rgba(0,0,0,0.35)";
+              ctx.shadowBlur = 5;
+              ctx.shadowOffsetY = 2;
+              roundRect(ctx, 8, 3, 40, 74, 12);
+              ctx.fillStyle = "#222c36";
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = "#ffffff";
+              ctx.stroke();
+              [
+                { y: 19, color: "#f0444c" },
+                { y: 40, color: "#ffbf2f" },
+                { y: 61, color: "#24bd67" },
+              ].forEach(light => {
+                ctx.beginPath();
+                ctx.arc(28, light.y, 7.7, 0, Math.PI * 2);
+                ctx.fillStyle = light.color;
+                ctx.fill();
+                ctx.lineWidth = 1.8;
+                ctx.strokeStyle = "#f7fafc";
+                ctx.stroke();
+              });
+              ctx.restore();
+            });
+
+            addCanvasRoadIcon("astana-road-speed-limit", 64, 64, (ctx) => {
+              ctx.save();
+              ctx.shadowColor = "rgba(0,0,0,0.30)";
+              ctx.shadowBlur = 5;
+              ctx.shadowOffsetY = 2;
+              ctx.beginPath();
+              ctx.arc(32, 32, 25, 0, Math.PI * 2);
+              ctx.fillStyle = "#ffffff";
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.lineWidth = 5;
+              ctx.strokeStyle = "#d92c3a";
+              ctx.stroke();
+              ctx.restore();
+            });
+
             // OpenFreeMap publishes vector tiles without an API key; this source supplies real
             // building footprints and height attributes for the 3D extrusion layer.
             map.addSource("moy3d-buildings", {
@@ -1844,35 +1948,51 @@ export default function AstanaMapPage() {
               },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
-              id: "moy3d-road-object-circles",
-              type: "circle",
+              id: "moy3d-road-object-icons",
+              type: "symbol",
               source: "moy3d-road-objects",
-              paint: {
-                "circle-radius": ["match", ["get", "kind"], "speed-sign", 15, "camera", 9, "roadwork", 9, "closure", 9, "hazard", 9, "parking", 10, "pedestrian-crossing", 9, "traffic-sign", 10, "stop-sign", 10, "give-way-sign", 10, "no-stopping", 10, "no-parking", 10, 7],
-                "circle-color": ["match", ["get", "kind"], "speed-sign", "#ffffff", "camera", "#d92d3a", "roadwork", "#f28c18", "closure", "#b62435", "hazard", "#8d5ad6", "parking", "#087cf5", "pedestrian-crossing", "#1275d4", "traffic-sign", "#f28c18", "stop-sign", "#d92d3a", "give-way-sign", "#e7e7e7", "no-stopping", "#ffffff", "no-parking", "#ffffff", "#159b54"],
-                "circle-stroke-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#df2638", ["match", ["get", "kind"], "no-stopping", "#df2638", "no-parking", "#df2638", "#ffffff"]],
-                "circle-stroke-width": ["case", ["==", ["get", "kind"], "speed-sign"], 4, 2.5],
+              filter: ["in", ["get", "kind"], ["literal", ["camera", "traffic-light", "speed-sign"]]],
+              layout: {
+                "icon-image": [
+                  "match", ["get", "kind"],
+                  "camera", "astana-road-camera",
+                  "traffic-light", "astana-road-traffic-light",
+                  "speed-sign", "astana-road-speed-limit",
+                  "astana-road-camera"
+                ],
+                "icon-size": [
+                  "match", ["get", "kind"],
+                  "camera", 1.0,
+                  "traffic-light", 1.05,
+                  "speed-sign", 0.95,
+                  1.0
+                ],
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "icon-padding": 1,
               },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
-              id: "moy3d-road-object-labels",
+              id: "moy3d-road-object-speed-labels",
               type: "symbol",
               source: "moy3d-road-objects",
+              filter: ["==", ["get", "kind"], "speed-sign"],
               layout: {
-                "text-field": ["case", ["==", ["get", "kind"], "speed-sign"], ["to-string", ["get", "speedLimit"]], ["match", ["get", "kind"], "camera", "К", "roadwork", "Р", "closure", "З", "hazard", "!", "parking", "P", "pedestrian-crossing", "П", "traffic-sign", "З", "stop-sign", "S", "give-way-sign", "▽", "no-stopping", "×", "no-parking", "P̸", "С"]],
-                "text-size": ["case", ["==", ["get", "kind"], "speed-sign"], 13, 11],
+                "text-field": ["to-string", ["get", "speedLimit"]],
+                "text-size": 12,
                 "text-font": ["Open Sans Regular"],
                 "text-allow-overlap": true,
                 "text-ignore-placement": true,
+                "text-anchor": "center",
               },
               paint: {
-                "text-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#20242a", "#ffffff"],
-                "text-halo-color": ["case", ["==", ["get", "kind"], "speed-sign"], "#ffffff", "#24303a"],
-                "text-halo-width": 0.7,
+                "text-color": "#20242a",
+                "text-halo-color": "#ffffff",
+                "text-halo-width": 0.5,
               },
             }, labelLayerId);
 
-            map.on("click", "moy3d-road-object-circles", event => {
+            map.on("click", "moy3d-road-object-icons", event => {
               const feature = event.features?.[0];
               if (!feature) return;
               const props = feature.properties || {};
@@ -1916,8 +2036,8 @@ export default function AstanaMapPage() {
                 .setDOMContent(content)
                 .addTo(map);
             });
-            map.on("mouseenter", "moy3d-road-object-circles", () => { map.getCanvas().style.cursor = "pointer"; });
-            map.on("mouseleave", "moy3d-road-object-circles", () => { map.getCanvas().style.cursor = ""; });
+            map.on("mouseenter", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = "pointer"; });
+            map.on("mouseleave", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = ""; });
 
             map.on("moveend", () => {
               if (cancelled || !map3dEnabledRef.current || map3dSyncRef.current || !mapRef.current) return;
