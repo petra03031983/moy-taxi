@@ -2237,6 +2237,7 @@ export default function AstanaMapPage() {
     const routeRelevantObjects = (roadObjectsRef.current || []).filter(item => {
       if (!isRoadObjectCoordinateUsable(item)) return false;
       if (!["camera", "traffic-light", "speed-sign"].includes(String(item.kind || ""))) return false;
+      if (item.kind === "speed-sign" && (!Number.isFinite(Number(item.speedLimit)) || Number(item.speedLimit) <= 0)) return false;
       if (routePointsForObjects.length > 1) {
         const snapped = snapToRoute({ lat: Number(item.lat), lng: Number(item.lng) }, routePointsForObjects);
         // Keep real objects on the selected carriageway, not objects 2–3 lanes or
@@ -3248,7 +3249,8 @@ export default function AstanaMapPage() {
             const metersAhead = snapped.progress >= currentProgress
               ? routeDistanceBetweenProgress(currentRoutePoints, currentProgress, snapped.progress)
               : -1;
-            if (!Number.isFinite(snapped.distance) || snapped.distance > 320 || metersAhead < 0 || metersAhead > 4800) continue;
+            const lateralLimit = kind === "camera" ? 18 : kind === "traffic-light" ? 28 : kind === "speed-sign" ? 22 : 320;
+            if (!Number.isFinite(snapped.distance) || snapped.distance > lateralLimit || metersAhead < 0 || metersAhead > 4800) continue;
           } else {
             const center = mapCenter ? [mapCenter.lat, mapCenter.lng] : anchor;
             // City geoportal layers may return objects up to ~2.25 km from the map center.
@@ -3450,7 +3452,7 @@ export default function AstanaMapPage() {
       if (!isRoadObjectCoordinateUsable(item)) continue;
       if (item.kind !== "camera") continue;
       const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
-      if (!Number.isFinite(snapped.distance) || snapped.distance > 65) continue;
+      if (!Number.isFinite(snapped.distance) || snapped.distance > 18) continue;
       if (progress >= 0 && snapped.progress < progress - 0.1) continue;
       const meters = routeDistanceBetweenProgress(points, Math.max(0, progress), snapped.progress);
       if (meters < 0 || meters > 1500) continue;
