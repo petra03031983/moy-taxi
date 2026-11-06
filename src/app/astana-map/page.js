@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { resolveOverpassCoordinate } from "./overpass-coordinate.js";
 import "leaflet/dist/leaflet.css";
 import "./astana-map.css";
 
@@ -1069,6 +1070,7 @@ export default function AstanaMapPage() {
   const searchAbortRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchCacheRef = useRef(new Map());
+  const overpassCoordinateCacheRef = useRef(new Map());
   const searchRequestRef = useRef(0);
   const lastSearchAtRef = useRef(0);
   const autocompleteAbortRef = useRef(null);
@@ -3992,29 +3994,9 @@ export default function AstanaMapPage() {
 
     let selected = item;
     try {
-      const response = await fetch("/api/overpass-address", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          query,
-          name: item?.name || "",
-          displayName: item?.display_name || "",
-          street: item?.address?.road || item?.address?.pedestrian || item?.street || "",
-          houseNumber: item?.address?.house_number || item?.house_number || "",
-          category: item?.category || item?.type || "",
-          osmKey: item?.class || "",
-          osmRefType: item?.address?.osm_ref_type || item?.osm_ref_type || "",
-          osmRefId: item?.address?.osm_ref_id || item?.osm_ref_id || "",
-          lat: Number(item?.lat),
-          lon: Number(item?.lon),
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !Number.isFinite(Number(payload?.lat)) || !Number.isFinite(Number(payload?.lon))) {
-        throw new Error(payload?.error || "Точная точка не найдена в OpenStreetMap.");
+      const payload = await resolveOverpassCoordinate(item, query, overpassCoordinateCacheRef.current);
+      if (!Number.isFinite(Number(payload?.lat)) || !Number.isFinite(Number(payload?.lon))) {
+        throw new Error("Overpass не вернул подтверждённые координаты. Приблизительная точка не установлена.");
       }
 
       selected = {
@@ -4022,7 +4004,7 @@ export default function AstanaMapPage() {
         lat: String(payload.lat),
         lon: String(payload.lon),
         coordinateSource: "OpenStreetMap / Overpass",
-        coordinateQuality: payload.locationType || "OSM",
+        coordinateQuality: payload.quality || "OSM",
         coordinateOsmType: payload.osmType || "",
         coordinateOsmId: payload.osmId || "",
         display_name: payload.displayName || item?.display_name || item?.name || "Место на карте",
