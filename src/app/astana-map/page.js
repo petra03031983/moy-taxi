@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { resolveOverpassCoordinate } from "./overpass-coordinate.js";
 import "leaflet/dist/leaflet.css";
 import "./astana-map.css";
 
@@ -167,6 +168,10 @@ function photonToAddress(feature) {
     shop: properties.osm_key === "shop" ? properties.osm_value : "",
     tourism: properties.osm_key === "tourism" ? properties.osm_value : "",
     railway: properties.osm_key === "railway" ? properties.osm_value : "",
+    osm_ref_type: properties.osm_ref_type || "",
+    osm_ref_id: properties.osm_ref_id || "",
+    coordinate_quality: properties.coordinate_quality || "",
+    source: properties.source || "",
   };
   const display_name = [
     name,
@@ -1065,6 +1070,7 @@ export default function AstanaMapPage() {
   const searchAbortRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchCacheRef = useRef(new Map());
+  const overpassCoordinateCacheRef = useRef(new Map());
   const searchRequestRef = useRef(0);
   const lastSearchAtRef = useRef(0);
   const autocompleteAbortRef = useRef(null);
@@ -3979,23 +3985,61 @@ export default function AstanaMapPage() {
     }
   }
 
-  function chooseResult(item) {
+  async function chooseResult(item) {
     cancelAddressSuggestions();
-    const point = { lat: Number(item.lat), lng: Number(item.lon) };
+    setSearching(true);
+    setResults([]);
+    setShowResultsPanel(true);
+    setError("Уточняем точку по OpenStreetMap / Overpass…");
+
+    let selected = item;
+    try {
+      const payload = await resolveOverpassCoordinate(item, query, overpassCoordinateCacheRef.current);
+      if (!Number.isFinite(Number(payload?.lat)) || !Number.isFinite(Number(payload?.lon))) {
+        throw new Error("Overpass не вернул подтверждённые координаты. Приблизительная точка не установлена.");
+      }
+
+      selected = {
+        ...item,
+        lat: String(payload.lat),
+        lon: String(payload.lon),
+        coordinateSource: "OpenStreetMap / Overpass",
+        coordinateQuality: payload.quality || "OSM",
+        coordinateOsmType: payload.osmType || "",
+        coordinateOsmId: payload.osmId || "",
+        display_name: payload.displayName || item?.display_name || item?.name || "Место на карте",
+      };
+    } catch (error) {
+      setSearching(false);
+      setResults([]);
+      setShowResultsPanel(true);
+      setError(error?.message || "Overpass временно недоступен. Старые приблизительные координаты не использованы.");
+      return;
+    }
+
+    const point = { lat: Number(selected.lat), lng: Number(selected.lon) };
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
+      setSearching(false);
+      setResults([]);
+      setError("OpenStreetMap не вернул корректные координаты. Точка не установлена.");
+      return;
+    }
+
     setDestination(point);
     setRouteOrigin(null);
     setRouteOptions([]);
-    setSelectedPlace(item);
+    setSelectedPlace(selected);
     setIsFavorite(false);
-    setQuery(cleanName(item));
+    setQuery(cleanName(selected));
     setResults([]);
     setShowResultsPanel(false);
     setSearchActive(false);
+    setSearching(false);
     setRoute(null);
     setNavigating(false);
     setNextInstruction(null);
     setError("");
-    mapRef.current?.setView([point.lat, point.lng], 15);
+    mapRef.current?.setView([point.lat, point.lng], 17);
   }
 
   useEffect(() => {
@@ -4727,7 +4771,7 @@ export default function AstanaMapPage() {
         {searchActive && <button className="astana-search-cancel" onClick={() => { cancelAddressSuggestions(); setSearchActive(false); setShowResultsPanel(false); setResults([]); setSearching(false); setQuery(""); setError(""); searchInputRef.current?.blur(); }}>Отмена</button>}
         {showResultsPanel && <div className="astana-results">
           {searching && <div className="astana-result-loading">Ищем адрес…</div>}
-          {!searching && results.map((item, i) => <button key={`${item.place_id}-${i}`} className="astana-result" onClick={() => { chooseResult(item); setSearchActive(false); }}>
+          {!searching && results.map((item, i) => <button key={`${item.place_id}-${i}`} className="astana-result" onClick={() => { void chooseResult(item); }}>
             <span className="astana-result-pin">⌖</span>
             <span><b>{cleanName(item)}</b><small>{item.display_name}</small></span>
           </button>)}
