@@ -52,7 +52,7 @@ function makeCacheKey(params) {
 
 export async function GET(request) {
   const incoming = new URL(request.url);
-  const query = String(incoming.searchParams.get("q") || "").trim().replace(/\\s+/g, " ");
+  const query = String(incoming.searchParams.get("q") || "").trim().replace(/\s+/g, " ");
   if (query.length < 2) {
     return json({ features: [] });
   }
