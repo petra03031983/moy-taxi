@@ -1717,6 +1717,96 @@ export default function AstanaMapPage() {
             const labelLayerId = labelLayer ? labelLayer.id : null;
             const emptyCollection = { type: "FeatureCollection", features: [] };
 
+            // Астана Гид: фирменная цветовая палитра для 3D/4D-подложки.
+            // Зелёный маршрут и собственные навигационные слои добавляются ниже и не перекрашиваются.
+            const astanaBuildingColor = [
+              "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 10],
+              0, "#D9F1E8",
+              12, "#BDE8E2",
+              28, "#8DD5D7",
+              55, "#69BED0",
+              95, "#469FBD",
+              150, "#347FA8",
+              220, "#28658E",
+            ];
+
+            const setBasePaint = (layer, property, value) => {
+              try {
+                if (layer?.id && map.getLayer(layer.id)) {
+                  map.setPaintProperty(layer.id, property, value);
+                }
+              } catch {
+                // A layer may not support a paint property in a provider style.
+              }
+            };
+
+            styleLayers.forEach(layer => {
+              const id = String(layer.id || "").toLowerCase();
+              const sourceLayer = String(layer["source-layer"] || "").toLowerCase();
+
+              if (layer.type === "background") {
+                setBasePaint(layer, "background-color", "#EAF3EF");
+                return;
+              }
+
+              if (layer.type === "fill-extrusion") {
+                setBasePaint(layer, "fill-extrusion-color", astanaBuildingColor);
+                setBasePaint(layer, "fill-extrusion-opacity", 0.98);
+                return;
+              }
+
+              if (layer.type === "fill") {
+                if (sourceLayer === "water" || id === "water") {
+                  setBasePaint(layer, "fill-color", "#A9DDF7");
+                  setBasePaint(layer, "fill-outline-color", "#8CCBEF");
+                } else if (/park|wood|forest|grass|landcover_wood/.test(id)) {
+                  setBasePaint(layer, "fill-color", id.includes("park") ? "#BFE8C5" : "#CDEBC0");
+                  setBasePaint(layer, "fill-outline-color", "#9DD5A8");
+                } else if (/landuse_residential/.test(id)) {
+                  setBasePaint(layer, "fill-color", "#F3F0E7");
+                } else if (/landuse_commercial|landuse_industrial|landuse_retail/.test(id)) {
+                  setBasePaint(layer, "fill-color", "#F7DFC5");
+                  setBasePaint(layer, "fill-outline-color", "#EBC79F");
+                } else if (/landuse_school|landuse_university|landuse_kindergarten/.test(id)) {
+                  setBasePaint(layer, "fill-color", "#F8E8B9");
+                  setBasePaint(layer, "fill-outline-color", "#E8D28F");
+                } else if (/landuse_hospital|landuse_health/.test(id)) {
+                  setBasePaint(layer, "fill-color", "#F4D9DE");
+                  setBasePaint(layer, "fill-outline-color", "#E9B9C4");
+                } else if (/building/.test(id) || sourceLayer === "building") {
+                  setBasePaint(layer, "fill-color", "#D9EAF0");
+                  setBasePaint(layer, "fill-outline-color", "#B3D0DB");
+                } else if (/landuse_pitch|landuse_track/.test(id)) {
+                  setBasePaint(layer, "fill-color", "#D7EFCB");
+                } else if (/landuse_cemetery/.test(id)) {
+                  setBasePaint(layer, "fill-color", "#D9E9CA");
+                }
+                return;
+              }
+
+              if (layer.type === "line") {
+                if (sourceLayer === "waterway" || /waterway/.test(id)) {
+                  setBasePaint(layer, "line-color", "#75BFEA");
+                  return;
+                }
+
+                if (sourceLayer === "transportation") {
+                  const casing = id.includes("casing");
+                  if (/motorway/.test(id)) {
+                    setBasePaint(layer, "line-color", casing ? "#C47A3E" : "#F5B66A");
+                  } else if (/trunk|primary/.test(id)) {
+                    setBasePaint(layer, "line-color", casing ? "#D19347" : "#FFD18B");
+                  } else if (/secondary|tertiary/.test(id)) {
+                    setBasePaint(layer, "line-color", casing ? "#D2B88C" : "#FFF0D0");
+                  } else if (/rail/.test(id)) {
+                    setBasePaint(layer, "line-color", "#9AA9B2");
+                  } else if (/street|minor|service|track|path|pedestrian|residential/.test(id)) {
+                    setBasePaint(layer, "line-color", casing ? "#C9D8D8" : "#FFFFFF");
+                  }
+                }
+              }
+            });
+
             // Draw recognizable navigation symbols once and use them as actual map icons.
             // These replace colored circles and single-letter labels on the 3D/4D road layer.
             const roundRect = (ctx, x, y, width, height, radius) => {
@@ -1835,13 +1925,7 @@ export default function AstanaMapPage() {
               minzoom: 14.5,
               filter: ["!=", ["get", "hide_3d"], true],
               paint: {
-                "fill-extrusion-color": [
-                  "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 10],
-                  0, "#d7dde4",
-                  25, "#c5d0dc",
-                  80, "#9bafc2",
-                  180, "#869caf",
-                ],
+                "fill-extrusion-color": astanaBuildingColor,
                 "fill-extrusion-height": [
                   "interpolate", ["linear"], ["zoom"],
                   14.5, 0,
