@@ -166,6 +166,7 @@ function photonToAddress(feature) {
     amenity: properties.osm_key === "amenity" ? properties.osm_value : "",
     shop: properties.osm_key === "shop" ? properties.osm_value : "",
     tourism: properties.osm_key === "tourism" ? properties.osm_value : "",
+    railway: properties.osm_key === "railway" ? properties.osm_value : "",
   };
   const display_name = [
     name,
@@ -223,6 +224,8 @@ function selectedPlaceAddress(item) {
 
 function placeCategory(item) {
   const key = `${item?.class || ""} ${item?.type || ""} ${item?.address?.amenity || ""}`.toLowerCase();
+  if (/railway|train_station|train station/.test(key)) return "Железнодорожный вокзал";
+  if (/bus_station|bus station/.test(key)) return "Автовокзал";
   if (/apartments|residential|house|building|tower/.test(key)) return "Жилой дом";
   if (/hospital|clinic|doctors|pharmacy/.test(key)) return "Медицина";
   if (/restaurant|cafe|fast_food|food/.test(key)) return "Ресторан";
@@ -2545,8 +2548,7 @@ export default function AstanaMapPage() {
         suggestionParams.set("zoom", "13");
       }
 
-      // Go through our own server so Photon receives the application's
-      // identifying User-Agent instead of a generic browser User-Agent.
+      // Address suggestions are searched in the local Astana Guide index.
       const response = await fetch("/api/address-suggestions?" + suggestionParams.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
@@ -2643,7 +2645,8 @@ export default function AstanaMapPage() {
     const timeout = window.setTimeout(() => controller.abort(), 18000);
 
     try {
-      // Photon tolerates minor typos and supports location-biased geocoding.
+      // Search the own address index first; the free geocoder remains a fallback
+      // only for a manual full search when the local index has no match.
       try {
         const fullSearchParams = new URLSearchParams({
           q: text,
