@@ -42,8 +42,12 @@ function buildQuery(item, typedQuery) {
   const parsedStreet = streetValue.match(/^(.+?)\s+(\d+[0-9а-яa-z]*(?:[/-]\d+[0-9а-яa-z]*)?)$/i);
   const street = parsedStreet?.[1] || parsedQuery?.[1] || streetValue;
   const house = houseValue || parsedStreet?.[2] || parsedQuery?.[2] || "";
-  const refType = String(item?.address?.osm_ref_type || item?.osm_ref_type || "").toLowerCase();
-  const refId = String(item?.address?.osm_ref_id || item?.osm_ref_id || "").trim();
+  const refType = String(
+    item?.address?.osm_ref_type || item?.osm_ref_type || item?.osm_type || ""
+  ).toLowerCase();
+  const refId = String(
+    item?.address?.osm_ref_id || item?.osm_ref_id || item?.osm_id || ""
+  ).trim();
 
   if (/^(node|way|relation)$/.test(refType) && /^\d+$/.test(refId)) {
     if (refType === "way" || refType === "relation") {
@@ -276,6 +280,8 @@ function cacheKey(item, typedQuery) {
     item?.address?.house_number,
     item?.address?.osm_ref_type,
     item?.address?.osm_ref_id,
+    item?.osm_type,
+    item?.osm_id,
   ].join("|"));
 }
 
@@ -318,8 +324,14 @@ export async function resolveOverpassCoordinate(item, typedQuery, cache) {
     const candidates = matches.map(element => {
       const point = elementPoint(element, entrances);
       if (!point) return null;
-      const directRef = refType && refId &&
-        element.type === refType && String(element.id) === refId;
+      const directType = String(
+        item?.address?.osm_ref_type || item?.osm_ref_type || item?.osm_type || ""
+      ).toLowerCase();
+      const directId = String(
+        item?.address?.osm_ref_id || item?.osm_ref_id || item?.osm_id || ""
+      );
+      const directRef = directType && directId &&
+        element.type === directType && String(element.id) === directId;
       const score = scoreElement(element, item, typedQuery, directRef);
       const refLat = Number(item?.lat);
       const refLon = Number(item?.lon);

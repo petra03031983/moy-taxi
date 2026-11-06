@@ -168,8 +168,12 @@ function photonToAddress(feature) {
     shop: properties.osm_key === "shop" ? properties.osm_value : "",
     tourism: properties.osm_key === "tourism" ? properties.osm_value : "",
     railway: properties.osm_key === "railway" ? properties.osm_value : "",
-    osm_ref_type: properties.osm_ref_type || "",
-    osm_ref_id: properties.osm_ref_id || "",
+    osm_ref_type: /^(node|way|relation)$/.test(String(properties.osm_ref_type || properties.osm_type || "").toLowerCase())
+      ? String(properties.osm_ref_type || properties.osm_type).toLowerCase()
+      : "",
+    osm_ref_id: /^\d+$/.test(String(properties.osm_ref_id || properties.osm_id || ""))
+      ? String(properties.osm_ref_id || properties.osm_id)
+      : "",
     coordinate_quality: properties.coordinate_quality || "",
     source: properties.source || "",
   };
@@ -194,7 +198,11 @@ function photonToAddress(feature) {
     type: properties.osm_value || properties.type || "place",
     class: properties.osm_key || "place",
     category: properties.category || properties.osm_value || properties.osm_key || "place",
-    source: "photon",
+    osm_type: /^(node|way|relation)$/.test(String(properties.osm_type || "").toLowerCase())
+      ? String(properties.osm_type).toLowerCase()
+      : "",
+    osm_id: /^\d+$/.test(String(properties.osm_id || "")) ? String(properties.osm_id) : "",
+    source: properties.source || "openstreetmap-photon",
   };
 }
 
@@ -1071,6 +1079,7 @@ export default function AstanaMapPage() {
   const searchInputRef = useRef(null);
   const searchCacheRef = useRef(new Map());
   const overpassCoordinateCacheRef = useRef(new Map());
+  const overpassSelectionRequestRef = useRef(0);
   const searchRequestRef = useRef(0);
   const lastSearchAtRef = useRef(0);
   const autocompleteAbortRef = useRef(null);
@@ -2565,7 +2574,8 @@ export default function AstanaMapPage() {
       }
       const found = (Array.isArray(data.features) ? data.features : [])
         .map(photonToAddress)
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(item => ({ ...item, searchSource: "autocomplete" }));
 
       if (requestId === autocompleteRequestRef.current && !controller.signal.aborted) {
         if (found.length) {
@@ -2597,6 +2607,7 @@ export default function AstanaMapPage() {
 
   function scheduleAddressSuggestions(value) {
     cancelAddressSuggestions();
+    overpassSelectionRequestRef.current += 1;
     searchAbortRef.current?.abort();
     searchRequestRef.current += 1;
     const text = normalizeSearchText(value);
@@ -2622,6 +2633,7 @@ export default function AstanaMapPage() {
 
   async function searchAddress(value = query) {
     cancelAddressSuggestions();
+    overpassSelectionRequestRef.current += 1;
     const text = normalizeSearchText(value);
     if (text.length < 2) {
       setResults([]);
@@ -2634,7 +2646,7 @@ export default function AstanaMapPage() {
     setQuery(text);
     setShowResultsPanel(true);
     setError("");
-    const cacheKey = text.toLocaleLowerCase("ru-RU");
+    const cacheKey = "full:" + text.toLocaleLowerCase("ru-RU");
     searchAbortRef.current?.abort();
     const controller = new AbortController();
     searchAbortRef.current = controller;
@@ -2649,10 +2661,12 @@ export default function AstanaMapPage() {
     setSearching(true);
     setResults([]);
     const timeout = window.setTimeout(() => controller.abort(), 18000);
+    let localResults = [];
 
     try {
-      // Search the own address index first; the free geocoder remains a fallback
-      // only for a manual full search when the local index has no match.
+      // Always combine our city address register with live OSM geocoding on
+      // explicit full search. A local street match must not hide a POI such as
+      // the airport just because the street happens to contain the same word.
       try {
         const fullSearchParams = new URLSearchParams({
           q: text,
@@ -2664,29 +2678,22 @@ export default function AstanaMapPage() {
           fullSearchParams.set("lon", String(focus.lng));
           fullSearchParams.set("zoom", "13");
         }
-        const response = await fetch("/api/address-suggestions?" + fullSearchParams.toString(), {
+        const localResponse = await fetch("/api/address-suggestions?" + fullSearchParams.toString(), {
           signal: controller.signal,
           headers: { Accept: "application/json" },
         });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !Array.isArray(data?.features)) {
-          throw new Error(data?.error || "Сервис адресного поиска временно недоступен.");
+        const localPayload = await localResponse.json().catch(() => null);
+        if (localResponse.ok && Array.isArray(localPayload?.features)) {
+          localResults = localPayload.features.map(photonToAddress).filter(Boolean);
         }
-        const found = (Array.isArray(data.features) ? data.features : [])
-          .map(photonToAddress)
-          .filter(Boolean);
-        if (found.length && requestId === searchRequestRef.current && !controller.signal.aborted) {
-          searchCacheRef.current.set(cacheKey, found);
-          if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
-          setResults(found);
-          return;
-        }
-      } catch (e) {
-        if (e?.name === "AbortError") throw e;
+      } catch (localError) {
+        if (localError?.name === "AbortError") throw localError;
+        // Continue with live OSM search if the local index is unavailable.
       }
 
-      // Nominatim is the fallback. The viewbox is a preference, not a hard boundary,
-      // so the search can still return settlements and villages outside Astana.
+      // Nominatim is the text geocoder for OSM objects. Its result contains the
+      // actual OSM node/way/relation ID; Overpass is then used only to refine that
+      // exact object's geometry, not to geocode arbitrary text over and over.
       const nominatimUrl = new URL(NOMINATIM);
       nominatimUrl.searchParams.set("format", "jsonv2");
       nominatimUrl.searchParams.set("addressdetails", "1");
@@ -2712,19 +2719,48 @@ export default function AstanaMapPage() {
       });
       if (!response.ok) throw new Error("Nominatim HTTP " + response.status);
       const data = await response.json();
-      const found = Array.isArray(data) ? data : [];
+      const osmResults = (Array.isArray(data) ? data : [])
+        .filter(item =>
+          /^(node|way|relation)$/.test(String(item?.osm_type || "").toLowerCase()) &&
+          /^\d+$/.test(String(item?.osm_id || "")) &&
+          Number.isFinite(Number(item?.lat)) &&
+          Number.isFinite(Number(item?.lon))
+        )
+        .map(item => ({
+          ...item,
+          source: "openstreetmap-nominatim",
+          address: {
+            ...(item.address || {}),
+            osm_ref_type: String(item.osm_type).toLowerCase(),
+            osm_ref_id: String(item.osm_id),
+          },
+        }));
+
+      const seenOsm = new Set();
+      const osmUnique = osmResults.filter(item => {
+        const key = String(item.osm_type).toLowerCase() + ":" + String(item.osm_id);
+        if (seenOsm.has(key)) return false;
+        seenOsm.add(key);
+        return true;
+      });
+      const combined = [...osmUnique, ...localResults];
+
       if (requestId === searchRequestRef.current && !controller.signal.aborted) {
-        if (found.length) {
-          searchCacheRef.current.set(cacheKey, found);
+        if (combined.length) {
+          searchCacheRef.current.set(cacheKey, combined);
           if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
         }
-        setResults(found);
-        if (!found.length) setError("Адрес не найден. Попробуйте добавить номер дома или название города/посёлка.");
+        setResults(combined);
+        if (!combined.length) {
+          setError("В OpenStreetMap и адресной базе такой объект не найден. Попробуйте уточнить название или номер дома.");
+        }
       }
     } catch (e) {
       if (e?.name !== "AbortError" && requestId === searchRequestRef.current) {
-        setResults([]);
-        setError("Поиск временно недоступен. Проверьте интернет и попробуйте снова.");
+        setResults(localResults);
+        setError(localResults.length
+          ? "OpenStreetMap сейчас не ответил. Пока показаны записи городского справочника; их координаты могут быть приблизительными."
+          : "Поиск временно недоступен. Проверьте интернет и попробуйте снова.");
       }
     } finally {
       window.clearTimeout(timeout);
@@ -3985,46 +4021,53 @@ export default function AstanaMapPage() {
     }
   }
 
-  async function chooseResult(item) {
+  function chooseResult(item) {
     cancelAddressSuggestions();
-    setSearching(true);
+    const selectionRequestId = ++overpassSelectionRequestRef.current;
+    setSearching(false);
     setResults([]);
-    setShowResultsPanel(true);
-    setError("Уточняем точку по OpenStreetMap / Overpass…");
+    setShowResultsPanel(false);
+    setSearchActive(false);
+    setError("");
 
-    let selected = item;
-    try {
-      const payload = await resolveOverpassCoordinate(item, query, overpassCoordinateCacheRef.current);
-      if (!Number.isFinite(Number(payload?.lat)) || !Number.isFinite(Number(payload?.lon))) {
-        throw new Error("Overpass не вернул подтверждённые координаты. Приблизительная точка не установлена.");
+    const refType = String(
+      item?.address?.osm_ref_type || item?.osm_ref_type || item?.osm_type || ""
+    ).toLowerCase();
+    const refId = String(
+      item?.address?.osm_ref_id || item?.osm_ref_id || item?.osm_id || ""
+    ).trim();
+    const hasOsmObject = /^(node|way|relation)$/.test(refType) && /^\d+$/.test(refId);
+    const point = { lat: Number(item?.lat), lng: Number(item?.lon) };
+
+    if (!hasOsmObject) {
+      if (item?.searchSource === "autocomplete") {
+        // A quick local street suggestion is not enough to place an exact pin.
+        // Automatically run the full OSM text search so the user does not need
+        // to understand which search button or provider to choose.
+        void searchAddress(query || cleanName(item));
+        return;
       }
-
-      selected = {
-        ...item,
-        lat: String(payload.lat),
-        lon: String(payload.lon),
-        coordinateSource: "OpenStreetMap / Overpass",
-        coordinateQuality: payload.quality || "OSM",
-        coordinateOsmType: payload.osmType || "",
-        coordinateOsmId: payload.osmId || "",
-        display_name: payload.displayName || item?.display_name || item?.name || "Место на карте",
-      };
-    } catch (error) {
-      setSearching(false);
-      setResults([]);
       setShowResultsPanel(true);
-      setError(error?.message || "Overpass временно недоступен. Старые приблизительные координаты не использованы.");
+      setError("У этого варианта нет точного OSM-объекта. Точку по приблизительным координатам не ставлю. Выбери результат OpenStreetMap из полного поиска.");
       return;
     }
-
-    const point = { lat: Number(selected.lat), lng: Number(selected.lon) };
     if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
-      setSearching(false);
-      setResults([]);
-      setError("OpenStreetMap не вернул корректные координаты. Точка не установлена.");
+      setShowResultsPanel(true);
+      setError("У результата OpenStreetMap нет координат. Выбери другой вариант.");
       return;
     }
 
+    const selected = {
+      ...item,
+      coordinateSource: "OpenStreetMap",
+      coordinateQuality: refType === "node" ? "OSM node" : "OSM geocoder coordinate",
+      coordinateOsmType: refType,
+      coordinateOsmId: refId,
+    };
+
+    // Put the real OSM geocoder point on the map immediately. Overpass is an
+    // optional precision refinement; an unavailable public server must never
+    // freeze address search or erase this valid OSM result.
     setDestination(point);
     setRouteOrigin(null);
     setRouteOptions([]);
@@ -4040,6 +4083,34 @@ export default function AstanaMapPage() {
     setNextInstruction(null);
     setError("");
     mapRef.current?.setView([point.lat, point.lng], 17);
+
+    if (refType !== "node") {
+      void resolveOverpassCoordinate(item, query, overpassCoordinateCacheRef.current)
+        .then(payload => {
+          if (overpassSelectionRequestRef.current !== selectionRequestId) return;
+          if (!Number.isFinite(Number(payload?.lat)) || !Number.isFinite(Number(payload?.lon))) return;
+          const refinedPoint = { lat: Number(payload.lat), lng: Number(payload.lon) };
+          setDestination(refinedPoint);
+          setSelectedPlace(current => {
+            if (current?.coordinateOsmId !== refId || current?.coordinateOsmType !== refType) return current;
+            return {
+              ...current,
+              lat: String(payload.lat),
+              lon: String(payload.lon),
+              coordinateSource: "OpenStreetMap / Overpass",
+              coordinateQuality: payload.quality || "OSM geometry",
+              coordinateOsmType: payload.osmType || refType,
+              coordinateOsmId: payload.osmId || refId,
+              display_name: payload.displayName || current.display_name,
+            };
+          });
+          mapRef.current?.setView([refinedPoint.lat, refinedPoint.lng], 17);
+        })
+        .catch(() => {
+          // The direct OSM/Nominatim coordinate remains usable. Do not block
+          // selection when a public Overpass mirror is slow or rate-limited.
+        });
+    }
   }
 
   useEffect(() => {
