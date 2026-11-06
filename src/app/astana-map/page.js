@@ -171,7 +171,7 @@ function photonToAddress(feature) {
     osm_ref_type: /^(node|way|relation)$/.test(String(properties.osm_ref_type || properties.osm_type || "").toLowerCase())
       ? String(properties.osm_ref_type || properties.osm_type).toLowerCase()
       : "",
-    osm_ref_id: /^\\d+$/.test(String(properties.osm_ref_id || properties.osm_id || ""))
+    osm_ref_id: /^\d+$/.test(String(properties.osm_ref_id || properties.osm_id || ""))
       ? String(properties.osm_ref_id || properties.osm_id)
       : "",
     coordinate_quality: properties.coordinate_quality || "",
@@ -201,7 +201,7 @@ function photonToAddress(feature) {
     osm_type: /^(node|way|relation)$/.test(String(properties.osm_type || "").toLowerCase())
       ? String(properties.osm_type).toLowerCase()
       : "",
-    osm_id: /^\\d+$/.test(String(properties.osm_id || "")) ? String(properties.osm_id) : "",
+    osm_id: /^\d+$/.test(String(properties.osm_id || "")) ? String(properties.osm_id) : "",
     source: properties.source || "openstreetmap-photon",
   };
 }
@@ -2606,6 +2606,7 @@ export default function AstanaMapPage() {
 
   function scheduleAddressSuggestions(value) {
     cancelAddressSuggestions();
+    overpassSelectionRequestRef.current += 1;
     searchAbortRef.current?.abort();
     searchRequestRef.current += 1;
     const text = normalizeSearchText(value);
@@ -2631,6 +2632,7 @@ export default function AstanaMapPage() {
 
   async function searchAddress(value = query) {
     cancelAddressSuggestions();
+    overpassSelectionRequestRef.current += 1;
     const text = normalizeSearchText(value);
     if (text.length < 2) {
       setResults([]);
@@ -2643,7 +2645,7 @@ export default function AstanaMapPage() {
     setQuery(text);
     setShowResultsPanel(true);
     setError("");
-    const cacheKey = text.toLocaleLowerCase("ru-RU");
+    const cacheKey = "full:" + text.toLocaleLowerCase("ru-RU");
     searchAbortRef.current?.abort();
     const controller = new AbortController();
     searchAbortRef.current = controller;
@@ -2655,8 +2657,6 @@ export default function AstanaMapPage() {
       return;
     }
 
-    setSearching(true);
-    setResults([]);
     setSearching(true);
     setResults([]);
     const timeout = window.setTimeout(() => controller.abort(), 18000);
@@ -2721,7 +2721,7 @@ export default function AstanaMapPage() {
       const osmResults = (Array.isArray(data) ? data : [])
         .filter(item =>
           /^(node|way|relation)$/.test(String(item?.osm_type || "").toLowerCase()) &&
-          /^\\d+$/.test(String(item?.osm_id || "")) &&
+          /^\d+$/.test(String(item?.osm_id || "")) &&
           Number.isFinite(Number(item?.lat)) &&
           Number.isFinite(Number(item?.lon))
         )
@@ -4035,7 +4035,7 @@ export default function AstanaMapPage() {
     const refId = String(
       item?.address?.osm_ref_id || item?.osm_ref_id || item?.osm_id || ""
     ).trim();
-    const hasOsmObject = /^(node|way|relation)$/.test(refType) && /^\\d+$/.test(refId);
+    const hasOsmObject = /^(node|way|relation)$/.test(refType) && /^\d+$/.test(refId);
     const point = { lat: Number(item?.lat), lng: Number(item?.lon) };
 
     if (!hasOsmObject) {
