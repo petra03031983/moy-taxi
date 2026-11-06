@@ -167,6 +167,10 @@ function photonToAddress(feature) {
     shop: properties.osm_key === "shop" ? properties.osm_value : "",
     tourism: properties.osm_key === "tourism" ? properties.osm_value : "",
     railway: properties.osm_key === "railway" ? properties.osm_value : "",
+    osm_ref_type: properties.osm_ref_type || "",
+    osm_ref_id: properties.osm_ref_id || "",
+    coordinate_quality: properties.coordinate_quality || "",
+    source: properties.source || "",
   };
   const display_name = [
     name,
@@ -4002,6 +4006,8 @@ export default function AstanaMapPage() {
           houseNumber: item?.address?.house_number || item?.house_number || "",
           category: item?.category || item?.type || "",
           osmKey: item?.class || "",
+          osmRefType: item?.address?.osm_ref_type || item?.osm_ref_type || "",
+          osmRefId: item?.address?.osm_ref_id || item?.osm_ref_id || "",
           lat: Number(item?.lat),
           lon: Number(item?.lon),
         }),
