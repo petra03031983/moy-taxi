@@ -4403,8 +4403,7 @@ export default function AstanaMapPage() {
       </aside>}
       {isHomeScreen && <>
       </>}
-      {!roadScanPanelOpen && !navigating && <button type="button" className={`astana-road-scan-toggle${roadScanActive ? " active" : ""}`} onClick={() => { setRoadScanPanelOpen(true); void refreshRoadScanCounts(); }} aria-label="Сканировать дорогу"><span>📷</span><b>СКАН</b></button>}
-      {roadScanPanelOpen && <section className="astana-road-scan-panel" role="dialog" aria-modal="true" aria-label="Сканирование дорожных объектов">
+            {roadScanPanelOpen && <section className="astana-road-scan-panel" role="dialog" aria-modal="true" aria-label="Сканирование дорожных объектов">
         <header className="astana-road-scan-header">
           <div><b>📷 Сканирование дороги</b><small>{roadScanStatus}</small></div>
           <button type="button" onClick={closeRoadScanPanel} aria-label="Закрыть сканирование">×</button>
