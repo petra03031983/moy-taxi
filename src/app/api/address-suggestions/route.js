@@ -81,73 +81,139 @@ export async function GET(request) {
     });
   }
 
-  const photonUrl = new URL(PHOTON_API);
-  photonUrl.searchParams.set("q", query);
-  photonUrl.searchParams.set("limit", String(limit));
-  photonUrl.searchParams.set("lang", "ru");
-  photonUrl.searchParams.set("countrycode", "KZ");
-  photonUrl.searchParams.set("dedupe", "1");
-
-  for (const layer of ALLOWED_LAYERS) {
-    photonUrl.searchParams.append("layer", layer);
+  const overpassKey = String(process.env.OVERPASS_CH_API_KEY || "").trim();
+  const providers = [];
+  if (overpassKey) {
+    providers.push({
+      name: "Overpass.ch",
+      url: "https://api.overpass.ch/v1/" + encodeURIComponent(overpassKey) + "/geocode/api",
+    });
   }
-
-  if (lat !== null && lon !== null) {
-    photonUrl.searchParams.set("lat", String(lat));
-    photonUrl.searchParams.set("lon", String(lon));
-    photonUrl.searchParams.set("zoom", "13");
-    photonUrl.searchParams.set("location_bias_scale", "0.2");
-  }
+  providers.push({ name: "Photon", url: PHOTON_API });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6500);
   const requestAbort = () => controller.abort();
   request.signal?.addEventListener("abort", requestAbort, { once: true });
+  let lastProviderError = null;
 
   try {
-    const response = await fetch(photonUrl.toString(), {
-      method: "GET",
-      headers: {
-        Accept: "application/geo+json, application/json",
-        "Accept-Language": "ru-RU,ru;q=0.9,kk;q=0.8,en;q=0.7",
-        "User-Agent": "AstanaGuide/1.0 (https://astana-map-roads.vercel.app/; address search)",
-        Referer: "https://astana-map-roads.vercel.app/",
-      },
-      signal: controller.signal,
-      cache: "no-store",
-    });
+    for (const provider of providers) {
+      if (controller.signal.aborted) break;
+      const providerUrl = new URL(provider.url);
+      providerUrl.searchParams.set("q", query);
+      providerUrl.searchParams.set("limit", String(limit));
+      providerUrl.searchParams.set("lang", "ru");
+      providerUrl.searchParams.set("countrycode", "KZ");
+      providerUrl.searchParams.set("dedupe", "1");
 
-    if (response.status === 429) {
-      return json({
-        error: "Сервис адресов временно ограничил запросы. Повтори поиск немного позже.",
-        providerStatus: 429,
-      }, 503, { "Retry-After": response.headers.get("Retry-After") || "10" });
-    }
+      for (const layer of ALLOWED_LAYERS) {
+        providerUrl.searchParams.append("layer", layer);
+      }
 
-    if (!response.ok) {
-      return json({
-        error: "Сервис адресных подсказок временно не ответил. Попробуй ещё раз.",
-        providerStatus: response.status,
-      }, 502);
-    }
+      if (lat !== null && lon !== null) {
+        providerUrl.searchParams.set("lat", String(lat));
+        providerUrl.searchParams.set("lon", String(lon));
+        providerUrl.searchParams.set("zoom", "13");
+        providerUrl.searchParams.set("location_bias_scale", "0.2");
+      }
 
-    const payload = await response.json();
-    if (!Array.isArray(payload?.features)) {
-      return json({ error: "Сервис адресов вернул некорректный ответ." }, 502);
-    }
+      try {
+        const response = await fetch(providerUrl.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/geo+json, application/json",
+            "Accept-Language": "ru-RU,ru;q=0.9,kk;q=0.8,en;q=0.7",
+            "User-Agent": "AstanaGuide/1.0 (https://astana-map-roads.vercel.app/; address search)",
+            Referer: "https://astana-map-roads.vercel.app/",
+          },
+          signal: controller.signal,
+          cache: "no-store",
+        });
 
-    const features = payload.features.slice(0, limit);
-    memoryCache.set(cacheKey, { savedAt: Date.now(), features });
-    if (memoryCache.size > 300) {
-      for (const [key, value] of memoryCache) {
-        if (Date.now() - value.savedAt > STALE_TTL_MS) memoryCache.delete(key);
-        if (memoryCache.size <= 220) break;
+        if (response.status === 429) {
+          lastProviderError = {
+            provider: provider.name,
+            status: 429,
+            retryAfter: response.headers.get("Retry-After") || "",
+          };
+          continue;
+        }
+
+        if (!response.ok) {
+          const responseText = await response.text().catch(() => "");
+          lastProviderError = {
+            provider: provider.name,
+            status: response.status,
+            detail: String(responseText || "").slice(0, 140),
+          };
+          continue;
+        }
+
+        const payload = await response.json();
+        if (!Array.isArray(payload?.features)) {
+          lastProviderError = {
+            provider: provider.name,
+            status: 502,
+            detail: "Некорректный формат GeoJSON",
+          };
+          continue;
+        }
+
+        const features = payload.features.slice(0, limit);
+        memoryCache.set(cacheKey, { savedAt: Date.now(), features });
+        if (memoryCache.size > 300) {
+          for (const [key, value] of memoryCache) {
+            if (now - value.savedAt > STALE_TTL_MS) memoryCache.delete(key);
+            if (memoryCache.size <= 220) break;
+          }
+        }
+
+        return json({
+          features,
+          cached: false,
+          provider: provider.name,
+        }, 200, {
+          "X-Address-Search-Cache": "MISS",
+          "X-Address-Search-Provider": provider.name,
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        lastProviderError = {
+          provider: provider.name,
+          status: 502,
+          detail: String(error?.message || "network error").slice(0, 140),
+        };
       }
     }
 
-    return json({ features, cached: false }, 200, {
-      "X-Address-Search-Cache": "MISS",
-    });
+    if (cached && Date.now() - cached.savedAt < STALE_TTL_MS) {
+      return json({
+        features: cached.features,
+        cached: true,
+        stale: true,
+        providerError: lastProviderError,
+      }, 200, { "X-Address-Search-Cache": "STALE" });
+    }
+
+    if (lastProviderError?.status === 429) {
+      return json({
+        error: "Сервис адресов временно ограничил запросы. Попробуй ещё раз через несколько секунд.",
+        providerStatus: 429,
+        provider: lastProviderError.provider,
+      }, 503, {
+        "Retry-After": lastProviderError.retryAfter || "10",
+      });
+    }
+
+    const needsKey = !overpassKey && lastProviderError?.provider === "Photon";
+    return json({
+      error: needsKey
+        ? "Публичный Photon временно недоступен. Для стабильных подсказок нужен бесплатный ключ резервного сервиса."
+        : "Не удалось получить подсказки от резервных сервисов адресного поиска.",
+      providerStatus: lastProviderError?.status || 502,
+      provider: lastProviderError?.provider || "unknown",
+    }, 502);
   } catch (error) {
     if (cached && Date.now() - cached.savedAt < STALE_TTL_MS) {
       return json({
@@ -162,6 +228,7 @@ export async function GET(request) {
       error: timedOut
         ? "Сервис адресов отвечает слишком долго. Попробуй ещё раз."
         : "Не удалось подключиться к сервису адресных подсказок.",
+      providerStatus: 502,
     }, 502);
   } finally {
     clearTimeout(timeout);
