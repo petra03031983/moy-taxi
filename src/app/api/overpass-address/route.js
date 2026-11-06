@@ -1,7 +1,7 @@
 const OVERPASS_ENDPOINT = "https://overpass.kumi.systems/api/interpreter";
 const ASTANA_BBOX = "50.85,71.00,51.40,71.85";
 const CACHE_TTL_MS = 15 * 60 * 1000;
-const REQUEST_TIMEOUT_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 18_000;
 
 function json(body, status = 200, headers = {}) {
   return Response.json(body, {
@@ -142,35 +142,60 @@ function buildQuery(payload) {
   const category = normalize(payload.category);
   const streetFromItem = String(payload.street || "").trim();
   const houseFromItem = String(payload.houseNumber || "").trim();
-  const addressMatch = query.match(/^(.+?)\s+(\d+[0-9а-яa-z]*(?:[/-]\d+[0-9а-яa-z]*)?)$/i);
-  const street = streetFromItem || (addressMatch ? addressMatch[1] : "");
-  const houseNumber = houseFromItem || (addressMatch ? addressMatch[2] : "");
-  const stationSearch = /вокзал|железнодорожн|\bжд\b|станци/.test(query) ||
+  const addressMatch = query.match(/^(.+?)\\s+(\\d+[0-9а-яa-z]*(?:[/-]\\d+[0-9а-яa-z]*)?)$/i);
+  const itemStreetMatch = streetFromItem.match(/^(.+?)\\s+(\\d+[0-9а-яa-z]*(?:[/-]\\d+[0-9а-яa-z]*)?)$/i);
+  const street = itemStreetMatch?.[1] || addressMatch?.[1] || streetFromItem;
+  const houseNumber = houseFromItem || itemStreetMatch?.[2] || addressMatch?.[2] || "";
+  const stationSearch = /вокзал|железнодорожн|\\bжд\\b|станци/.test(query) ||
     /railway_station|railway/.test(category) || payload.osmKey === "railway";
+
+  const refType = String(payload.osmRefType || "").toLowerCase();
+  const refId = String(payload.osmRefId || "").trim();
+  if (/^(node|way|relation)$/.test(refType) && /^\\d+$/.test(refId)) {
+    return `[out:json][timeout:10];${refType}(id:${refId});out geom tags;`;
+  }
+
+  const focusLat = Number(payload.lat);
+  const focusLon = Number(payload.lon);
+  const radius = stationSearch ? 1500 : 850;
+  const latPadding = Number.isFinite(focusLat) && focusLat >= 50 && focusLat <= 52
+    ? radius / 111320
+    : null;
+  const lonPadding = latPadding !== null
+    ? radius / (111320 * Math.max(0.55, Math.cos(focusLat * Math.PI / 180)))
+    : null;
+  const bbox = latPadding !== null && Number.isFinite(focusLon) && focusLon >= 70 && focusLon <= 73
+    ? [
+        (focusLat - latPadding).toFixed(5),
+        (focusLon - lonPadding).toFixed(5),
+        (focusLat + latPadding).toFixed(5),
+        (focusLon + lonPadding).toFixed(5),
+      ].join(",")
+    : ASTANA_BBOX;
 
   const selectors = [];
   if (stationSearch) {
     selectors.push(
-      `nwr(${ASTANA_BBOX})[railway=station];`,
-      `nwr(${ASTANA_BBOX})[public_transport=station];`,
-      `nwr(${ASTANA_BBOX})[building=train_station];`,
-      `nwr(${ASTANA_BBOX})[railway=halt];`,
-      `nwr(${ASTANA_BBOX})[amenity=bus_station];`,
+      `nwr(${bbox})[railway=station];`,
+      `nwr(${bbox})[public_transport=station];`,
+      `nwr(${bbox})[building=train_station];`,
+      `nwr(${bbox})[railway=halt];`,
+      `nwr(${bbox})[amenity=bus_station];`,
     );
   } else {
     if (street && houseNumber) {
       const streetRegex = escapeRegex(street);
       const numberRegex = escapeRegex(houseNumber);
       selectors.push(
-        `nwr(${ASTANA_BBOX})["addr:street"~${qlString(streetRegex)},i]["addr:housenumber"~${qlString(numberRegex)},i];`,
-        `nwr(${ASTANA_BBOX})["addr:full"~${qlString(streetRegex + ".*" + numberRegex)},i];`,
-        `nwr(${ASTANA_BBOX})[name~${qlString(streetRegex + ".*" + numberRegex)},i];`,
+        `nwr(${bbox})["addr:street"~${qlString(streetRegex)},i]["addr:housenumber"~${qlString(numberRegex)},i];`,
+        `nwr(${bbox})["addr:full"~${qlString(streetRegex + ".*" + numberRegex)},i];`,
+        `nwr(${bbox})[name~${qlString(streetRegex + ".*" + numberRegex)},i];`,
       );
     } else if (street) {
       const streetRegex = escapeRegex(street);
       selectors.push(
-        `nwr(${ASTANA_BBOX})["addr:street"~${qlString(streetRegex)},i];`,
-        `way(${ASTANA_BBOX})[highway][name~${qlString(streetRegex)},i];`,
+        `nwr(${bbox})["addr:street"~${qlString(streetRegex)},i];`,
+        `way(${bbox})[highway][name~${qlString(streetRegex)},i];`,
       );
     }
 
@@ -180,21 +205,21 @@ function buildQuery(payload) {
     for (const value of [...new Set(searchNames)].slice(0, 2)) {
       const pattern = escapeRegex(value);
       selectors.push(
-        `nwr(${ASTANA_BBOX})[name~${qlString(pattern)},i];`,
-        `nwr(${ASTANA_BBOX})["name:ru"~${qlString(pattern)},i];`,
-        `nwr(${ASTANA_BBOX})["name:kk"~${qlString(pattern)},i];`,
-        `nwr(${ASTANA_BBOX})[official_name~${qlString(pattern)},i];`,
-        `nwr(${ASTANA_BBOX})[alt_name~${qlString(pattern)},i];`,
+        `nwr(${bbox})[name~${qlString(pattern)},i];`,
+        `nwr(${bbox})["name:ru"~${qlString(pattern)},i];`,
+        `nwr(${bbox})["name:kk"~${qlString(pattern)},i];`,
+        `nwr(${bbox})[official_name~${qlString(pattern)},i];`,
+        `nwr(${bbox})[alt_name~${qlString(pattern)},i];`,
       );
     }
   }
 
   if (!selectors.length) throw new Error("Недостаточно данных для точного поиска в OpenStreetMap.");
-  return `[out:json][timeout:12];(
-${selectors.join("\n")}
+  return `[out:json][timeout:16];(
+${selectors.join("\\n")}
 )->.matches;(
 .matches;
-node(around.matches:30)[entrance];
+node(around.matches:20)[entrance];
 )->.all;
 .all out geom tags qt;`;
 }
