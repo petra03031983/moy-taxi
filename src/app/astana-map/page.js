@@ -2574,7 +2574,8 @@ export default function AstanaMapPage() {
       }
       const found = (Array.isArray(data.features) ? data.features : [])
         .map(photonToAddress)
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(item => ({ ...item, searchSource: "autocomplete" }));
 
       if (requestId === autocompleteRequestRef.current && !controller.signal.aborted) {
         if (found.length) {
@@ -4039,8 +4040,15 @@ export default function AstanaMapPage() {
     const point = { lat: Number(item?.lat), lng: Number(item?.lon) };
 
     if (!hasOsmObject) {
+      if (item?.searchSource === "autocomplete") {
+        // A quick local street suggestion is not enough to place an exact pin.
+        // Automatically run the full OSM text search so the user does not need
+        // to understand which search button or provider to choose.
+        void searchAddress(query || cleanName(item));
+        return;
+      }
       setShowResultsPanel(true);
-      setError("Этот вариант есть только в городском справочнике, без точного OSM-объекта. Нажми «Поиск» и выбери результат OpenStreetMap — тогда точка будет привязана к реальному объекту.");
+      setError("У этого варианта нет точного OSM-объекта. Точку по приблизительным координатам не ставлю. Выбери результат OpenStreetMap из полного поиска.");
       return;
     }
     if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) {
