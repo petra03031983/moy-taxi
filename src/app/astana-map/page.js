@@ -1079,6 +1079,7 @@ export default function AstanaMapPage() {
   const searchInputRef = useRef(null);
   const searchCacheRef = useRef(new Map());
   const overpassCoordinateCacheRef = useRef(new Map());
+  const overpassSelectionRequestRef = useRef(0);
   const searchRequestRef = useRef(0);
   const lastSearchAtRef = useRef(0);
   const autocompleteAbortRef = useRef(null);
@@ -4021,6 +4022,7 @@ export default function AstanaMapPage() {
 
   function chooseResult(item) {
     cancelAddressSuggestions();
+    const selectionRequestId = ++overpassSelectionRequestRef.current;
     setSearching(false);
     setResults([]);
     setShowResultsPanel(false);
@@ -4077,6 +4079,7 @@ export default function AstanaMapPage() {
     if (refType !== "node") {
       void resolveOverpassCoordinate(item, query, overpassCoordinateCacheRef.current)
         .then(payload => {
+          if (overpassSelectionRequestRef.current !== selectionRequestId) return;
           if (!Number.isFinite(Number(payload?.lat)) || !Number.isFinite(Number(payload?.lon))) return;
           const refinedPoint = { lat: Number(payload.lat), lng: Number(payload.lon) };
           setDestination(refinedPoint);
