@@ -1047,6 +1047,9 @@ export default function AstanaMapPage() {
   const searchCacheRef = useRef(new Map());
   const searchRequestRef = useRef(0);
   const lastSearchAtRef = useRef(0);
+  const autocompleteAbortRef = useRef(null);
+  const autocompleteTimerRef = useRef(null);
+  const autocompleteRequestRef = useRef(0);
   const [leafletReady, setLeafletReady] = useState(false);
   const [map3dReady, setMap3dReady] = useState(false);
   const [map3dEnabled, setMap3dEnabled] = useState(true);
@@ -1058,6 +1061,15 @@ export default function AstanaMapPage() {
   const [searchActive, setSearchActive] = useState(false);
   const [listening, setListening] = useState(false);
   const [origin, setOrigin] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      if (autocompleteTimerRef.current !== null) {
+        window.clearTimeout(autocompleteTimerRef.current);
+      }
+      autocompleteAbortRef.current?.abort();
+    };
+  }, []);
   const [destination, setDestination] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -2478,7 +2490,108 @@ export default function AstanaMapPage() {
     };
   }, [leafletReady]);
 
+  function cancelAddressSuggestions() {
+    if (autocompleteTimerRef.current !== null) {
+      window.clearTimeout(autocompleteTimerRef.current);
+      autocompleteTimerRef.current = null;
+    }
+    autocompleteRequestRef.current += 1;
+    autocompleteAbortRef.current?.abort();
+    autocompleteAbortRef.current = null;
+  }
+
+  async function loadAddressSuggestions(value, requestId) {
+    if (requestId !== autocompleteRequestRef.current) return;
+    const controller = new AbortController();
+    autocompleteAbortRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    const cacheKey = value.toLocaleLowerCase("ru-RU");
+
+    try {
+      const cached = searchCacheRef.current.get(cacheKey);
+      if (cached) {
+        if (requestId === autocompleteRequestRef.current && !controller.signal.aborted) {
+          setResults(cached);
+          setSearching(false);
+        }
+        return;
+      }
+
+      const photonUrl = new URL(PHOTON);
+      photonUrl.searchParams.set("q", value);
+      photonUrl.searchParams.set("limit", "8");
+      photonUrl.searchParams.set("lang", "ru");
+      photonUrl.searchParams.set("countrycode", "KZ");
+      const focus = positionRef.current || origin;
+      if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
+        photonUrl.searchParams.set("lat", String(focus.lat));
+        photonUrl.searchParams.set("lon", String(focus.lng));
+        photonUrl.searchParams.set("zoom", "13");
+      }
+
+      const response = await fetch(photonUrl.toString(), {
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error("Photon HTTP " + response.status);
+      const data = await response.json();
+      const found = (Array.isArray(data.features) ? data.features : [])
+        .map(photonToAddress)
+        .filter(Boolean);
+
+      if (requestId === autocompleteRequestRef.current && !controller.signal.aborted) {
+        if (found.length) {
+          searchCacheRef.current.set(cacheKey, found);
+          if (searchCacheRef.current.size > 60) {
+            searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+          }
+        }
+        setResults(found);
+        if (!found.length) {
+          setError("Подходящие адреса пока не найдены. Продолжите ввод или нажмите поиск.");
+        }
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError" && requestId === autocompleteRequestRef.current) {
+        setResults([]);
+        setError("Подсказки временно недоступны. Нажмите поиск для полного поиска адреса.");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (requestId === autocompleteRequestRef.current) {
+        setSearching(false);
+        if (autocompleteAbortRef.current === controller) {
+          autocompleteAbortRef.current = null;
+        }
+      }
+    }
+  }
+
+  function scheduleAddressSuggestions(value) {
+    cancelAddressSuggestions();
+    const text = normalizeSearchText(value);
+
+    if (text.length < 2) {
+      setResults([]);
+      setShowResultsPanel(false);
+      setSearching(false);
+      return;
+    }
+
+    setShowResultsPanel(true);
+    setResults([]);
+    setError("");
+    setSearching(true);
+
+    const requestId = autocompleteRequestRef.current;
+    autocompleteTimerRef.current = window.setTimeout(() => {
+      autocompleteTimerRef.current = null;
+      void loadAddressSuggestions(text, requestId);
+    }, 380);
+  }
+
   async function searchAddress(value = query) {
+    cancelAddressSuggestions();
     const text = normalizeSearchText(value);
     if (text.length < 2) {
       setResults([]);
@@ -3841,6 +3954,7 @@ export default function AstanaMapPage() {
   }
 
   function chooseResult(item) {
+    cancelAddressSuggestions();
     const point = { lat: Number(item.lat), lng: Number(item.lon) };
     setDestination(point);
     setRouteOrigin(null);
@@ -4563,17 +4677,28 @@ export default function AstanaMapPage() {
               ref={searchInputRef}
               value={query}
               onFocus={() => setSearchActive(true)}
-              onChange={e => { setQuery(e.target.value); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setError(""); }}
+              onChange={e => {
+                const value = e.target.value;
+                setQuery(value);
+                setDestination(null);
+                setSelectedPlace(null);
+                setRoute(null);
+                setRouteOptions([]);
+                setRouteOrigin(null);
+                setNavigating(false);
+                setError("");
+                scheduleAddressSuggestions(value);
+              }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); searchAddress(query); } }}
               placeholder="Поиск"
               aria-label="Поиск адреса"
             />
-            {query && <button className="astana-clear" onClick={() => { setQuery(""); setResults([]); setShowResultsPanel(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
+            {query && <button className="astana-clear" onClick={() => { cancelAddressSuggestions(); setQuery(""); setResults([]); setShowResultsPanel(false); setSearching(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
             <button className={`astana-mic${listening ? " listening" : ""}`} onClick={startVoiceSearch} aria-label="Голосовой поиск" title="Голосовой поиск">🎙</button>
           </div>
           {isHomeScreen && <button className="astana-home-menu" onClick={openHomeSearch} aria-label="Открыть поиск">☰</button>}
         </div>
-        {searchActive && <button className="astana-search-cancel" onClick={() => { setSearchActive(false); setShowResultsPanel(false); setResults([]); setQuery(""); setError(""); searchInputRef.current?.blur(); }}>Отмена</button>}
+        {searchActive && <button className="astana-search-cancel" onClick={() => { cancelAddressSuggestions(); setSearchActive(false); setShowResultsPanel(false); setResults([]); setSearching(false); setQuery(""); setError(""); searchInputRef.current?.blur(); }}>Отмена</button>}
         {showResultsPanel && <div className="astana-results">
           {searching && <div className="astana-result-loading">Ищем адрес…</div>}
           {!searching && results.map((item, i) => <button key={`${item.place_id}-${i}`} className="astana-result" onClick={() => { chooseResult(item); setSearchActive(false); }}>
