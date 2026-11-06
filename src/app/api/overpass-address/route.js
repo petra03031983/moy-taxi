@@ -1,4 +1,4 @@
-const OVERPASS_ENDPOINT = "https://overpass.kumi.systems/api/interpreter";
+const OVERPASS_ENDPOINT = "https://lz4.overpass-api.de/api/interpreter";
 const ASTANA_BBOX = "50.85,71.00,51.40,71.85";
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 18_000;
