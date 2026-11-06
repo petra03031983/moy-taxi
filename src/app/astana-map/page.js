@@ -1050,7 +1050,7 @@ export default function AstanaMapPage() {
   const [leafletReady, setLeafletReady] = useState(false);
   const [map3dReady, setMap3dReady] = useState(false);
   const [map3dEnabled, setMap3dEnabled] = useState(true);
-  const [map4dEnabled, setMap4dEnabled] = useState(false);
+  const [map4dEnabled, setMap4dEnabled] = useState(true);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -3817,54 +3817,8 @@ export default function AstanaMapPage() {
     };
   }, [map3dReady, map3dEnabled, map4dEnabled, gpsFixReady]);
 
-  function toggle4DMap() {
-    if (!map3dReady || !map3dRef.current) {
-      setError("3D-карта ещё загружается. Подождите, пока появятся улицы, затем включите 4D.");
-      return;
-    }
-    if (!map3dEnabled) {
-      map3dEnabledRef.current = true;
-      setMap3dEnabled(true);
-    }
-    setMap4dEnabled(value => !value);
-    setError("");
-  }
-
-  function toggle3DMap() {
-    if (!map3dReady || !map3dRef.current) {
-      setError("3D-карта пока не загрузилась. Обычная карта остаётся доступной.");
-      return;
-    }
-    const enabling = !map3dEnabled;
-    if (enabling) {
-      const center = mapRef.current?.getCenter?.();
-      const fallback = positionRef.current || origin || { lat: ASTANA[0], lng: ASTANA[1] };
-      map3dRef.current.jumpTo({
-        center: center ? [center.lng, center.lat] : [fallback.lng, fallback.lat],
-        zoom: Math.max(15.2, Number(mapRef.current?.getZoom?.() || map3dRef.current.getZoom())),
-        pitch: 52,
-        bearing: 0,
-      });
-    } else {
-      const center = map3dRef.current.getCenter();
-      if (mapRef.current) {
-        map3dSyncRef.current = true;
-        mapRef.current.setView([center.lat, center.lng], map3dRef.current.getZoom(), { animate: false });
-        requestAnimationFrame(() => { map3dSyncRef.current = false; });
-      }
-    }
-    map3dEnabledRef.current = enabling;
-    setMap3dEnabled(enabling);
-    if (!enabling) setMap4dEnabled(false);
-    setError("");
-  }
-
   function swapMapType() {
-    if (map3dEnabled) {
-      map3dEnabledRef.current = false;
-      setMap3dEnabled(false);
-      setMap4dEnabled(false);
-    }
+    // Change the fallback 2D layer only; the active 4D map remains enabled.
     setMapType(v => v === "map" ? "satellite" : v === "satellite" ? "dark" : "map");
   }
 
@@ -4225,8 +4179,9 @@ export default function AstanaMapPage() {
   function beginManualRoadAdd() {
     setRoadScanPanelOpen(false);
     setManualRoadPosition(null);
-    setManualRoadStatus("Переключи карту в 2D и нажми на точное место объекта.");
+    setManualRoadStatus("Нажми на точное место объекта. После выбора точки карта автоматически вернётся в 4D.");
     setManualRoadAddMode(true);
+    map3dEnabledRef.current = false;
     setMap3dEnabled(false);
   }
 
@@ -4282,6 +4237,17 @@ export default function AstanaMapPage() {
       setManualRoadPosition({ lat, lng });
       setManualRoadAddMode(false);
       setManualRoadStatus("Проверь координаты и сохрани объект.");
+      const center = map.getCenter?.();
+      if (center && map3dRef.current && map3dReadyRef.current) {
+        map3dRef.current.jumpTo({
+          center: [center.lng, center.lat],
+          zoom: Math.max(15.2, Number(map.getZoom?.() || map3dRef.current.getZoom())),
+          pitch: 52,
+          bearing: 0,
+        });
+      }
+      map3dEnabledRef.current = true;
+      setMap3dEnabled(true);
       if (!manualRoadLabel.trim()) {
         const labels = {
           "traffic-light": "Светофор",
@@ -4352,8 +4318,6 @@ export default function AstanaMapPage() {
         {roadDataDiagnostics?.cameraError && <div>Камеры: {roadDataDiagnostics.cameraError}</div>}
       </aside>}
       {isHomeScreen && <>
-        <button className={`astana-home-3d-toggle${map3dEnabled && map3dReady ? " active" : ""}`} onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
-        <button className={`astana-home-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"}>{map4dEnabled && map3dReady && gpsFixReady ? "LIVE" : "4D"}</button>
       </>}
       {!roadScanPanelOpen && <button type="button" className={`astana-road-scan-toggle${roadScanActive ? " active" : ""}`} onClick={() => { setRoadScanPanelOpen(true); void refreshRoadScanCounts(); }} aria-label="Сканировать дорогу"><span>📷</span><b>СКАН</b></button>}
       {roadScanPanelOpen && <section className="astana-road-scan-panel" role="dialog" aria-modal="true" aria-label="Сканирование дорожных объектов">
@@ -4449,8 +4413,22 @@ export default function AstanaMapPage() {
       {manualRoadAddMode && <div style={{ position: "fixed", zIndex: 9000, left: "50%", top: 86, transform: "translateX(-50%)", width: "min(92vw,420px)", padding: 14, borderRadius: 16, background: "#fff", color: "#15222b", boxShadow: "0 8px 32px #0004", fontFamily: "system-ui,sans-serif" }}>
         <b style={{ display: "block", marginBottom: 6 }}>Добавление дорожного объекта</b>
         <div style={{ fontSize: 14, lineHeight: 1.4 }}>Нажми на карте ровно в месте светофора, камеры или знака.</div>
-        <div style={{ marginTop: 8, fontSize: 12, color: "#52616d" }}>Для точного выбора используй 2D-карту.</div>
-        <button type="button" onClick={() => { setManualRoadAddMode(false); setManualRoadStatus("Добавление отменено."); }} style={{ marginTop: 10, border: 0, background: "#e8edf0", padding: "9px 12px", borderRadius: 9, fontWeight: 700 }}>Отмена</button>
+        <div style={{ marginTop: 8, fontSize: 12, color: "#52616d" }}>После выбора точки карта автоматически вернётся в 4D.</div>
+        <button type="button" onClick={() => {
+          setManualRoadAddMode(false);
+          setManualRoadStatus("Добавление отменено.");
+          const center = mapRef.current?.getCenter?.();
+          if (center && map3dRef.current && map3dReadyRef.current) {
+            map3dRef.current.jumpTo({
+              center: [center.lng, center.lat],
+              zoom: Math.max(15.2, Number(mapRef.current?.getZoom?.() || map3dRef.current.getZoom())),
+              pitch: 52,
+              bearing: 0,
+            });
+          }
+          map3dEnabledRef.current = true;
+          setMap3dEnabled(true);
+        }} style={{ marginTop: 10, border: 0, background: "#e8edf0", padding: "9px 12px", borderRadius: 9, fontWeight: 700 }}>Отмена</button>
       </div>}
       {manualRoadPosition && <div role="dialog" aria-modal="true" aria-label="Сохранить дорожный объект" style={{ position: "fixed", zIndex: 9100, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(92vw,440px)", maxHeight: "86dvh", overflowY: "auto", boxSizing: "border-box", padding: 20, borderRadius: 18, background: "#fff", color: "#15222b", boxShadow: "0 12px 48px #0006", fontFamily: "system-ui,sans-serif" }}>
         <b style={{ fontSize: 20 }}>Сохранить в личную базу</b>
@@ -4582,7 +4560,6 @@ export default function AstanaMapPage() {
         <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить" title="Приблизить">+</button>
         <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить" title="Отдалить">−</button>
         <button onClick={swapMapType} aria-label="Сменить карту" title="Сменить тип карты">◈</button>
-        <button onClick={toggle3DMap} className="astana-place-3d-toggle" aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"} title={map3dEnabled ? "2D-карта" : "3D-карта"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
       </div>}
 
       {destination && !route && <section className="astana-place-card">
@@ -4633,14 +4610,11 @@ export default function AstanaMapPage() {
           {upcomingCamera && <span className="astana-nav-camera-alert" aria-label={`Камера впереди через ${formatDistance(upcomingCamera.meters)}`} title={`Камера через ${formatDistance(upcomingCamera.meters)}`}>📷</span>}
         </div>
         <div className="astana-nav-speed-limit" aria-label={speedLimit !== null ? `Ограничение скорости ${speedLimit} километров в час` : "Ограничение скорости не определено"} title="Ограничение скорости"><b>{speedLimit ?? "—"}</b></div>
-        <button className={`astana-nav-voice-toggle ${voiceGuidanceEnabled ? "enabled" : ""}`} onClick={toggleVoiceGuidance} aria-label={voiceGuidanceEnabled ? "Выключить голосовые подсказки" : "Включить голосовые подсказки"} title={voiceGuidanceEnabled ? "Голосовые подсказки включены" : "Включить голосовые подсказки"}>{voiceGuidanceEnabled ? "🔊" : "🔇"}</button>
+        <div className="astana-nav-voice-spacer" aria-hidden="true" />
         <div className="astana-nav-zoom">
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
           <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить">−</button>
         </div>
-        <button className={`astana-nav-4d-toggle${map4dEnabled && map3dReady ? " active" : ""}`} onClick={toggle4DMap} aria-label={map4dEnabled ? "Выключить режим 4D" : "Включить режим 4D"} title={map4dEnabled ? "Живая динамика включена" : "Включить 4D"}>{map4dEnabled && map3dReady && gpsFixReady ? "LIVE" : "4D"}</button>
-        <button className="astana-nav-3d-toggle" onClick={toggle3DMap} aria-label={map3dEnabled ? "Переключить на 2D-карту" : "Переключить на 3D-карту"} title={map3dEnabled ? "2D-карта" : "3D-карта"}>{map3dEnabled && map3dReady ? "2D" : "3D"}</button>
-        <button className="astana-nav-recenter" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 17, { animate: true }); }} aria-label="Моё местоположение">➤</button>
       </div>}
 
       {route && !navigating && <div className="astana-route-quick-actions">

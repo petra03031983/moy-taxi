@@ -513,3 +513,7 @@
   .astana-road-scan-header b{font-size:16px}
   .astana-road-scan-preview{max-height:27dvh}
 }
+
+/* Invisible slot keeps the zoom buttons at their existing right-side position. */
+.astana-nav-voice-spacer{width:53px;height:53px;flex:none}
+@media(max-width:520px){.astana-nav-voice-spacer{width:45px;height:45px}}
