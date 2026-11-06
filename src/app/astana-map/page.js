@@ -2569,6 +2569,8 @@ export default function AstanaMapPage() {
 
   function scheduleAddressSuggestions(value) {
     cancelAddressSuggestions();
+    searchAbortRef.current?.abort();
+    searchRequestRef.current += 1;
     const text = normalizeSearchText(value);
 
     if (text.length < 2) {
