@@ -6,7 +6,6 @@ import "./astana-map.css";
 
 const ASTANA = [51.1694, 71.4491];
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
-const PHOTON = "https://photon.komoot.io/api/";
 const ROUTERS = {
   car: "https://routing.openstreetmap.de/routed-car/route/v1/driving",
   walk: "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
@@ -2535,30 +2534,27 @@ export default function AstanaMapPage() {
         return;
       }
 
-      const photonUrl = new URL(PHOTON);
-      photonUrl.searchParams.set("q", value);
-      photonUrl.searchParams.set("limit", "12");
-      photonUrl.searchParams.set("lang", "ru");
-      photonUrl.searchParams.set("countrycode", "KZ");
-      photonUrl.searchParams.set("dedupe", "1");
-      // Search all useful address and place layers, not only named POIs.
-      for (const layer of ["house", "street", "locality", "district", "city", "county", "state", "country", "other"]) {
-        photonUrl.searchParams.append("layer", layer);
-      }
+      const suggestionParams = new URLSearchParams({
+        q: value,
+        limit: "12",
+      });
       const focus = positionRef.current || origin;
       if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-        photonUrl.searchParams.set("lat", String(focus.lat));
-        photonUrl.searchParams.set("lon", String(focus.lng));
-        photonUrl.searchParams.set("zoom", "13");
-        photonUrl.searchParams.set("location_bias_scale", "0.2");
+        suggestionParams.set("lat", String(focus.lat));
+        suggestionParams.set("lon", String(focus.lng));
+        suggestionParams.set("zoom", "13");
       }
 
-      const response = await fetch(photonUrl.toString(), {
+      // Go through our own server so Photon receives the application's
+      // identifying User-Agent instead of a generic browser User-Agent.
+      const response = await fetch("/api/address-suggestions?" + suggestionParams.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
       });
-      if (!response.ok) throw new Error("Photon HTTP " + response.status);
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(data?.features)) {
+        throw new Error(data?.error || "Сервис адресных подсказок временно недоступен.");
+      }
       const found = (Array.isArray(data.features) ? data.features : [])
         .map(photonToAddress)
         .filter(Boolean);
@@ -2578,7 +2574,7 @@ export default function AstanaMapPage() {
     } catch (error) {
       if (error?.name !== "AbortError" && requestId === autocompleteRequestRef.current) {
         setResults([]);
-        setError("Подсказки временно недоступны. Нажмите поиск для полного поиска адреса.");
+        setError(error?.message || "Сервис адресных подсказок временно недоступен.");
       }
     } finally {
       window.clearTimeout(timeout);
@@ -2649,23 +2645,24 @@ export default function AstanaMapPage() {
     try {
       // Photon tolerates minor typos and supports location-biased geocoding.
       try {
-        const photonUrl = new URL(PHOTON);
-        photonUrl.searchParams.set("q", text);
-        photonUrl.searchParams.set("limit", "8");
-        photonUrl.searchParams.set("lang", "ru");
-        photonUrl.searchParams.set("countrycode", "KZ");
+        const fullSearchParams = new URLSearchParams({
+          q: text,
+          limit: "8",
+        });
         const focus = positionRef.current || origin;
         if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-          photonUrl.searchParams.set("lat", String(focus.lat));
-          photonUrl.searchParams.set("lon", String(focus.lng));
-          photonUrl.searchParams.set("zoom", "13");
+          fullSearchParams.set("lat", String(focus.lat));
+          fullSearchParams.set("lon", String(focus.lng));
+          fullSearchParams.set("zoom", "13");
         }
-        const response = await fetch(photonUrl.toString(), {
+        const response = await fetch("/api/address-suggestions?" + fullSearchParams.toString(), {
           signal: controller.signal,
           headers: { Accept: "application/json" },
         });
-        if (!response.ok) throw new Error("Photon HTTP " + response.status);
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(data?.features)) {
+          throw new Error(data?.error || "Сервис адресного поиска временно недоступен.");
+        }
         const found = (Array.isArray(data.features) ? data.features : [])
           .map(photonToAddress)
           .filter(Boolean);
