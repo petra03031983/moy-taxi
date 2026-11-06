@@ -4319,7 +4319,7 @@ export default function AstanaMapPage() {
       </aside>}
       {isHomeScreen && <>
       </>}
-      {!roadScanPanelOpen && <button type="button" className={`astana-road-scan-toggle${roadScanActive ? " active" : ""}`} onClick={() => { setRoadScanPanelOpen(true); void refreshRoadScanCounts(); }} aria-label="Сканировать дорогу"><span>📷</span><b>СКАН</b></button>}
+      {!roadScanPanelOpen && !navigating && <button type="button" className={`astana-road-scan-toggle${roadScanActive ? " active" : ""}`} onClick={() => { setRoadScanPanelOpen(true); void refreshRoadScanCounts(); }} aria-label="Сканировать дорогу"><span>📷</span><b>СКАН</b></button>}
       {roadScanPanelOpen && <section className="astana-road-scan-panel" role="dialog" aria-modal="true" aria-label="Сканирование дорожных объектов">
         <header className="astana-road-scan-header">
           <div><b>📷 Сканирование дороги</b><small>{roadScanStatus}</small></div>
@@ -4609,8 +4609,6 @@ export default function AstanaMapPage() {
           <b>{speed}</b>
           {upcomingCamera && <span className="astana-nav-camera-alert" aria-label={`Камера впереди через ${formatDistance(upcomingCamera.meters)}`} title={`Камера через ${formatDistance(upcomingCamera.meters)}`}>📷</span>}
         </div>
-        <div className="astana-nav-speed-limit" aria-label={speedLimit !== null ? `Ограничение скорости ${speedLimit} километров в час` : "Ограничение скорости не определено"} title="Ограничение скорости"><b>{speedLimit ?? "—"}</b></div>
-        <div className="astana-nav-voice-spacer" aria-hidden="true" />
         <div className="astana-nav-zoom">
           <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить">+</button>
           <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить">−</button>
