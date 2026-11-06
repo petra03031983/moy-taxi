@@ -336,7 +336,7 @@
  .astana-nav-speed-now{width:67px;height:67px}
  .astana-nav-speed-now b{font-size:28px}
  .astana-nav-parking{width:47px;height:51px;font-size:30px}
- .astana-nav-zoom{width:58px;border-radius:13px}
+ .astana-nav-zoom{width:58px;border-radius:13px;margin-top:245px}
  .astana-nav-zoom button{height:51px;font-size:35px}
  .astana-nav-compass,.astana-nav-recenter{width:53px;height:53px;font-size:30px}
  .astana-nav-bottom-hud{left:9px;right:9px;bottom:8px;height:70px;grid-template-columns:43px minmax(38px,.9fr) minmax(68px,1.3fr) minmax(32px,.7fr) 43px;padding:6px;gap:2px;border-radius:18px}
