@@ -148,42 +148,60 @@ function photonToAddress(feature) {
   const lon = Number(coordinates[0]);
   const lat = Number(coordinates[1]);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  const street = properties.street || properties.name || "";
+
+  const name = properties.name || properties.street || "";
   const city = properties.city || properties.locality || properties.district || properties.county || "";
+  const street = properties.street || (properties.osm_key === "highway" ? name : "");
   const address = {
-    road: properties.street || "",
-    pedestrian: properties.street || "",
+    name,
+    road: street,
+    pedestrian: street,
     house_number: properties.housenumber || "",
+    postcode: properties.postcode || "",
     city: properties.city || "",
     town: properties.locality || "",
     village: properties.locality || "",
     municipality: properties.district || "",
+    suburb: properties.district || "",
     country: properties.country || "",
+    amenity: properties.osm_key === "amenity" ? properties.osm_value : "",
+    shop: properties.osm_key === "shop" ? properties.osm_value : "",
+    tourism: properties.osm_key === "tourism" ? properties.osm_value : "",
   };
   const display_name = [
-    properties.name,
-    properties.street && properties.name !== properties.street ? properties.street : "",
-    properties.housenumber,
-    city,
+    name,
+    street && name !== street ? street : "",
+    properties.housenumber ? `д. ${properties.housenumber}` : "",
+    properties.postcode,
+    properties.district,
+    properties.city || properties.locality,
     properties.state,
     properties.country,
   ].filter(Boolean).filter((part, index, all) => all.indexOf(part) === index).join(", ");
+
   return {
     place_id: `photon-${properties.osm_type || "place"}-${properties.osm_id || `${lat},${lon}`}`,
+    name,
     lat: String(lat),
     lon: String(lon),
-    display_name: display_name || street || "Место на карте",
+    display_name: display_name || name || "Место на карте",
     address,
     type: properties.osm_value || properties.type || "place",
     class: properties.osm_key || "place",
+    category: properties.category || properties.osm_value || properties.osm_key || "place",
     source: "photon",
   };
 }
 
 function cleanName(item) {
   const a = item?.address || {};
+  const name = String(item?.name || a.name || "").trim();
+  const road = a.road || a.pedestrian || a.highway || "";
+  if (name && road && name.toLocaleLowerCase("ru-RU") !== String(road).toLocaleLowerCase("ru-RU")) {
+    return name;
+  }
   const parts = [
-    a.road || a.pedestrian || a.highway,
+    road || name,
     a.house_number ? `д. ${a.house_number}` : "",
     a.city || a.town || a.village || a.municipality,
   ].filter(Boolean);
@@ -2519,14 +2537,20 @@ export default function AstanaMapPage() {
 
       const photonUrl = new URL(PHOTON);
       photonUrl.searchParams.set("q", value);
-      photonUrl.searchParams.set("limit", "8");
+      photonUrl.searchParams.set("limit", "12");
       photonUrl.searchParams.set("lang", "ru");
       photonUrl.searchParams.set("countrycode", "KZ");
+      photonUrl.searchParams.set("dedupe", "1");
+      // Search all useful address and place layers, not only named POIs.
+      for (const layer of ["house", "street", "locality", "district", "city", "county", "state", "country", "other"]) {
+        photonUrl.searchParams.append("layer", layer);
+      }
       const focus = positionRef.current || origin;
       if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
         photonUrl.searchParams.set("lat", String(focus.lat));
         photonUrl.searchParams.set("lon", String(focus.lng));
         photonUrl.searchParams.set("zoom", "13");
+        photonUrl.searchParams.set("location_bias_scale", "0.2");
       }
 
       const response = await fetch(photonUrl.toString(), {
@@ -2589,7 +2613,7 @@ export default function AstanaMapPage() {
     autocompleteTimerRef.current = window.setTimeout(() => {
       autocompleteTimerRef.current = null;
       void loadAddressSuggestions(text, requestId);
-    }, 380);
+    }, 250);
   }
 
   async function searchAddress(value = query) {
@@ -4692,8 +4716,8 @@ export default function AstanaMapPage() {
                 scheduleAddressSuggestions(value);
               }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); searchAddress(query); } }}
-              placeholder="Поиск"
-              aria-label="Поиск адреса"
+              placeholder="Введите улицу, дом или место"
+              aria-label="Поиск адреса и мест"
             />
             {query && <button className="astana-clear" onClick={() => { cancelAddressSuggestions(); setQuery(""); setResults([]); setShowResultsPanel(false); setSearching(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
             <button className={`astana-mic${listening ? " listening" : ""}`} onClick={startVoiceSearch} aria-label="Голосовой поиск" title="Голосовой поиск">🎙</button>
