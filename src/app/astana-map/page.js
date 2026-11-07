@@ -2035,6 +2035,266 @@ export default function AstanaMapPage() {
               },
             }, labelLayerId);
 
+            // Volumetric tree models generated from open OSM tree locations.
+            // This optional renderer never blocks the underlying map if a library or data source is offline.
+            const installNaturalTreeLayer = async () => {
+              let treeTimer = null;
+              let treeAbort = null;
+              let lastTreeKey = "";
+              const treeCache = new Map();
+
+              const loadThree = () => new Promise((resolve, reject) => {
+                if (window.THREE?.WebGLRenderer) {
+                  resolve(window.THREE);
+                  return;
+                }
+                const sources = [
+                  "https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js",
+                  "https://unpkg.com/three@0.159.0/build/three.min.js",
+                ];
+                let attempt = 0;
+                const next = () => {
+                  if (cancelled) {
+                    reject(new Error("3D tree loading cancelled"));
+                    return;
+                  }
+                  if (window.THREE?.WebGLRenderer) {
+                    resolve(window.THREE);
+                    return;
+                  }
+                  if (attempt >= sources.length) {
+                    reject(new Error("Three.js library is unavailable"));
+                    return;
+                  }
+                  const script = document.createElement("script");
+                  script.src = sources[attempt++];
+                  script.async = true;
+                  script.dataset.moyThreeJs = "1";
+                  let settled = false;
+                  const timeout = window.setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    script.remove();
+                    next();
+                  }, 6500);
+                  script.onload = () => {
+                    if (settled) return;
+                    settled = true;
+                    window.clearTimeout(timeout);
+                    if (window.THREE?.WebGLRenderer) resolve(window.THREE);
+                    else {
+                      script.remove();
+                      next();
+                    }
+                  };
+                  script.onerror = () => {
+                    if (settled) return;
+                    settled = true;
+                    window.clearTimeout(timeout);
+                    script.remove();
+                    next();
+                  };
+                  document.head.appendChild(script);
+                };
+                next();
+              });
+
+              try {
+                const THREE = await loadThree();
+                if (cancelled || map3dRef.current !== map || map.getLayer("moy3d-natural-trees")) return;
+
+                const makeVerticalCone = (radius, height) => {
+                  const geometry = new THREE.ConeGeometry(radius, height, 7, 1);
+                  geometry.translate(0, height / 2, 0);
+                  geometry.rotateX(Math.PI / 2);
+                  return geometry;
+                };
+                const trunkGeometry = new THREE.CylinderGeometry(0.13, 0.19, 2.5, 7, 1);
+                trunkGeometry.translate(0, 1.25, 0);
+                trunkGeometry.rotateX(Math.PI / 2);
+
+                const treeLayer = {
+                  id: "moy3d-natural-trees",
+                  type: "custom",
+                  renderingMode: "3d",
+                  onAdd(treeMap, gl) {
+                    this.scene = new THREE.Scene();
+                    this.camera = new THREE.Camera();
+                    this.renderer = new THREE.WebGLRenderer({
+                      canvas: treeMap.getCanvas(),
+                      context: gl,
+                      antialias: true,
+                    });
+                    this.renderer.autoClear = false;
+                    this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x59452d, 1.25));
+                    const sunlight = new THREE.DirectionalLight(0xfff0d3, 1.05);
+                    sunlight.position.set(-0.45, -0.65, 1);
+                    this.scene.add(sunlight);
+                    this.maxTrees = 220;
+                    this.meshes = [
+                      new THREE.InstancedMesh(
+                        trunkGeometry,
+                        new THREE.MeshLambertMaterial({ color: "#755036", side: THREE.DoubleSide }),
+                        this.maxTrees
+                      ),
+                      new THREE.InstancedMesh(
+                        makeVerticalCone(2.05, 3.8),
+                        new THREE.MeshLambertMaterial({ color: "#2f7040", side: THREE.DoubleSide }),
+                        this.maxTrees
+                      ),
+                      new THREE.InstancedMesh(
+                        makeVerticalCone(1.72, 3.25),
+                        new THREE.MeshLambertMaterial({ color: "#43834a", side: THREE.DoubleSide }),
+                        this.maxTrees
+                      ),
+                      new THREE.InstancedMesh(
+                        makeVerticalCone(1.30, 2.85),
+                        new THREE.MeshLambertMaterial({ color: "#609453", side: THREE.DoubleSide }),
+                        this.maxTrees
+                      ),
+                    ];
+                    this.meshes.forEach(mesh => {
+                      mesh.count = 0;
+                      mesh.frustumCulled = false;
+                      mesh.castShadow = true;
+                      mesh.receiveShadow = true;
+                      this.scene.add(mesh);
+                    });
+                    this.dummy = new THREE.Object3D();
+                    this.upAxis = new THREE.Vector3(0, 0, 1);
+                  },
+                  setPoints(points) {
+                    if (!this.meshes || !this.dummy) return;
+                    const accepted = Array.isArray(points) ? points.slice(0, this.maxTrees) : [];
+                    const offsets = [0, 0.15, 1.75, 3.35];
+                    accepted.forEach((tree, index) => {
+                      const coordinate = window.maplibregl.MercatorCoordinate.fromLngLat(
+                        [tree.lng, tree.lat],
+                        0
+                      );
+                      const baseScale = coordinate.meterInMercatorCoordinateUnits();
+                      const size = Math.max(0.62, Math.min(1.55, Number(tree.size) || 1));
+                      const scale = baseScale * size;
+                      const rotation = ((index * 137.508) % 360) * Math.PI / 180;
+                      this.dummy.quaternion.setFromAxisAngle(this.upAxis, rotation);
+                      this.meshes.forEach((mesh, meshIndex) => {
+                        this.dummy.position.set(
+                          coordinate.x,
+                          coordinate.y,
+                          coordinate.z + baseScale * offsets[meshIndex] * size
+                        );
+                        this.dummy.scale.set(scale, -scale, scale);
+                        this.dummy.updateMatrix();
+                        mesh.setMatrixAt(index, this.dummy.matrix);
+                      });
+                    });
+                    this.meshes.forEach(mesh => {
+                      mesh.count = accepted.length;
+                      mesh.instanceMatrix.needsUpdate = true;
+                      mesh.computeBoundingSphere();
+                    });
+                  },
+                  render(gl, args) {
+                    const matrix = args?.defaultProjectionData?.mainMatrix;
+                    if (!this.renderer || !matrix || !this.scene || !this.camera) return;
+                    this.camera.projectionMatrix.fromArray(matrix);
+                    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
+                    this.renderer.resetState();
+                    this.renderer.render(this.scene, this.camera);
+                  },
+                  onRemove() {
+                    if (this.meshes) {
+                      this.meshes.forEach(mesh => {
+                        mesh.geometry?.dispose?.();
+                        mesh.material?.dispose?.();
+                      });
+                    }
+                    this.renderer?.dispose?.();
+                    this.renderer = null;
+                  },
+                };
+
+                addLayerBeforeLabels(map, treeLayer, labelLayerId);
+                const refreshTrees = async () => {
+                  if (cancelled || !map.getLayer("moy3d-natural-trees")) return;
+                  if (map.getZoom() < 15.2) {
+                    treeLayer.setPoints([]);
+                    return;
+                  }
+                  const bounds = map.getBounds();
+                  if (!bounds) return;
+                  const south = bounds.getSouth();
+                  const west = bounds.getWest();
+                  const north = bounds.getNorth();
+                  const east = bounds.getEast();
+                  const cacheKey = [
+                    south.toFixed(2), west.toFixed(2), north.toFixed(2), east.toFixed(2),
+                  ].join("|");
+                  if (cacheKey === lastTreeKey) return;
+                  lastTreeKey = cacheKey;
+                  if (treeCache.has(cacheKey)) {
+                    treeLayer.setPoints(treeCache.get(cacheKey));
+                    return;
+                  }
+                  treeAbort?.abort();
+                  const controller = new AbortController();
+                  treeAbort = controller;
+                  const query = "[out:json][timeout:5];node[\"natural\"=\"tree\"](" +
+                    south.toFixed(5) + "," + west.toFixed(5) + "," +
+                    north.toFixed(5) + "," + east.toFixed(5) +
+                    ");out body 220;";
+                  try {
+                    const data = await fetchOverpassJSON(query, controller.signal);
+                    if (cancelled || controller.signal.aborted || lastTreeKey !== cacheKey) return;
+                    const points = (Array.isArray(data?.elements) ? data.elements : [])
+                      .filter(item => item?.type === "node" && item.tags?.natural === "tree")
+                      .filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)))
+                      .map((item, index) => {
+                        const height = Number.parseFloat(String(item.tags?.height || ""));
+                        return {
+                          lat: Number(item.lat),
+                          lng: Number(item.lon),
+                          size: Number.isFinite(height)
+                            ? Math.max(0.62, Math.min(1.55, height / 7.5))
+                            : 1 + (index % 4) * 0.07,
+                        };
+                      })
+                      .slice(0, 220);
+                    treeCache.set(cacheKey, points);
+                    if (treeCache.size > 18) treeCache.delete(treeCache.keys().next().value);
+                    treeLayer.setPoints(points);
+                  } catch (error) {
+                    if (error?.name !== "AbortError") {
+                      console.warn("[Astana Guide] OpenStreetMap tree points unavailable", error);
+                    }
+                  }
+                };
+                const scheduleTreeRefresh = () => {
+                  if (treeTimer !== null) window.clearTimeout(treeTimer);
+                  if (map.getZoom() < 15.2) {
+                    treeLayer.setPoints([]);
+                    return;
+                  }
+                  treeTimer = window.setTimeout(() => { void refreshTrees(); }, 1300);
+                };
+                treeLayer._astanaTreeCleanup = () => {
+                  if (treeTimer !== null) window.clearTimeout(treeTimer);
+                  treeAbort?.abort();
+                  map.off("moveend", scheduleTreeRefresh);
+                  map.off("zoomend", scheduleTreeRefresh);
+                };
+                map.on("moveend", scheduleTreeRefresh);
+                map.on("zoomend", scheduleTreeRefresh);
+                scheduleTreeRefresh();
+              } catch (error) {
+                if (!cancelled) {
+                  console.warn("[Astana Guide] Volumetric tree layer was skipped", error);
+                }
+              }
+            };
+
+            void installNaturalTreeLayer();
+
             map.addSource("moy3d-main-route", { type: "geojson", data: emptyCollection });
             map.addSource("moy3d-alternative-routes", { type: "geojson", data: emptyCollection });
             map.addSource("moy3d-location-points", { type: "geojson", data: emptyCollection });
