@@ -9,8 +9,31 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const STALE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Astana + nearby settlements. Photon uses minLon,minLat,maxLon,maxLat.
-const ASTANA_BBOX = "71.00,50.85,71.85,51.40";
 const ASTANA_CENTER = { lat: 51.1694, lon: 71.4491 };
+
+const ASTANA_ONLY_ALIASES = [
+  "хан шатыр",
+  "ханшатыр",
+  "khan shatyr",
+  "mega silk way",
+  "мега силк вей",
+  "мега силквей",
+  "нурлы жол",
+  "нурлыжол",
+  "nurly zhol",
+  "nqz",
+  "uacc",
+];
+
+function mentionsAstana(query) {
+  return /(^|[\\s,])(?:астана|astana)(?=$|[\\s,])/i.test(normalize(query));
+}
+
+function useAstanaCurated(query) {
+  const normalizedQuery = normalize(query);
+  return mentionsAstana(normalizedQuery) ||
+    ASTANA_ONLY_ALIASES.some(alias => normalizedQuery.includes(normalize(alias)));
+}
 
 const CURATED_PLACES = [
   {
@@ -266,14 +289,7 @@ function featureIdentity(feature) {
 }
 
 function curatedFirst(query) {
-  return matchesAirport(query) || matchesGenericMall(query) || matchesStation(query) ||
-    CURATED_PLACES.some(place =>
-      matchesCuratedAddress(query, place) ||
-      place.aliases.some(alias => {
-        const candidate = normalize(alias);
-        return query.length >= 3 && candidate.includes(query);
-      })
-    );
+  return useAstanaCurated(query);
 }
 
 async function fetchPhoton(term, options, signal) {
@@ -281,12 +297,14 @@ async function fetchPhoton(term, options, signal) {
   url.searchParams.set("q", term);
   url.searchParams.set("limit", String(options.limit));
   url.searchParams.set("lang", "default");
-  url.searchParams.set("countrycode", "KZ");
-  url.searchParams.set("bbox", ASTANA_BBOX);
-  url.searchParams.set("lat", String(options.lat));
-  url.searchParams.set("lon", String(options.lon));
-  url.searchParams.set("zoom", "12");
-  url.searchParams.set("location_bias_scale", "0.15");
+  // Never constrain text search to Astana or Kazakhstan. Coordinates are an
+  // optional ranking hint only; they are not a search boundary.
+  if (Number.isFinite(options.lat) && Number.isFinite(options.lon)) {
+    url.searchParams.set("lat", String(options.lat));
+    url.searchParams.set("lon", String(options.lon));
+    url.searchParams.set("zoom", "12");
+    url.searchParams.set("location_bias_scale", "0.15");
+  }
   url.searchParams.set("dedupe", "1");
   if (options.osmTag) url.searchParams.append("osm_tag", options.osmTag);
 
@@ -326,27 +344,27 @@ function queryVariants(query) {
     }
   };
 
-  if (matchesAirport(normalizedQuery)) {
-    add("Astana Airport");
-  } else if (matchesGenericMall(normalizedQuery)) {
-    add("shopping mall Astana");
-  } else if (matchesStation(normalizedQuery)) {
-    add("Nurly Zhol station Astana");
-    add("Astana-1");
-  } else {
-    // People enter the same Astana address in several common forms:
-    // "ул. Кенесары 10", "улица Кенесары 10", or just "Кенесары 10".
-    const withoutPrefix = normalizedQuery.replace(
-      /^(?:(?:город|г\.?|улица|ул\.?|проспект|пр-т|пр\.?|даңғылы|көшесі)\s+)+/i,
-      ""
-    ).trim();
-    if (withoutPrefix && withoutPrefix !== normalizedQuery) {
-      add(withoutPrefix);
-    } else if (normalizedQuery.length >= 3 && normalizedQuery !== "астана") {
-      // A city-qualified variant helps Photon find named places whose OSM
-      // primary name is stored in another language or spelling.
-      add(String(query).trim() + " Astana");
+  // Astana-only English aliases are used only when the user actually asks
+  // for Astana or one of its uniquely named landmarks. Never append "Astana"
+  // to a query that may refer to another city or country.
+  if (useAstanaCurated(normalizedQuery)) {
+    if (matchesAirport(normalizedQuery)) {
+      add("Astana Airport");
+    } else if (matchesGenericMall(normalizedQuery)) {
+      add("shopping mall Astana");
+    } else if (matchesStation(normalizedQuery)) {
+      add("Nurly Zhol station Astana");
+      add("Astana-1");
     }
+  }
+
+  // Normalize common street prefixes without changing the requested city.
+  const withoutPrefix = normalizedQuery.replace(
+    /^(?:(?:город|г\\.?|улица|ул\\.?|проспект|пр-т|пр\\.?|даңғылы|көшесі)\\s+)+/i,
+    ""
+  ).trim();
+  if (withoutPrefix && withoutPrefix !== normalizedQuery) {
+    add(withoutPrefix);
   }
 
   return variants.slice(0, 3);
@@ -439,7 +457,7 @@ function dedupeFeatures(features, query) {
     const lon = Number(coordinates[0]);
     const lat = Number(coordinates[1]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    if (lon < 70.8 || lon > 72.0 || lat < 50.7 || lat > 51.55) continue;
+    if (lon < -180 || lon > 180 || lat < -90 || lat > 90) continue;
 
     const key = featureIdentity(feature);
     if (seen.has(key)) continue;
@@ -464,10 +482,13 @@ export async function GET(request) {
     ? Math.max(1, Math.min(MAX_LIMIT, Math.trunc(requestedLimit)))
     : 12;
 
-  const lat = validCoordinate(incoming.searchParams.get("lat"), -90, 90) ?? ASTANA_CENTER.lat;
-  const lon = validCoordinate(incoming.searchParams.get("lon"), -180, 180) ?? ASTANA_CENTER.lon;
+  const requestedLat = validCoordinate(incoming.searchParams.get("lat"), -90, 90);
+  const requestedLon = validCoordinate(incoming.searchParams.get("lon"), -180, 180);
+  const astanaContext = useAstanaCurated(normalize(query));
+  const lat = requestedLat ?? (astanaContext ? ASTANA_CENTER.lat : null);
+  const lon = requestedLon ?? (astanaContext ? ASTANA_CENTER.lon : null);
   const normalizedQuery = normalize(query);
-  const key = [normalizedQuery, limit, lat.toFixed(3), lon.toFixed(3)].join("|");
+  const key = [normalizedQuery, limit, lat === null ? "" : lat.toFixed(3), lon === null ? "" : lon.toFixed(3)].join("|");
   const { cache, inflight } = getCache();
   const now = Date.now();
   const cached = cache.get(key);
@@ -482,7 +503,7 @@ export async function GET(request) {
   }
 
   const task = (async () => {
-    const localCurated = curatedFeatures(normalizedQuery);
+    const localCurated = astanaContext ? curatedFeatures(normalizedQuery) : [];
     const variants = queryVariants(query);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);
