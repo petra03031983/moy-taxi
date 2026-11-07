@@ -302,8 +302,10 @@ async function fetchPhoton(term, options, signal) {
   if (Number.isFinite(options.lat) && Number.isFinite(options.lon)) {
     url.searchParams.set("lat", String(options.lat));
     url.searchParams.set("lon", String(options.lon));
-    url.searchParams.set("zoom", "12");
-    url.searchParams.set("location_bias_scale", "0.15");
+    // Give the current region a strong preference over distant duplicate names.
+    // This is a ranking hint only: it never excludes addresses outside the region.
+    url.searchParams.set("zoom", "9");
+    url.searchParams.set("location_bias_scale", "0.05");
   }
   url.searchParams.set("dedupe", "1");
   if (options.osmTag) url.searchParams.append("osm_tag", options.osmTag);
@@ -370,7 +372,24 @@ function queryVariants(query) {
   return variants.slice(0, 3);
 }
 
-function dedupeFeatures(features, query) {
+function distanceKmFromCenter(feature, center) {
+  const coordinates = feature?.geometry?.coordinates;
+  if (!center || !Array.isArray(coordinates) || coordinates.length < 2) return null;
+  const lon = Number(coordinates[0]);
+  const lat = Number(coordinates[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  const radians = value => value * Math.PI / 180;
+  const dLat = radians(lat - center.lat);
+  const dLon = radians(lon - center.lon);
+  const startLat = radians(center.lat);
+  const endLat = radians(lat);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+}
+
+function dedupeFeatures(features, query, searchCenter = null) {
   const unique = [];
   const seen = new Set();
   const normalizedQuery = normalize(query);
@@ -441,6 +460,13 @@ function dedupeFeatures(features, query) {
       if (foundHouse === normalize(houseMatch[1])) score += 60;
       else if (foundHouse) score -= 30;
       else score -= 12;
+    }
+
+    // Prefer equally relevant results near the driver's current region.
+    // The bonus fades over 180 km and never removes distant/global matches.
+    const distanceKm = distanceKmFromCenter(feature, searchCenter);
+    if (Number.isFinite(distanceKm)) {
+      score += Math.max(0, 45 - Math.min(distanceKm, 180) * 0.25);
     }
 
     if (curatedPriority && properties.extra?.source === "OpenStreetMap curated OSM object") score += 1000;
@@ -517,7 +543,8 @@ export async function GET(request) {
     // Known Astana landmarks are served from our own coordinate index immediately.
     // Do not make a verified local result wait for the external Photon service.
     if (exactCuratedMatch && localCurated.length) {
-      const exactFeatures = dedupeFeatures(localCurated, normalizedQuery).slice(0, limit);
+      const searchCenter = lat !== null && lon !== null ? { lat, lon } : null;
+      const exactFeatures = dedupeFeatures(localCurated, normalizedQuery, searchCenter).slice(0, limit);
       if (exactFeatures.length) {
         const exactValue = {
           features: exactFeatures,
@@ -573,11 +600,13 @@ export async function GET(request) {
       clearTimeout(timeout);
     }
 
+    const searchCenter = lat !== null && lon !== null ? { lat, lon } : null;
     const features = dedupeFeatures(
       curatedFirst(normalizedQuery)
         ? [...localCurated, ...providerFeatures]
         : [...providerFeatures, ...localCurated],
-      normalizedQuery
+      normalizedQuery,
+      searchCenter
     ).slice(0, limit);
 
     if (!providerFeatures.length && !features.length) {
