@@ -394,6 +394,7 @@ export async function GET(request) {
     const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);
     let providerFeatures = [];
     let providerError = null;
+    let providerDiagnostics = [];
 
     try {
       const results = await Promise.allSettled(
@@ -405,7 +406,7 @@ export async function GET(request) {
         }, controller.signal))
       );
 
-      const providerDiagnostics = [];
+      providerDiagnostics = [];
       for (let index = 0; index < results.length; index += 1) {
         const result = results[index];
         if (result.status === "fulfilled") {
