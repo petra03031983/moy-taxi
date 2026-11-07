@@ -26,7 +26,7 @@ const ASTANA_ONLY_ALIASES = [
 ];
 
 function mentionsAstana(query) {
-  return /(^|[\\s,])(?:астана|astana)(?=$|[\\s,])/i.test(normalize(query));
+  return /(^|[\s,])(?:астана|astana)(?=$|[\s,])/i.test(normalize(query));
 }
 
 function useAstanaCurated(query) {
@@ -360,7 +360,7 @@ function queryVariants(query) {
 
   // Normalize common street prefixes without changing the requested city.
   const withoutPrefix = normalizedQuery.replace(
-    /^(?:(?:город|г\\.?|улица|ул\\.?|проспект|пр-т|пр\\.?|даңғылы|көшесі)\\s+)+/i,
+    /^(?:(?:город|г\.?|улица|ул\.?|проспект|пр-т|пр\.?|даңғылы|көшесі)\s+)+/i,
     ""
   ).trim();
   if (withoutPrefix && withoutPrefix !== normalizedQuery) {
