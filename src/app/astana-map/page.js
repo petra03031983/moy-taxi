@@ -2552,16 +2552,10 @@ export default function AstanaMapPage() {
 
       const suggestionParams = new URLSearchParams({
         q: value,
-        limit: "12",
+        limit: "16",
       });
-      const focus = positionRef.current || origin;
-      if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-        suggestionParams.set("lat", String(focus.lat));
-        suggestionParams.set("lon", String(focus.lng));
-        suggestionParams.set("zoom", "13");
-      }
 
-      // Address suggestions are searched in the local Astana Guide index.
+      // Search address suggestions globally; never bias another city toward the current GPS position.
       const response = await fetch("/api/address-suggestions?" + suggestionParams.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
@@ -2666,12 +2660,6 @@ export default function AstanaMapPage() {
         limit: "16",
         full: "1",
       });
-      const focus = positionRef.current || origin;
-      if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-        params.set("lat", String(focus.lat));
-        params.set("lon", String(focus.lng));
-        params.set("zoom", "13");
-      }
 
       const response = await fetch("/api/address-suggestions?" + params.toString(), {
         signal: controller.signal,
