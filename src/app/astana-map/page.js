@@ -1743,9 +1743,9 @@ export default function AstanaMapPage() {
           style: "https://tiles.openfreemap.org/styles/liberty",
           center: [initialPosition.lng, initialPosition.lat],
           zoom: 15.5,
-          pitch: 52,
+          pitch: 60,
           bearing: 0,
-          maxPitch: 65,
+          maxPitch: 72,
           minZoom: 3,
           maxZoom: 20,
           attributionControl: true,
@@ -1762,17 +1762,70 @@ export default function AstanaMapPage() {
             const labelLayerId = labelLayer ? labelLayer.id : null;
             const emptyCollection = { type: "FeatureCollection", features: [] };
 
+            // Бесплатная открытая цифровая модель рельефа (DEM), без ключа и подписки.
+            // Если сервер рельефа недоступен, основная 3D-карта продолжает работать.
+            try {
+              map.addSource("moy3d-terrain", {
+                type: "raster-dem",
+                url: "https://terrain.reearth.land/mapbox/ellipsoid/tilejson.json",
+                tileSize: 256,
+                maxzoom: 15,
+              });
+              map.setTerrain({ source: "moy3d-terrain", exaggeration: 1.08 });
+              const firstTransportLayer = styleLayers.find(layer =>
+                layer.type === "line" && String(layer["source-layer"] || "").toLowerCase() === "transportation"
+              );
+              addLayerBeforeLabels(map, {
+                id: "moy3d-terrain-hillshade",
+                type: "hillshade",
+                source: "moy3d-terrain",
+                paint: {
+                  "hillshade-exaggeration": 0.22,
+                  "hillshade-shadow-color": "#65716f",
+                  "hillshade-highlight-color": "#fff8e9",
+                  "hillshade-accent-color": "#aab6a9",
+                },
+              }, firstTransportLayer?.id || labelLayerId);
+            } catch (terrainError) {
+              console.warn("[Astana Guide] Open terrain layer unavailable; keeping 3D buildings", terrainError);
+            }
+
+            // Natural sunlight and atmospheric horizon for a deeper, more realistic city view.
+            try {
+              if (typeof map.setLight === "function") {
+                map.setLight({
+                  anchor: "map",
+                  color: "#fff4df",
+                  intensity: 0.68,
+                  position: [1.15, 225, 42],
+                });
+              }
+              if (typeof map.setSky === "function") {
+                map.setSky({
+                  "sky-color": "#b8d5e9",
+                  "sky-horizon-blend": 0.72,
+                  "horizon-color": "#f3e8d7",
+                  "horizon-fog-blend": 0.18,
+                  "fog-color": "#dbe5e8",
+                  "fog-ground-blend": 0.82,
+                  "atmosphere-blend": 0.82,
+                });
+              }
+            } catch (atmosphereError) {
+              console.warn("[Astana Guide] Atmosphere styling unavailable", atmosphereError);
+            }
+
             // Астана Гид: фирменная цветовая палитра для 3D/4D-подложки.
             // Зелёный маршрут и собственные навигационные слои добавляются ниже и не перекрашиваются.
             const astanaBuildingColor = [
               "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 10],
-              0, "#D9F1E8",
-              12, "#BDE8E2",
-              28, "#8DD5D7",
-              55, "#69BED0",
-              95, "#469FBD",
-              150, "#347FA8",
-              220, "#28658E",
+              0, "#e7e1d7",
+              12, "#ded6c9",
+              28, "#d0c5b4",
+              55, "#c0b29e",
+              95, "#ad9b84",
+              150, "#96836d",
+              220, "#7d6b59",
             ];
 
             const setBasePaint = (layer, property, value) => {
@@ -2418,7 +2471,7 @@ export default function AstanaMapPage() {
     map.jumpTo({
       center,
       zoom: targetZoom,
-      pitch: navigating ? 58 : 52,
+      pitch: navigating ? 64 : 60,
       bearing: navigating && Number.isFinite(origin?.heading) ? origin.heading : map.getBearing(),
     });
     requestAnimationFrame(() => map.resize());
@@ -2469,7 +2522,7 @@ export default function AstanaMapPage() {
       map.easeTo({
         center,
         zoom: Math.max(16.5, map.getZoom()),
-        pitch: 58,
+        pitch: 64,
         bearing: targetBearing,
         duration: 220,
         essential: true,
@@ -4484,7 +4537,7 @@ export default function AstanaMapPage() {
         map3dRef.current.jumpTo({
           center: [center.lng, center.lat],
           zoom: Math.max(15.2, Number(map.getZoom?.() || map3dRef.current.getZoom())),
-          pitch: 52,
+          pitch: 60,
           bearing: 0,
         });
       }
@@ -4638,7 +4691,7 @@ export default function AstanaMapPage() {
             map3dRef.current.jumpTo({
               center: [center.lng, center.lat],
               zoom: Math.max(15.2, Number(mapRef.current?.getZoom?.() || map3dRef.current.getZoom())),
-              pitch: 52,
+              pitch: 60,
               bearing: 0,
             });
           }
