@@ -199,14 +199,17 @@ function pointOnSurface(ring) {
   const centroid = polygonCentroid(ring);
   if (centroid && pointInside(centroid, ring)) return centroid;
 
-  const lats = ring.map(point => point.lat);
-  const lons = ring.map(point => point.lon);
-  const bounds = {
-    minLat: Math.min(...lats),
-    maxLat: Math.max(...lats),
-    minLon: Math.min(...lons),
-    maxLon: Math.max(...lons),
-  };
+  const bounds = ring.reduce((acc, point) => ({
+    minLat: Math.min(acc.minLat, point.lat),
+    maxLat: Math.max(acc.maxLat, point.lat),
+    minLon: Math.min(acc.minLon, point.lon),
+    maxLon: Math.max(acc.maxLon, point.lon),
+  }), {
+    minLat: Infinity,
+    maxLat: -Infinity,
+    minLon: Infinity,
+    maxLon: -Infinity,
+  });
   let stepLat = (bounds.maxLat - bounds.minLat) / 32;
   let stepLon = (bounds.maxLon - bounds.minLon) / 32;
   if (!(stepLat > 0) || !(stepLon > 0)) return centroid;
@@ -271,7 +274,16 @@ function polygonRings(element) {
       if (closed) rings.push(points.slice(0, -1));
     }
   }
-  return rings.sort((a, b) => Math.abs(polygonCentroid(b)?.lat || 0) - Math.abs(polygonCentroid(a)?.lat || 0));
+  const area = ring => {
+    let total = 0;
+    for (let i = 0; i < ring.length; i += 1) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      total += a.lon * b.lat - b.lon * a.lat;
+    }
+    return Math.abs(total);
+  };
+  return rings.sort((a, b) => area(b) - area(a));
 }
 
 function elementPoint(element, entrances) {
