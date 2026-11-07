@@ -316,19 +316,40 @@ async function fetchPhoton(term, options, signal) {
 
 function queryVariants(query) {
   const normalizedQuery = normalize(query);
-  const variants = [{ term: query, osmTag: "" }];
+  const variants = [{ term: String(query || "").trim(), osmTag: "" }];
+  const add = term => {
+    const cleaned = String(term || "").trim();
+    if (!cleaned) return;
+    const key = normalize(cleaned);
+    if (!variants.some(item => normalize(item.term) === key)) {
+      variants.push({ term: cleaned, osmTag: "" });
+    }
+  };
+
   if (matchesAirport(normalizedQuery)) {
-    variants.push({
-      term: "Astana Airport",
-      osmTag: "",
-    });
+    add("Astana Airport");
   } else if (matchesGenericMall(normalizedQuery)) {
-    variants.push({ term: "shopping mall Astana", osmTag: "" });
+    add("shopping mall Astana");
   } else if (matchesStation(normalizedQuery)) {
-    variants.push({ term: "Nurly Zhol station Astana", osmTag: "" });
-    variants.push({ term: "Astana-1", osmTag: "" });
+    add("Nurly Zhol station Astana");
+    add("Astana-1");
+  } else {
+    // People enter the same Astana address in several common forms:
+    // "ул. Кенесары 10", "улица Кенесары 10", or just "Кенесары 10".
+    const withoutPrefix = normalizedQuery.replace(
+      /^(?:(?:город|г\.?|улица|ул\.?|проспект|пр-т|пр\.?|даңғылы|көшесі)\s+)+/i,
+      ""
+    ).trim();
+    if (withoutPrefix && withoutPrefix !== normalizedQuery) {
+      add(withoutPrefix);
+    } else if (normalizedQuery.length >= 3 && normalizedQuery !== "астана") {
+      // A city-qualified variant helps Photon find named places whose OSM
+      // primary name is stored in another language or spelling.
+      add(String(query).trim() + " Astana");
+    }
   }
-  return variants;
+
+  return variants.slice(0, 3);
 }
 
 function dedupeFeatures(features, query) {
@@ -367,12 +388,50 @@ function dedupeFeatures(features, query) {
     : features;
 
   const sourceFeatures = airportQuery ? airportFeatures : mallQuery ? mallFeatures : features;
-  const sorted = curatedPriority
-    ? [
-        ...sourceFeatures.filter(feature => feature?.properties?.extra?.source === "OpenStreetMap curated OSM object"),
-        ...sourceFeatures.filter(feature => feature?.properties?.extra?.source !== "OpenStreetMap curated OSM object"),
-      ]
-    : sourceFeatures;
+  const relevanceQuery = normalize(query).replace(
+    /^(?:(?:город|г\.?|улица|ул\.?|проспект|пр-т|пр\.?|даңғылы|көшесі)\s+)+/i,
+    ""
+  ).trim();
+  const queryTokens = relevanceQuery.split(/\s+/).filter(token =>
+    token.length >= 2 && !["город", "астана", "казахстан", "улица", "проспект", "дом"].includes(token)
+  );
+  const scoreFeature = feature => {
+    const properties = feature?.properties || {};
+    const searchable = normalize([
+      properties.name,
+      properties.street,
+      properties.housenumber,
+      properties.display_name,
+      properties.city,
+      properties.locality,
+      properties.district,
+      properties["name:ru"],
+      properties["name:kk"],
+      properties.alt_name,
+    ].filter(Boolean).join(" "));
+    const name = normalize(properties.name || "");
+    let score = 0;
+    if (relevanceQuery && searchable.includes(relevanceQuery)) score += 35;
+    if (name && (name === relevanceQuery || name.includes(relevanceQuery))) score += 55;
+    const matchedTokens = queryTokens.filter(token => searchable.includes(token));
+    score += matchedTokens.length * 12;
+    if (queryTokens.length && matchedTokens.length === queryTokens.length) score += 25;
+
+    const houseMatch = relevanceQuery.match(/(?:^|\\s)(\\d+[0-9а-яa-z]*(?:[/-]\\d+[0-9а-яa-z]*)?)(?:$|\\s)/i);
+    if (houseMatch) {
+      const foundHouse = normalize(properties.housenumber || "");
+      if (foundHouse === normalize(houseMatch[1])) score += 60;
+      else if (foundHouse) score -= 30;
+      else score -= 12;
+    }
+
+    if (curatedPriority && properties.extra?.source === "OpenStreetMap curated OSM object") score += 1000;
+    return score;
+  };
+  const sorted = sourceFeatures
+    .map((feature, index) => ({ feature, index, score: scoreFeature(feature) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(item => item.feature);
 
   for (const feature of sorted) {
     const coordinates = feature?.geometry?.coordinates;
