@@ -1105,6 +1105,7 @@ export default function AstanaMapPage() {
   const searchCacheRef = useRef(new Map());
   const overpassCoordinateCacheRef = useRef(new Map());
   const overpassSelectionRequestRef = useRef(0);
+  const routeBuildRequestRef = useRef(0);
   const searchRequestRef = useRef(0);
   const autocompleteAbortRef = useRef(null);
   const autocompleteTimerRef = useRef(null);
@@ -2631,6 +2632,8 @@ export default function AstanaMapPage() {
 
   function scheduleAddressSuggestions(value) {
     cancelAddressSuggestions();
+    routeBuildRequestRef.current += 1;
+    setRouting(false);
     overpassSelectionRequestRef.current += 1;
     searchAbortRef.current?.abort();
     searchRequestRef.current += 1;
@@ -2652,7 +2655,7 @@ export default function AstanaMapPage() {
     autocompleteTimerRef.current = window.setTimeout(() => {
       autocompleteTimerRef.current = null;
       void loadAddressSuggestions(text, requestId);
-    }, 450);
+    }, 300);
   }
 
   async function searchAddress(value = query) {
@@ -3929,26 +3932,31 @@ export default function AstanaMapPage() {
     }
   }
 
-  async function buildRoute(nextMode = mode) {
-    if (!origin || !destination) {
-      setError("Сначала выберите адрес назначения.");
+  async function buildRoute(nextMode = mode, destinationOverride = null, originOverride = null) {
+    const requestId = ++routeBuildRequestRef.current;
+    const targetPoint = destinationOverride || destination;
+    const fromPoint = originOverride || routeOrigin || positionRef.current || origin;
+
+    if (!fromPoint || !targetPoint) {
+      setRouting(false);
+      setError("Не удалось определить начальную или конечную точку маршрута.");
       return;
     }
     if (nextMode === "bus") {
+      setRouting(false);
       setError("Маршрут на автобусе пока не подтверждён для Астаны в подключённых данных. Я не буду подменять его автомобильным маршрутом.");
       return;
     }
     setRouting(true);
+    setRoute(null);
     setNavigating(false);
     setNextInstruction(null);
     setError("");
     try {
-      const fromPoint = routeOrigin || origin;
-      if (!fromPoint) throw new Error("Не удалось определить начальную точку маршрута.");
-      if (!routeOrigin) setRouteOrigin(fromPoint);
+      setRouteOrigin(fromPoint);
       const router = nextMode === "walk" ? ROUTERS.walk : ROUTERS.car;
       const alternatives = nextMode === "car" ? "&alternatives=true" : "";
-      const url = `${router}/${fromPoint.lng},${fromPoint.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson&steps=true&annotations=true${alternatives}`;
+      const url = `${router}/${fromPoint.lng},${fromPoint.lat};${targetPoint.lng},${targetPoint.lat}?overview=full&geometries=geojson&steps=true&annotations=true${alternatives}`;
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 22000);
       let res;
@@ -3962,6 +3970,7 @@ export default function AstanaMapPage() {
       }
       if (!res.ok) throw new Error("Маршрутизатор временно недоступен");
       const data = await res.json();
+      if (requestId !== routeBuildRequestRef.current) return;
       if (data.code !== "Ok" || !data.routes?.[0]) throw new Error("По этим точкам маршрут не найден");
       const options = data.routes.slice(0, 3).map((r, index) => ({
         id: nextMode + "-" + index + "-" + Math.round(r.distance) + "-" + Math.round(r.duration),
@@ -3979,14 +3988,18 @@ export default function AstanaMapPage() {
       setNavigating(false);
       routeProgressRef.current = -1;
     } catch (e) {
-      setError(e?.message || "Не удалось построить маршрут");
+      if (requestId === routeBuildRequestRef.current) {
+        setError(e?.message || "Не удалось построить маршрут");
+      }
     } finally {
-      setRouting(false);
+      if (requestId === routeBuildRequestRef.current) setRouting(false);
     }
   }
 
   function chooseResult(item) {
     cancelAddressSuggestions();
+    routeBuildRequestRef.current += 1;
+    setRouting(false);
     const selectionRequestId = ++overpassSelectionRequestRef.current;
     setSearching(false);
     setResults([]);
@@ -4048,6 +4061,10 @@ export default function AstanaMapPage() {
     setError("");
     mapRef.current?.setView([point.lat, point.lng], 17);
 
+    // Start the real road route as soon as the user picks a valid address.
+    // A later Overpass refinement below will recalculate it to the building entrance.
+    void buildRoute(mode, point, positionRef.current || origin);
+
     const isWholeAerodrome =
       String(item?.osm_key || item?.class || "").toLowerCase() === "aeroway" &&
       String(item?.osm_value || item?.type || "").toLowerCase() === "aerodrome";
@@ -4075,6 +4092,7 @@ export default function AstanaMapPage() {
             };
           });
           mapRef.current?.setView([refinedPoint.lat, refinedPoint.lng], 17);
+          void buildRoute(mode, refinedPoint, positionRef.current || origin);
         })
         .catch(() => {
           // The direct OSM/Nominatim coordinate remains usable. Do not block
