@@ -2578,14 +2578,8 @@ export default function AstanaMapPage() {
 
       const suggestionParams = new URLSearchParams({
         q: value,
-        limit: "12",
+        limit: "16",
       });
-      const focus = positionRef.current || origin;
-      if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-        suggestionParams.set("lat", String(focus.lat));
-        suggestionParams.set("lon", String(focus.lng));
-        suggestionParams.set("zoom", "13");
-      }
 
       // Address suggestions are searched in the local Astana Guide index.
       const response = await fetch("/api/address-suggestions?" + suggestionParams.toString(), {
@@ -2652,7 +2646,7 @@ export default function AstanaMapPage() {
     autocompleteTimerRef.current = window.setTimeout(() => {
       autocompleteTimerRef.current = null;
       void loadAddressSuggestions(text, requestId);
-    }, 450);
+    }, 300);
   }
 
   async function searchAddress(value = query) {
@@ -2692,12 +2686,6 @@ export default function AstanaMapPage() {
         limit: "16",
         full: "1",
       });
-      const focus = positionRef.current || origin;
-      if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-        params.set("lat", String(focus.lat));
-        params.set("lon", String(focus.lng));
-        params.set("zoom", "13");
-      }
 
       const response = await fetch("/api/address-suggestions?" + params.toString(), {
         signal: controller.signal,
