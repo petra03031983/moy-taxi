@@ -2523,6 +2523,19 @@ export default function AstanaMapPage() {
     };
   }, [leafletReady]);
 
+  function getAddressSearchLocation() {
+    if (!gpsFixReady || !origin) return null;
+    const lat = Number(origin.lat);
+    const lon = Number(origin.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
+        lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return {
+      lat,
+      lon,
+      cacheKey: lat.toFixed(2) + "," + lon.toFixed(2),
+    };
+  }
+
   function cancelAddressSuggestions() {
     if (autocompleteTimerRef.current !== null) {
       window.clearTimeout(autocompleteTimerRef.current);
@@ -2538,7 +2551,9 @@ export default function AstanaMapPage() {
     const controller = new AbortController();
     autocompleteAbortRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 8000);
-    const cacheKey = "suggest:" + value.toLocaleLowerCase("ru-RU");
+    const searchLocation = getAddressSearchLocation();
+    const locationCacheKey = searchLocation?.cacheKey || "no-gps";
+    const cacheKey = "suggest:" + value.toLocaleLowerCase("ru-RU") + ":" + locationCacheKey;
 
     try {
       const cached = searchCacheRef.current.get(cacheKey);
@@ -2554,8 +2569,12 @@ export default function AstanaMapPage() {
         q: value,
         limit: "16",
       });
+      if (searchLocation) {
+        suggestionParams.set("lat", String(searchLocation.lat));
+        suggestionParams.set("lon", String(searchLocation.lon));
+      }
 
-      // Search address suggestions globally; never bias another city toward the current GPS position.
+      // Current GPS is only a ranking preference; searches remain worldwide.
       const response = await fetch("/api/address-suggestions?" + suggestionParams.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
@@ -2638,7 +2657,9 @@ export default function AstanaMapPage() {
     setQuery(text);
     setShowResultsPanel(true);
     setError("");
-    const cacheKey = "full:" + text.toLocaleLowerCase("ru-RU");
+    const searchLocation = getAddressSearchLocation();
+    const locationCacheKey = searchLocation?.cacheKey || "no-gps";
+    const cacheKey = "full:" + text.toLocaleLowerCase("ru-RU") + ":" + locationCacheKey;
     searchAbortRef.current?.abort();
     const controller = new AbortController();
     searchAbortRef.current = controller;
@@ -2660,6 +2681,10 @@ export default function AstanaMapPage() {
         limit: "16",
         full: "1",
       });
+      if (searchLocation) {
+        params.set("lat", String(searchLocation.lat));
+        params.set("lon", String(searchLocation.lon));
+      }
 
       const response = await fetch("/api/address-suggestions?" + params.toString(), {
         signal: controller.signal,
