@@ -504,6 +504,32 @@ export async function GET(request) {
 
   const task = (async () => {
     const localCurated = astanaContext ? curatedFeatures(normalizedQuery) : [];
+    const exactCuratedMatch = astanaContext && CURATED_PLACES.some(place =>
+      place.aliases.some(alias => {
+        const candidate = normalize(alias);
+        return normalizedQuery === candidate ||
+          normalizedQuery.startsWith(candidate + " ") ||
+          normalizedQuery.endsWith(" " + candidate) ||
+          normalizedQuery.includes(" " + candidate + " ");
+      })
+    );
+
+    // Known Astana landmarks are served from our own coordinate index immediately.
+    // Do not make a verified local result wait for the external Photon service.
+    if (exactCuratedMatch && localCurated.length) {
+      const exactFeatures = dedupeFeatures(localCurated, normalizedQuery).slice(0, limit);
+      if (exactFeatures.length) {
+        const exactValue = {
+          features: exactFeatures,
+          count: exactFeatures.length,
+          provider: "Astana Guide local verified index",
+          partial: false,
+        };
+        cache.set(key, { savedAt: Date.now(), value: exactValue });
+        return exactValue;
+      }
+    }
+
     const variants = queryVariants(query);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);

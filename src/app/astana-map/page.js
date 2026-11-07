@@ -1743,9 +1743,9 @@ export default function AstanaMapPage() {
           style: "https://tiles.openfreemap.org/styles/liberty",
           center: [initialPosition.lng, initialPosition.lat],
           zoom: 15.5,
-          pitch: 60,
+          pitch: 52,
           bearing: 0,
-          maxPitch: 72,
+          maxPitch: 65,
           minZoom: 3,
           maxZoom: 20,
           attributionControl: true,
@@ -1762,70 +1762,17 @@ export default function AstanaMapPage() {
             const labelLayerId = labelLayer ? labelLayer.id : null;
             const emptyCollection = { type: "FeatureCollection", features: [] };
 
-            // Бесплатная открытая цифровая модель рельефа (DEM), без ключа и подписки.
-            // Если сервер рельефа недоступен, основная 3D-карта продолжает работать.
-            try {
-              map.addSource("moy3d-terrain", {
-                type: "raster-dem",
-                url: "https://terrain.reearth.land/mapbox/ellipsoid/tilejson.json",
-                tileSize: 256,
-                maxzoom: 15,
-              });
-              map.setTerrain({ source: "moy3d-terrain", exaggeration: 1.08 });
-              const firstTransportLayer = styleLayers.find(layer =>
-                layer.type === "line" && String(layer["source-layer"] || "").toLowerCase() === "transportation"
-              );
-              addLayerBeforeLabels(map, {
-                id: "moy3d-terrain-hillshade",
-                type: "hillshade",
-                source: "moy3d-terrain",
-                paint: {
-                  "hillshade-exaggeration": 0.22,
-                  "hillshade-shadow-color": "#65716f",
-                  "hillshade-highlight-color": "#fff8e9",
-                  "hillshade-accent-color": "#aab6a9",
-                },
-              }, firstTransportLayer?.id || labelLayerId);
-            } catch (terrainError) {
-              console.warn("[Astana Guide] Open terrain layer unavailable; keeping 3D buildings", terrainError);
-            }
-
-            // Natural sunlight and atmospheric horizon for a deeper, more realistic city view.
-            try {
-              if (typeof map.setLight === "function") {
-                map.setLight({
-                  anchor: "map",
-                  color: "#fff4df",
-                  intensity: 0.68,
-                  position: [1.15, 225, 42],
-                });
-              }
-              if (typeof map.setSky === "function") {
-                map.setSky({
-                  "sky-color": "#b8d5e9",
-                  "sky-horizon-blend": 0.72,
-                  "horizon-color": "#f3e8d7",
-                  "horizon-fog-blend": 0.18,
-                  "fog-color": "#dbe5e8",
-                  "fog-ground-blend": 0.82,
-                  "atmosphere-blend": 0.82,
-                });
-              }
-            } catch (atmosphereError) {
-              console.warn("[Astana Guide] Atmosphere styling unavailable", atmosphereError);
-            }
-
             // Астана Гид: фирменная цветовая палитра для 3D/4D-подложки.
             // Зелёный маршрут и собственные навигационные слои добавляются ниже и не перекрашиваются.
             const astanaBuildingColor = [
               "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 10],
-              0, "#e7e1d7",
-              12, "#ded6c9",
-              28, "#d0c5b4",
-              55, "#c0b29e",
-              95, "#ad9b84",
-              150, "#96836d",
-              220, "#7d6b59",
+              0, "#D9F1E8",
+              12, "#BDE8E2",
+              28, "#8DD5D7",
+              55, "#69BED0",
+              95, "#469FBD",
+              150, "#347FA8",
+              220, "#28658E",
             ];
 
             const setBasePaint = (layer, property, value) => {
@@ -2034,271 +1981,6 @@ export default function AstanaMapPage() {
                 "fill-extrusion-vertical-gradient": true,
               },
             }, labelLayerId);
-
-            // Volumetric tree models generated from open OSM tree locations.
-            // This optional renderer never blocks the underlying map if a library or data source is offline.
-            const installNaturalTreeLayer = async () => {
-              let treeTimer = null;
-              let treeAbort = null;
-              let lastTreeKey = "";
-              const treeCache = new Map();
-
-              const loadThree = () => new Promise((resolve, reject) => {
-                if (window.THREE?.WebGLRenderer) {
-                  resolve(window.THREE);
-                  return;
-                }
-                const sources = [
-                  "https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js",
-                  "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.159.0/three.min.js",
-                ];
-                let attempt = 0;
-                const next = () => {
-                  if (cancelled) {
-                    reject(new Error("3D tree loading cancelled"));
-                    return;
-                  }
-                  if (window.THREE?.WebGLRenderer) {
-                    resolve(window.THREE);
-                    return;
-                  }
-                  if (attempt >= sources.length) {
-                    reject(new Error("Three.js library is unavailable"));
-                    return;
-                  }
-                  const script = document.createElement("script");
-                  script.src = sources[attempt++];
-                  script.async = true;
-                  script.dataset.moyThreeJs = "1";
-                  let settled = false;
-                  const timeout = window.setTimeout(() => {
-                    if (settled) return;
-                    settled = true;
-                    script.remove();
-                    next();
-                  }, 6500);
-                  script.onload = () => {
-                    if (settled) return;
-                    settled = true;
-                    window.clearTimeout(timeout);
-                    if (window.THREE?.WebGLRenderer) resolve(window.THREE);
-                    else {
-                      script.remove();
-                      next();
-                    }
-                  };
-                  script.onerror = () => {
-                    if (settled) return;
-                    settled = true;
-                    window.clearTimeout(timeout);
-                    script.remove();
-                    next();
-                  };
-                  document.head.appendChild(script);
-                };
-                next();
-              });
-
-              try {
-                const THREE = await loadThree();
-                if (cancelled || map3dRef.current !== map || map.getLayer("moy3d-natural-trees")) return;
-
-                const makeVerticalCone = (radius, height) => {
-                  const geometry = new THREE.ConeGeometry(radius, height, 7, 1);
-                  geometry.translate(0, height / 2, 0);
-                  geometry.rotateX(Math.PI / 2);
-                  return geometry;
-                };
-                const trunkGeometry = new THREE.CylinderGeometry(0.13, 0.19, 2.5, 7, 1);
-                trunkGeometry.translate(0, 1.25, 0);
-                trunkGeometry.rotateX(Math.PI / 2);
-
-                const treeLayer = {
-                  id: "moy3d-natural-trees",
-                  type: "custom",
-                  renderingMode: "3d",
-                  onAdd(treeMap, gl) {
-                    this.map = treeMap;
-                    this.scene = new THREE.Scene();
-                    this.camera = new THREE.Camera();
-                    this.renderer = new THREE.WebGLRenderer({
-                      canvas: treeMap.getCanvas(),
-                      context: gl,
-                      antialias: true,
-                    });
-                    this.renderer.autoClear = false;
-                    this.scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x59452d, 1.25));
-                    const sunlight = new THREE.DirectionalLight(0xfff0d3, 1.05);
-                    sunlight.position.set(-0.45, -0.65, 1);
-                    this.scene.add(sunlight);
-                    this.maxTrees = 220;
-                    this.meshes = [
-                      new THREE.InstancedMesh(
-                        trunkGeometry,
-                        new THREE.MeshLambertMaterial({ color: "#755036", side: THREE.DoubleSide }),
-                        this.maxTrees
-                      ),
-                      new THREE.InstancedMesh(
-                        makeVerticalCone(2.05, 3.8),
-                        new THREE.MeshLambertMaterial({ color: "#2f7040", side: THREE.DoubleSide }),
-                        this.maxTrees
-                      ),
-                      new THREE.InstancedMesh(
-                        makeVerticalCone(1.72, 3.25),
-                        new THREE.MeshLambertMaterial({ color: "#43834a", side: THREE.DoubleSide }),
-                        this.maxTrees
-                      ),
-                      new THREE.InstancedMesh(
-                        makeVerticalCone(1.30, 2.85),
-                        new THREE.MeshLambertMaterial({ color: "#609453", side: THREE.DoubleSide }),
-                        this.maxTrees
-                      ),
-                    ];
-                    this.meshes.forEach(mesh => {
-                      mesh.count = 0;
-                      mesh.frustumCulled = false;
-                      mesh.castShadow = true;
-                      mesh.receiveShadow = true;
-                      this.scene.add(mesh);
-                    });
-                    this.dummy = new THREE.Object3D();
-                    this.upAxis = new THREE.Vector3(0, 0, 1);
-                  },
-                  setPoints(points) {
-                    if (!this.meshes || !this.dummy) return;
-                    const accepted = Array.isArray(points) ? points.slice(0, this.maxTrees) : [];
-                    const offsets = [0, 0.15, 1.75, 3.35];
-                    accepted.forEach((tree, index) => {
-                      const coordinate = window.maplibregl.MercatorCoordinate.fromLngLat(
-                        [tree.lng, tree.lat],
-                        0
-                      );
-                      const baseScale = coordinate.meterInMercatorCoordinateUnits();
-                      const size = Math.max(0.62, Math.min(1.55, Number(tree.size) || 1));
-                      const scale = baseScale * size;
-                      const rotation = ((index * 137.508) % 360) * Math.PI / 180;
-                      this.dummy.quaternion.setFromAxisAngle(this.upAxis, rotation);
-                      this.meshes.forEach((mesh, meshIndex) => {
-                        this.dummy.position.set(
-                          coordinate.x,
-                          coordinate.y,
-                          coordinate.z + baseScale * offsets[meshIndex] * size
-                        );
-                        this.dummy.scale.set(scale, -scale, scale);
-                        this.dummy.updateMatrix();
-                        mesh.setMatrixAt(index, this.dummy.matrix);
-                      });
-                    });
-                    this.meshes.forEach(mesh => {
-                      mesh.count = accepted.length;
-                      mesh.instanceMatrix.needsUpdate = true;
-                      mesh.computeBoundingSphere();
-                    });
-                    this.map?.triggerRepaint?.();
-                  },
-                  render(gl, args) {
-                    const matrix = args?.defaultProjectionData?.mainMatrix;
-                    if (!this.renderer || !matrix || !this.scene || !this.camera) return;
-                    this.camera.projectionMatrix.fromArray(matrix);
-                    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
-                    this.renderer.resetState();
-                    this.renderer.render(this.scene, this.camera);
-                  },
-                  onRemove() {
-                    this._astanaTreeCleanup?.();
-                    if (this.meshes) {
-                      this.meshes.forEach(mesh => {
-                        mesh.geometry?.dispose?.();
-                        mesh.material?.dispose?.();
-                      });
-                    }
-                    this.renderer?.dispose?.();
-                    this.renderer = null;
-                  },
-                };
-
-                addLayerBeforeLabels(map, treeLayer, labelLayerId);
-                const refreshTrees = async () => {
-                  if (cancelled || !map.getLayer("moy3d-natural-trees")) return;
-                  if (map.getZoom() < 15.2) {
-                    lastTreeKey = "";
-                    treeLayer.setPoints([]);
-                    return;
-                  }
-                  const bounds = map.getBounds();
-                  if (!bounds) return;
-                  const south = bounds.getSouth();
-                  const west = bounds.getWest();
-                  const north = bounds.getNorth();
-                  const east = bounds.getEast();
-                  const cacheKey = [
-                    south.toFixed(3), west.toFixed(3), north.toFixed(3), east.toFixed(3),
-                  ].join("|");
-                  if (cacheKey === lastTreeKey) return;
-                  lastTreeKey = cacheKey;
-                  if (treeCache.has(cacheKey)) {
-                    treeLayer.setPoints(treeCache.get(cacheKey));
-                    return;
-                  }
-                  treeAbort?.abort();
-                  const controller = new AbortController();
-                  treeAbort = controller;
-                  const query = "[out:json][timeout:5];node[\"natural\"=\"tree\"](" +
-                    south.toFixed(5) + "," + west.toFixed(5) + "," +
-                    north.toFixed(5) + "," + east.toFixed(5) +
-                    ");out body 220;";
-                  try {
-                    const data = await fetchOverpassJSON(query, controller.signal);
-                    if (cancelled || controller.signal.aborted || lastTreeKey !== cacheKey) return;
-                    const points = (Array.isArray(data?.elements) ? data.elements : [])
-                      .filter(item => item?.type === "node" && item.tags?.natural === "tree")
-                      .filter(item => Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)))
-                      .map((item, index) => {
-                        const height = Number.parseFloat(String(item.tags?.height || ""));
-                        return {
-                          lat: Number(item.lat),
-                          lng: Number(item.lon),
-                          size: Number.isFinite(height)
-                            ? Math.max(0.62, Math.min(1.55, height / 7.5))
-                            : 1 + (index % 4) * 0.07,
-                        };
-                      })
-                      .slice(0, 220);
-                    treeCache.set(cacheKey, points);
-                    if (treeCache.size > 18) treeCache.delete(treeCache.keys().next().value);
-                    treeLayer.setPoints(points);
-                  } catch (error) {
-                    if (error?.name !== "AbortError") {
-                      console.warn("[Astana Guide] OpenStreetMap tree points unavailable", error);
-                    }
-                  }
-                };
-                const scheduleTreeRefresh = () => {
-                  if (treeTimer !== null) window.clearTimeout(treeTimer);
-                  if (map.getZoom() < 15.2) {
-                    lastTreeKey = "";
-                    treeLayer.setPoints([]);
-                    return;
-                  }
-                  treeTimer = window.setTimeout(() => { void refreshTrees(); }, 1300);
-                };
-                treeLayer._astanaTreeCleanup = () => {
-                  if (treeTimer !== null) window.clearTimeout(treeTimer);
-                  treeAbort?.abort();
-                  map.off("moveend", scheduleTreeRefresh);
-                  map.off("zoomend", scheduleTreeRefresh);
-                };
-                map.on("moveend", scheduleTreeRefresh);
-                map.on("zoomend", scheduleTreeRefresh);
-                scheduleTreeRefresh();
-              } catch (error) {
-                if (!cancelled) {
-                  console.warn("[Astana Guide] Volumetric tree layer was skipped", error);
-                }
-              }
-            };
-
-            void installNaturalTreeLayer();
 
             map.addSource("moy3d-main-route", { type: "geojson", data: emptyCollection });
             map.addSource("moy3d-alternative-routes", { type: "geojson", data: emptyCollection });
@@ -2736,7 +2418,7 @@ export default function AstanaMapPage() {
     map.jumpTo({
       center,
       zoom: targetZoom,
-      pitch: navigating ? 64 : 60,
+      pitch: navigating ? 58 : 52,
       bearing: navigating && Number.isFinite(origin?.heading) ? origin.heading : map.getBearing(),
     });
     requestAnimationFrame(() => map.resize());
@@ -2787,7 +2469,7 @@ export default function AstanaMapPage() {
       map.easeTo({
         center,
         zoom: Math.max(16.5, map.getZoom()),
-        pitch: 64,
+        pitch: 58,
         bearing: targetBearing,
         duration: 220,
         essential: true,
@@ -4802,7 +4484,7 @@ export default function AstanaMapPage() {
         map3dRef.current.jumpTo({
           center: [center.lng, center.lat],
           zoom: Math.max(15.2, Number(map.getZoom?.() || map3dRef.current.getZoom())),
-          pitch: 60,
+          pitch: 52,
           bearing: 0,
         });
       }
@@ -4956,7 +4638,7 @@ export default function AstanaMapPage() {
             map3dRef.current.jumpTo({
               center: [center.lng, center.lat],
               zoom: Math.max(15.2, Number(mapRef.current?.getZoom?.() || map3dRef.current.getZoom())),
-              pitch: 60,
+              pitch: 52,
               bearing: 0,
             });
           }
