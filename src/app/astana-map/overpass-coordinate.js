@@ -166,9 +166,170 @@ function pointInside(point, ring) {
   return inside;
 }
 
+function pointToSegmentMeters(point, a, b) {
+  const cosLat = Math.max(0.2, Math.cos(point.lat * Math.PI / 180));
+  const scaleX = 111320 * cosLat;
+  const scaleY = 110540;
+  const px = point.lon * scaleX;
+  const py = point.lat * scaleY;
+  const ax = a.lon * scaleX;
+  const ay = a.lat * scaleY;
+  const bx = b.lon * scaleX;
+  const by = b.lat * scaleY;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const denominator = dx * dx + dy * dy;
+  const t = denominator > 0
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denominator))
+    : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function polygonClearanceMeters(point, ring) {
+  let nearest = Infinity;
+  for (let i = 0; i < ring.length; i += 1) {
+    const distance = pointToSegmentMeters(point, ring[i], ring[(i + 1) % ring.length]);
+    if (distance < nearest) nearest = distance;
+  }
+  return nearest;
+}
+
+function pointOnSurface(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  const centroid = polygonCentroid(ring);
+  if (centroid && pointInside(centroid, ring)) return centroid;
+
+  const bounds = ring.reduce((acc, point) => ({
+    minLat: Math.min(acc.minLat, point.lat),
+    maxLat: Math.max(acc.maxLat, point.lat),
+    minLon: Math.min(acc.minLon, point.lon),
+    maxLon: Math.max(acc.maxLon, point.lon),
+  }), {
+    minLat: Infinity,
+    maxLat: -Infinity,
+    minLon: Infinity,
+    maxLon: -Infinity,
+  });
+  let stepLat = (bounds.maxLat - bounds.minLat) / 32;
+  let stepLon = (bounds.maxLon - bounds.minLon) / 32;
+  if (!(stepLat > 0) || !(stepLon > 0)) return centroid;
+
+  let best = null;
+  let bestClearance = -1;
+
+  // Find a point that is actually inside the polygon and as far as possible
+  // from its edges. Repeated refinement handles concave or L-shaped buildings.
+  for (let pass = 0; pass < 5; pass += 1) {
+    const minLat = best ? Math.max(bounds.minLat, best.lat - stepLat * 5) : bounds.minLat;
+    const maxLat = best ? Math.min(bounds.maxLat, best.lat + stepLat * 5) : bounds.maxLat;
+    const minLon = best ? Math.max(bounds.minLon, best.lon - stepLon * 5) : bounds.minLon;
+    const maxLon = best ? Math.min(bounds.maxLon, best.lon + stepLon * 5) : bounds.maxLon;
+    const rows = best ? 10 : 32;
+    const cols = best ? 10 : 32;
+
+    for (let row = 0; row <= rows; row += 1) {
+      const lat = minLat + (maxLat - minLat) * row / rows;
+      for (let col = 0; col <= cols; col += 1) {
+        const lon = minLon + (maxLon - minLon) * col / cols;
+        const candidate = { lat, lon };
+        if (!pointInside(candidate, ring)) continue;
+        const clearance = polygonClearanceMeters(candidate, ring);
+        if (clearance > bestClearance) {
+          best = candidate;
+          bestClearance = clearance;
+        }
+      }
+    }
+    stepLat /= 4;
+    stepLon /= 4;
+  }
+  return best || centroid;
+}
+
+function polygonRings(element) {
+  const rings = [];
+  const direct = Array.isArray(element?.geometry) ? element.geometry : null;
+  if (direct?.length) {
+    const points = direct.map(point => ({
+      lat: Number(point?.lat),
+      lon: Number(point?.lon),
+    })).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon));
+    const closed = points.length >= 4 &&
+      Math.abs(points[0].lat - points[points.length - 1].lat) < 1e-8 &&
+      Math.abs(points[0].lon - points[points.length - 1].lon) < 1e-8;
+    if (closed) rings.push(points.slice(0, -1));
+  }
+
+  if (!rings.length && Array.isArray(element?.members)) {
+    for (const member of element.members) {
+      if (member?.role && member.role !== "outer") continue;
+      const geometry = Array.isArray(member?.geometry) ? member.geometry : [];
+      const points = geometry.map(point => ({
+        lat: Number(point?.lat),
+        lon: Number(point?.lon),
+      })).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon));
+      const closed = points.length >= 4 &&
+        Math.abs(points[0].lat - points[points.length - 1].lat) < 1e-8 &&
+        Math.abs(points[0].lon - points[points.length - 1].lon) < 1e-8;
+      if (closed) rings.push(points.slice(0, -1));
+    }
+  }
+  const area = ring => {
+    let total = 0;
+    for (let i = 0; i < ring.length; i += 1) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      total += a.lon * b.lat - b.lon * a.lat;
+    }
+    return Math.abs(total);
+  };
+  return rings.sort((a, b) => area(b) - area(a));
+}
+
 function elementPoint(element, entrances) {
   if (Number.isFinite(Number(element?.lat)) && Number.isFinite(Number(element?.lon))) {
     return { lat: Number(element.lat), lon: Number(element.lon), quality: "OSM node" };
+  }
+
+  const rings = polygonRings(element);
+  if (rings.length) {
+    const ring = rings[0];
+    const center = pointOnSurface(ring);
+    if (!center) return null;
+
+    const entrance = entrances
+      .map(node => {
+        const point = { lat: Number(node.lat), lon: Number(node.lon) };
+        return {
+          node,
+          distance: distanceMeters(center, point),
+          isMain: String(node?.tags?.entrance || "").toLowerCase() === "main",
+          isService: String(node?.tags?.entrance || "").toLowerCase() === "service",
+        };
+      })
+      .filter(item =>
+        Number.isFinite(item.distance) &&
+        item.distance <= 120 &&
+        item.node?.tags?.entrance
+      )
+      .sort((a, b) =>
+        Number(b.isMain) - Number(a.isMain) ||
+        Number(a.isService) - Number(b.isService) ||
+        a.distance - b.distance
+      )[0];
+
+    if (entrance) {
+      return {
+        lat: Number(entrance.node.lat),
+        lon: Number(entrance.node.lon),
+        quality: entrance.isMain ? "OSM main entrance" : "OSM entrance node",
+      };
+    }
+    return {
+      lat: center.lat,
+      lon: center.lon,
+      quality: "OSM point inside building polygon",
+    };
   }
 
   const geometry = Array.isArray(element?.geometry) ? element.geometry : [];
@@ -177,40 +338,6 @@ function elementPoint(element, entrances) {
     lon: Number(point?.lon),
   })).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lon));
   if (!points.length) return null;
-
-  const closed = points.length >= 4 &&
-    Math.abs(points[0].lat - points[points.length - 1].lat) < 1e-8 &&
-    Math.abs(points[0].lon - points[points.length - 1].lon) < 1e-8;
-
-  if (closed) {
-    const ring = points.slice(0, -1);
-    const center = polygonCentroid(ring);
-    if (center) {
-      const entrance = entrances
-        .map(node => ({
-          node,
-          distance: distanceMeters(center, { lat: Number(node.lat), lon: Number(node.lon) }),
-        }))
-        .filter(item => item.distance <= 40)
-        .sort((a, b) => a.distance - b.distance)[0];
-      if (entrance) {
-        return {
-          lat: Number(entrance.node.lat),
-          lon: Number(entrance.node.lon),
-          quality: "OSM entrance node",
-        };
-      }
-      if (pointInside(center, ring)) {
-        return { lat: center.lat, lon: center.lon, quality: "OSM building geometry center" };
-      }
-    }
-
-    return {
-      lat: ring.reduce((sum, point) => sum + point.lat, 0) / ring.length,
-      lon: ring.reduce((sum, point) => sum + point.lon, 0) / ring.length,
-      quality: "OSM building geometry center",
-    };
-  }
 
   const middle = points[Math.floor((points.length - 1) / 2)];
   return { lat: middle.lat, lon: middle.lon, quality: "OSM way geometry" };

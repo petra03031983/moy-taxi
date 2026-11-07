@@ -6,7 +6,6 @@ import "leaflet/dist/leaflet.css";
 import "./astana-map.css";
 
 const ASTANA = [51.1694, 71.4491];
-const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const ROUTERS = {
   car: "https://routing.openstreetmap.de/routed-car/route/v1/driving",
   walk: "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
@@ -141,68 +140,82 @@ function normalizeSearchText(value) {
     .trim();
 }
 
+function normalizePhotonOsmType(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "n" || raw === "node") return "node";
+  if (raw === "w" || raw === "way") return "way";
+  if (raw === "r" || raw === "relation") return "relation";
+  return "";
+}
+
 function photonToAddress(feature) {
   const properties = feature?.properties || {};
   const coordinates = feature?.geometry?.coordinates;
   if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+
   const lon = Number(coordinates[0]);
   const lat = Number(coordinates[1]);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-  const name = properties.name || properties.street || "";
-  const city = properties.city || properties.locality || properties.district || properties.county || "";
-  const street = properties.street || (properties.osm_key === "highway" ? name : "");
+  const osmType = normalizePhotonOsmType(properties.osm_type);
+  const osmId = /^\d+$/.test(String(properties.osm_id || "")) ? String(properties.osm_id) : "";
+  const extra = properties.extra && typeof properties.extra === "object" ? properties.extra : {};
+  const osmKey = String(properties.osm_key || "");
+  const osmValue = String(properties.osm_value || "");
+  const name = String(properties.name || properties.street || "");
+  const street = String(properties.street || (osmKey === "highway" ? name : ""));
+  const houseNumber = String(properties.housenumber || "");
+  const city = String(properties.city || properties.locality || properties.district || "Астана");
+  const country = String(properties.country || "Казахстан");
+
   const address = {
     name,
     road: street,
     pedestrian: street,
-    house_number: properties.housenumber || "",
+    house_number: houseNumber,
     postcode: properties.postcode || "",
     city: properties.city || "",
     town: properties.locality || "",
     village: properties.locality || "",
     municipality: properties.district || "",
     suburb: properties.district || "",
-    country: properties.country || "",
-    amenity: properties.osm_key === "amenity" ? properties.osm_value : "",
-    shop: properties.osm_key === "shop" ? properties.osm_value : "",
-    tourism: properties.osm_key === "tourism" ? properties.osm_value : "",
-    railway: properties.osm_key === "railway" ? properties.osm_value : "",
-    osm_ref_type: /^(node|way|relation)$/.test(String(properties.osm_ref_type || properties.osm_type || "").toLowerCase())
-      ? String(properties.osm_ref_type || properties.osm_type).toLowerCase()
-      : "",
-    osm_ref_id: /^\d+$/.test(String(properties.osm_ref_id || properties.osm_id || ""))
-      ? String(properties.osm_ref_id || properties.osm_id)
-      : "",
-    coordinate_quality: properties.coordinate_quality || "",
-    source: properties.source || "",
+    country,
+    amenity: osmKey === "amenity" ? osmValue : (extra.amenity || ""),
+    shop: osmKey === "shop" ? osmValue : (extra.shop || ""),
+    tourism: osmKey === "tourism" ? osmValue : (extra.tourism || ""),
+    railway: osmKey === "railway" ? osmValue : (extra.railway || ""),
+    aeroway: osmKey === "aeroway" ? osmValue : (extra.aeroway || ""),
+    building: extra.building || "",
+    osm_ref_type: osmType,
+    osm_ref_id: osmId,
+    source: "OpenStreetMap / Photon",
   };
-  const display_name = [
+
+  const displayName = properties.display_name || [
     name,
     street && name !== street ? street : "",
-    properties.housenumber ? `д. ${properties.housenumber}` : "",
-    properties.postcode,
+    houseNumber ? "д. " + houseNumber : "",
     properties.district,
     properties.city || properties.locality,
-    properties.state,
-    properties.country,
+    country,
   ].filter(Boolean).filter((part, index, all) => all.indexOf(part) === index).join(", ");
 
   return {
-    place_id: `photon-${properties.osm_type || "place"}-${properties.osm_id || `${lat},${lon}`}`,
-    name,
+    place_id: "osm-" + (osmType || "place") + "-" + (osmId || lat + "," + lon),
+    name: name || displayName || "Место на карте",
     lat: String(lat),
     lon: String(lon),
-    display_name: display_name || name || "Место на карте",
+    display_name: displayName || name || "Место на карте",
     address,
-    type: properties.osm_value || properties.type || "place",
-    class: properties.osm_key || "place",
-    category: properties.category || properties.osm_value || properties.osm_key || "place",
-    osm_type: /^(node|way|relation)$/.test(String(properties.osm_type || "").toLowerCase())
-      ? String(properties.osm_type).toLowerCase()
-      : "",
-    osm_id: /^\d+$/.test(String(properties.osm_id || "")) ? String(properties.osm_id) : "",
-    source: properties.source || "openstreetmap-photon",
+    type: osmValue || "place",
+    class: osmKey || "place",
+    category: osmValue || osmKey || "place",
+    osm_key: osmKey,
+    osm_value: osmValue,
+    osm_type: osmType,
+    osm_id: osmId,
+    source: "openstreetmap-photon",
+    tags: extra,
   };
 }
 
@@ -236,13 +249,25 @@ function selectedPlaceAddress(item) {
 }
 
 function placeCategory(item) {
-  const key = `${item?.class || ""} ${item?.type || ""} ${item?.address?.amenity || ""}`.toLowerCase();
+  const key = [
+    item?.class,
+    item?.type,
+    item?.osm_key,
+    item?.osm_value,
+    item?.address?.amenity,
+    item?.address?.shop,
+    item?.address?.aeroway,
+    item?.address?.building,
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  if (/aeroway.*(aerodrome|terminal)|aerodrome|airport/.test(key)) return "Аэропорт";
+  if (/shop.*mall|mall|shopping.center|shopping_centre/.test(key)) return "Торговый центр";
   if (/railway|train_station|train station/.test(key)) return "Железнодорожный вокзал";
   if (/bus_station|bus station/.test(key)) return "Автовокзал";
-  if (/apartments|residential|house|building|tower/.test(key)) return "Жилой дом";
+  if (/apartments|residential|house|building|tower/.test(key)) return "Здание";
   if (/hospital|clinic|doctors|pharmacy/.test(key)) return "Медицина";
   if (/restaurant|cafe|fast_food|food/.test(key)) return "Ресторан";
-  if (/shop|supermarket|convenience|mall/.test(key)) return "Магазин";
+  if (/shop|supermarket|convenience/.test(key)) return "Магазин";
   if (/school|university|college|kindergarten/.test(key)) return "Образование";
   if (/hotel|hostel|guest_house/.test(key)) return "Гостиница";
   if (/park|garden|nature_reserve/.test(key)) return "Парк";
@@ -1081,7 +1106,6 @@ export default function AstanaMapPage() {
   const overpassCoordinateCacheRef = useRef(new Map());
   const overpassSelectionRequestRef = useRef(0);
   const searchRequestRef = useRef(0);
-  const lastSearchAtRef = useRef(0);
   const autocompleteAbortRef = useRef(null);
   const autocompleteTimerRef = useRef(null);
   const autocompleteRequestRef = useRef(0);
@@ -2540,7 +2564,7 @@ export default function AstanaMapPage() {
     const controller = new AbortController();
     autocompleteAbortRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 8000);
-    const cacheKey = value.toLocaleLowerCase("ru-RU");
+    const cacheKey = "suggest:" + value.toLocaleLowerCase("ru-RU");
 
     try {
       const cached = searchCacheRef.current.get(cacheKey);
@@ -2628,7 +2652,7 @@ export default function AstanaMapPage() {
     autocompleteTimerRef.current = window.setTimeout(() => {
       autocompleteTimerRef.current = null;
       void loadAddressSuggestions(text, requestId);
-    }, 250);
+    }, 450);
   }
 
   async function searchAddress(value = query) {
@@ -2660,107 +2684,47 @@ export default function AstanaMapPage() {
 
     setSearching(true);
     setResults([]);
-    const timeout = window.setTimeout(() => controller.abort(), 18000);
-    let localResults = [];
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
 
     try {
-      // Always combine our city address register with live OSM geocoding on
-      // explicit full search. A local street match must not hide a POI such as
-      // the airport just because the street happens to contain the same word.
-      try {
-        const fullSearchParams = new URLSearchParams({
-          q: text,
-          limit: "8",
-        });
-        const focus = positionRef.current || origin;
-        if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-          fullSearchParams.set("lat", String(focus.lat));
-          fullSearchParams.set("lon", String(focus.lng));
-          fullSearchParams.set("zoom", "13");
-        }
-        const localResponse = await fetch("/api/address-suggestions?" + fullSearchParams.toString(), {
-          signal: controller.signal,
-          headers: { Accept: "application/json" },
-        });
-        const localPayload = await localResponse.json().catch(() => null);
-        if (localResponse.ok && Array.isArray(localPayload?.features)) {
-          localResults = localPayload.features.map(photonToAddress).filter(Boolean);
-        }
-      } catch (localError) {
-        if (localError?.name === "AbortError") throw localError;
-        // Continue with live OSM search if the local index is unavailable.
-      }
-
-      // Nominatim is the text geocoder for OSM objects. Its result contains the
-      // actual OSM node/way/relation ID; Overpass is then used only to refine that
-      // exact object's geometry, not to geocode arbitrary text over and over.
-      const nominatimUrl = new URL(NOMINATIM);
-      nominatimUrl.searchParams.set("format", "jsonv2");
-      nominatimUrl.searchParams.set("addressdetails", "1");
-      nominatimUrl.searchParams.set("limit", "8");
-      nominatimUrl.searchParams.set("accept-language", "ru");
-      nominatimUrl.searchParams.set("countrycodes", "kz");
-      nominatimUrl.searchParams.set("q", text);
+      const params = new URLSearchParams({
+        q: text,
+        limit: "16",
+        full: "1",
+      });
       const focus = positionRef.current || origin;
       if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
-        const span = 0.45;
-        nominatimUrl.searchParams.set("viewbox", [
-          focus.lng - span, focus.lat + span, focus.lng + span, focus.lat - span
-        ].join(","));
-        nominatimUrl.searchParams.set("bounded", "0");
+        params.set("lat", String(focus.lat));
+        params.set("lon", String(focus.lng));
+        params.set("zoom", "13");
       }
-      const waitMs = Math.max(0, 1100 - (Date.now() - lastSearchAtRef.current));
-      if (waitMs) await new Promise(resolve => window.setTimeout(resolve, waitMs));
-      if (controller.signal.aborted || requestId !== searchRequestRef.current) return;
-      lastSearchAtRef.current = Date.now();
-      const response = await fetch(nominatimUrl.toString(), {
+
+      const response = await fetch("/api/address-suggestions?" + params.toString(), {
         signal: controller.signal,
         headers: { Accept: "application/json" },
       });
-      if (!response.ok) throw new Error("Nominatim HTTP " + response.status);
-      const data = await response.json();
-      const osmResults = (Array.isArray(data) ? data : [])
-        .filter(item =>
-          /^(node|way|relation)$/.test(String(item?.osm_type || "").toLowerCase()) &&
-          /^\d+$/.test(String(item?.osm_id || "")) &&
-          Number.isFinite(Number(item?.lat)) &&
-          Number.isFinite(Number(item?.lon))
-        )
-        .map(item => ({
-          ...item,
-          source: "openstreetmap-nominatim",
-          address: {
-            ...(item.address || {}),
-            osm_ref_type: String(item.osm_type).toLowerCase(),
-            osm_ref_id: String(item.osm_id),
-          },
-        }));
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(data?.features)) {
+        throw new Error(data?.error || "Поиск OpenStreetMap временно недоступен.");
+      }
 
-      const seenOsm = new Set();
-      const osmUnique = osmResults.filter(item => {
-        const key = String(item.osm_type).toLowerCase() + ":" + String(item.osm_id);
-        if (seenOsm.has(key)) return false;
-        seenOsm.add(key);
-        return true;
-      });
-      const combined = [...osmUnique, ...localResults];
-
+      const found = data.features.map(photonToAddress).filter(Boolean);
       if (requestId === searchRequestRef.current && !controller.signal.aborted) {
-        if (combined.length) {
-          searchCacheRef.current.set(cacheKey, combined);
-          if (searchCacheRef.current.size > 60) searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+        if (found.length) {
+          searchCacheRef.current.set(cacheKey, found);
+          if (searchCacheRef.current.size > 80) {
+            searchCacheRef.current.delete(searchCacheRef.current.keys().next().value);
+          }
         }
-        setResults(combined);
-        if (!combined.length) {
-          setError("В OpenStreetMap и адресной базе такой объект не найден. Попробуйте уточнить название или номер дома.");
+        setResults(found);
+        if (!found.length) {
+          setError("В OpenStreetMap пока нет такого адреса или объекта. Попробуйте другое название или уточните номер дома.");
         }
       }
-    } catch (e) {
-      if (e?.name !== "AbortError" && requestId === searchRequestRef.current) {
-        setResults(localResults);
-        setError(localResults.length
-          ? "OpenStreetMap сейчас не ответил. Пока показаны записи городского справочника; их координаты могут быть приблизительными."
-          : "Поиск временно недоступен. Проверьте интернет и попробуйте снова.");
+    } catch (error) {
+      if (error?.name !== "AbortError" && requestId === searchRequestRef.current) {
+        setResults([]);
+        setError(error?.message || "Не удалось выполнить поиск OpenStreetMap. Проверьте интернет и повторите.");
       }
     } finally {
       window.clearTimeout(timeout);
@@ -4084,7 +4048,13 @@ export default function AstanaMapPage() {
     setError("");
     mapRef.current?.setView([point.lat, point.lng], 17);
 
-    if (refType !== "node") {
+    const isWholeAerodrome =
+      String(item?.osm_key || item?.class || "").toLowerCase() === "aeroway" &&
+      String(item?.osm_value || item?.type || "").toLowerCase() === "aerodrome";
+
+    // Keep the OSM aerodrome reference point for the whole airport area.
+    // Terminal buildings are separate selectable OSM objects and get refined.
+    if (refType !== "node" && !isWholeAerodrome) {
       void resolveOverpassCoordinate(item, query, overpassCoordinateCacheRef.current)
         .then(payload => {
           if (overpassSelectionRequestRef.current !== selectionRequestId) return;
