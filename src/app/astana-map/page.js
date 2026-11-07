@@ -1766,13 +1766,13 @@ export default function AstanaMapPage() {
             // Зелёный маршрут и собственные навигационные слои добавляются ниже и не перекрашиваются.
             const astanaBuildingColor = [
               "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 10],
-              0, "#D9F1E8",
-              12, "#BDE8E2",
-              28, "#8DD5D7",
-              55, "#69BED0",
-              95, "#469FBD",
-              150, "#347FA8",
-              220, "#28658E",
+              0, "#CFE5DD",
+              12, "#B2D7CF",
+              28, "#89C2C1",
+              55, "#68AAB2",
+              95, "#4D91A0",
+              150, "#3C778A",
+              220, "#315F76",
             ];
 
             const setBasePaint = (layer, property, value) => {
@@ -1790,7 +1790,7 @@ export default function AstanaMapPage() {
               const sourceLayer = String(layer["source-layer"] || "").toLowerCase();
 
               if (layer.type === "background") {
-                setBasePaint(layer, "background-color", "#EAF3EF");
+                setBasePaint(layer, "background-color", "#E1E9E4");
                 return;
               }
 
@@ -1802,51 +1802,51 @@ export default function AstanaMapPage() {
 
               if (layer.type === "fill") {
                 if (sourceLayer === "water" || id === "water") {
-                  setBasePaint(layer, "fill-color", "#A9DDF7");
-                  setBasePaint(layer, "fill-outline-color", "#8CCBEF");
+                  setBasePaint(layer, "fill-color", "#96CBE4");
+                  setBasePaint(layer, "fill-outline-color", "#7EB8D4");
                 } else if (/park|wood|forest|grass|landcover_wood/.test(id)) {
-                  setBasePaint(layer, "fill-color", id.includes("park") ? "#BFE8C5" : "#CDEBC0");
-                  setBasePaint(layer, "fill-outline-color", "#9DD5A8");
+                  setBasePaint(layer, "fill-color", id.includes("park") ? "#AED8B5" : "#BDDBB1");
+                  setBasePaint(layer, "fill-outline-color", "#91C99D");
                 } else if (/landuse_residential/.test(id)) {
-                  setBasePaint(layer, "fill-color", "#F3F0E7");
+                  setBasePaint(layer, "fill-color", "#E9E6DD");
                 } else if (/landuse_commercial|landuse_industrial|landuse_retail/.test(id)) {
-                  setBasePaint(layer, "fill-color", "#F7DFC5");
-                  setBasePaint(layer, "fill-outline-color", "#EBC79F");
+                  setBasePaint(layer, "fill-color", "#EED3B9");
+                  setBasePaint(layer, "fill-outline-color", "#DDBD9D");
                 } else if (/landuse_school|landuse_university|landuse_kindergarten/.test(id)) {
-                  setBasePaint(layer, "fill-color", "#F8E8B9");
-                  setBasePaint(layer, "fill-outline-color", "#E8D28F");
+                  setBasePaint(layer, "fill-color", "#EEDFAF");
+                  setBasePaint(layer, "fill-outline-color", "#D9C58A");
                 } else if (/landuse_hospital|landuse_health/.test(id)) {
-                  setBasePaint(layer, "fill-color", "#F4D9DE");
-                  setBasePaint(layer, "fill-outline-color", "#E9B9C4");
+                  setBasePaint(layer, "fill-color", "#EBD0D5");
+                  setBasePaint(layer, "fill-outline-color", "#DAAEB9");
                 } else if (/building/.test(id) || sourceLayer === "building") {
-                  setBasePaint(layer, "fill-color", "#D9EAF0");
-                  setBasePaint(layer, "fill-outline-color", "#B3D0DB");
+                  setBasePaint(layer, "fill-color", "#CADDE2");
+                  setBasePaint(layer, "fill-outline-color", "#A9C5D0");
                 } else if (/landuse_pitch|landuse_track/.test(id)) {
-                  setBasePaint(layer, "fill-color", "#D7EFCB");
+                  setBasePaint(layer, "fill-color", "#C5E0BA");
                 } else if (/landuse_cemetery/.test(id)) {
-                  setBasePaint(layer, "fill-color", "#D9E9CA");
+                  setBasePaint(layer, "fill-color", "#C9DDBA");
                 }
                 return;
               }
 
               if (layer.type === "line") {
                 if (sourceLayer === "waterway" || /waterway/.test(id)) {
-                  setBasePaint(layer, "line-color", "#75BFEA");
+                  setBasePaint(layer, "line-color", "#68ADD5");
                   return;
                 }
 
                 if (sourceLayer === "transportation") {
                   const casing = id.includes("casing");
                   if (/motorway/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#C47A3E" : "#F5B66A");
+                    setBasePaint(layer, "line-color", casing ? "#B46F3B" : "#E9A95F");
                   } else if (/trunk|primary/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#D19347" : "#FFD18B");
+                    setBasePaint(layer, "line-color", casing ? "#C18645" : "#F1C17D");
                   } else if (/secondary|tertiary/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#D2B88C" : "#FFF0D0");
+                    setBasePaint(layer, "line-color", casing ? "#C4AB83" : "#F0E3C9");
                   } else if (/rail/.test(id)) {
-                    setBasePaint(layer, "line-color", "#9AA9B2");
+                    setBasePaint(layer, "line-color", "#8E9CA5");
                   } else if (/street|minor|service|track|path|pedestrian|residential/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#C9D8D8" : "#FFFFFF");
+                    setBasePaint(layer, "line-color", casing ? "#BACBCC" : "#F1F1EB");
                   }
                 }
               }
