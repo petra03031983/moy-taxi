@@ -1,9 +1,9 @@
 import "./astana-map.css";
 
 export const metadata = {
-  title: "Карта Астана",
-  description: "Карта Астана — поиск адресов и построение маршрутов.",
-  applicationName: "Карта Астана",
+  title: "Астана Гид",
+  description: "Астана Гид — подробная карта Астаны, поиск адресов и построение маршрутов.",
+  applicationName: "Астана Гид",
   manifest: "/astana-map-manifest.webmanifest",
   icons: {
     icon: "/astana-map-icon.svg",
