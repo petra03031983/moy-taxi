@@ -1155,11 +1155,6 @@ export default function AstanaMapPage() {
   const [showRoadDataDiagnostics, setShowRoadDataDiagnostics] = useState(false);
   const [roadDataDiagnostics, setRoadDataDiagnostics] = useState(null);
   const [roadScanPanelOpen, setRoadScanPanelOpen] = useState(false);
-  const [mapAccessChecked, setMapAccessChecked] = useState(false);
-  const [mapAccessAllowed, setMapAccessAllowed] = useState(false);
-  const [mapAccessKeyInput, setMapAccessKeyInput] = useState("");
-  const [mapAccessError, setMapAccessError] = useState("");
-  const [mapAccessBusy, setMapAccessBusy] = useState(false);
   const [manualRoadAddMode, setManualRoadAddMode] = useState(false);
   const [manualRoadPosition, setManualRoadPosition] = useState(null);
   const [manualRoadKind, setManualRoadKind] = useState("traffic-light");
@@ -1207,24 +1202,6 @@ export default function AstanaMapPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     setShowRoadDataDiagnostics(params.get("debugRoads") === "1");
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/road-auth", { credentials: "same-origin", cache: "no-store" })
-      .then(response => response.json().catch(() => null))
-      .then(payload => {
-        if (cancelled) return;
-        setMapAccessAllowed(Boolean(payload?.authenticated));
-        setMapAccessChecked(true);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMapAccessAllowed(false);
-          setMapAccessChecked(true);
-        }
-      });
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => () => {
@@ -1410,9 +1387,6 @@ export default function AstanaMapPage() {
   }, [gpsFixReady]);
 
   useEffect(() => {
-    // The map's DOM container is rendered only after private access is confirmed.
-    // Start Leaflet after that transition, not during the locked/login render.
-    if (!mapAccessAllowed) return;
     let cancelled = false;
     let tileFallbackTimer = null;
     let libraryLoadWatchdog = null;
@@ -1737,7 +1711,7 @@ export default function AstanaMapPage() {
       routeRef.current = null;
       arrowRef.current = null;
     };
-  }, [mapAccessAllowed]);
+  }, []);
 
   useEffect(() => {
     if (!leafletReady) return;
@@ -4456,35 +4430,6 @@ export default function AstanaMapPage() {
     setRoadScanBusy(false);
   }
 
-  async function unlockMapAccess(event) {
-    event?.preventDefault?.();
-    if (mapAccessBusy) return;
-    setMapAccessBusy(true);
-    setMapAccessError("");
-    try {
-      const response = await fetch("/api/road-auth", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ key: mapAccessKeyInput.trim() }),
-        cache: "no-store",
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.authenticated) {
-        setMapAccessError(payload?.error || "Ключ не принят. Проверь ввод.");
-        return;
-      }
-      try { window.AstanaScanner?.setAccessKey?.(mapAccessKeyInput.trim()); } catch {}
-      setMapAccessKeyInput("");
-      setMapAccessAllowed(true);
-      setMapAccessError("");
-    } catch {
-      setMapAccessError("Нет связи с сервером. Проверь интернет и повтори.");
-    } finally {
-      setMapAccessBusy(false);
-    }
-  }
-
   function beginManualRoadAdd() {
     setRoadScanPanelOpen(false);
     setManualRoadPosition(null);
@@ -4582,31 +4527,6 @@ export default function AstanaMapPage() {
       if (container?.style) container.style.cursor = previousCursor;
     };
   }, [leafletReady, manualRoadAddMode, manualRoadKind]);
-
-  if (!mapAccessChecked) {
-    return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 24, background: "#101820", color: "#fff", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ textAlign: "center" }}><div style={{ fontSize: 42 }}>🔐</div><h1 style={{ fontSize: 22 }}>Астана Гид</h1><p>Проверяем доступ к личной базе…</p></div>
-    </main>;
-  }
-
-  if (!mapAccessAllowed) {
-    return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 22, boxSizing: "border-box", background: "linear-gradient(150deg,#0e1720,#1c2e3c)", color: "#101820", fontFamily: "system-ui, sans-serif" }}>
-      <section style={{ width: "100%", maxWidth: 430, boxSizing: "border-box", background: "#fff", padding: 26, borderRadius: 24, boxShadow: "0 20px 70px #0006" }}>
-        <div style={{ fontSize: 38, marginBottom: 8 }}>🗺️🔒</div>
-        <h1 style={{ margin: "0 0 8px", fontSize: 25 }}>Астана Гид</h1>
-        <p style={{ margin: "0 0 22px", color: "#52616d", lineHeight: 1.5 }}>Личная база координат камер, светофоров и дорожных знаков. Введи свой ключ доступа, чтобы открыть карту.</p>
-        <form onSubmit={unlockMapAccess}>
-          <label htmlFor="astana-private-key" style={{ display: "block", fontWeight: 700, marginBottom: 8 }}>Личный ключ базы</label>
-          <input id="astana-private-key" type="password" autoComplete="current-password" value={mapAccessKeyInput} onChange={event => setMapAccessKeyInput(event.target.value)} placeholder="Вставь ключ доступа" style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "14px 12px", border: "1px solid #a7b5bf", borderRadius: 12, fontSize: 16, marginBottom: 12 }} />
-          {mapAccessError && <p role="alert" style={{ color: "#b42318", margin: "0 0 12px" }}>{mapAccessError}</p>}
-          <button type="submit" disabled={mapAccessBusy || mapAccessKeyInput.trim().length < 32} style={{ width: "100%", padding: 14, border: 0, borderRadius: 12, background: "#126e59", color: "#fff", fontSize: 16, fontWeight: 800, opacity: mapAccessBusy ? 0.7 : 1 }}>
-            {mapAccessBusy ? "Проверяем ключ…" : "Открыть личную базу"}
-          </button>
-        </form>
-        <p style={{ color: "#6b7780", fontSize: 12, lineHeight: 1.5, margin: "18px 0 0" }}>Доступ проверяется на сервере. Не отправляй ключ другим людям.</p>
-      </section>
-    </main>;
-  }
 
   return (
     <main className="astana-map-page">
