@@ -417,7 +417,7 @@ function dedupeFeatures(features, query) {
     score += matchedTokens.length * 12;
     if (queryTokens.length && matchedTokens.length === queryTokens.length) score += 25;
 
-    const houseMatch = relevanceQuery.match(/(?:^|\\s)(\\d+[0-9а-яa-z]*(?:[/-]\\d+[0-9а-яa-z]*)?)(?:$|\\s)/i);
+    const houseMatch = relevanceQuery.match(/(?:^|\s)(\d+[0-9а-яa-z]*(?:[/-]\d+[0-9а-яa-z]*)?)(?:$|\s)/i);
     if (houseMatch) {
       const foundHouse = normalize(properties.housenumber || "");
       if (foundHouse === normalize(houseMatch[1])) score += 60;
