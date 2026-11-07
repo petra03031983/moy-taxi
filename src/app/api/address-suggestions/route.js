@@ -299,7 +299,10 @@ async function fetchPhoton(term, options, signal) {
   });
 
   if (!response.ok) {
-    const error = new Error("Photon HTTP " + response.status);
+    const body = await response.text().catch(() => "");
+    const error = new Error(
+      "Photon HTTP " + response.status + (body ? ": " + body.slice(0, 260) : "")
+    );
     error.status = response.status;
     throw error;
   }
@@ -402,12 +405,27 @@ export async function GET(request) {
         }, controller.signal))
       );
 
-      for (const result of results) {
+      const providerDiagnostics = [];
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
         if (result.status === "fulfilled") {
           providerFeatures.push(...result.value);
+          providerDiagnostics.push({
+            term: variants[index].term,
+            status: "ok",
+            count: result.value.length,
+          });
         } else {
           providerError = result.reason;
+          providerDiagnostics.push({
+            term: variants[index].term,
+            status: Number(result.reason?.status) || "error",
+            message: String(result.reason?.message || "request failed").slice(0, 300),
+          });
         }
+      }
+      if (!providerFeatures.length) {
+        console.error("Astana Photon search returned no provider features:", providerDiagnostics);
       }
     } finally {
       clearTimeout(timeout);
@@ -429,6 +447,9 @@ export async function GET(request) {
       count: features.length,
       provider: "OpenStreetMap / Photon",
       partial: !providerFeatures.length,
+      diagnostics: incoming.searchParams.get("debug") === "1"
+        ? providerDiagnostics
+        : undefined,
     };
 
     cache.set(key, { savedAt: Date.now(), value });
