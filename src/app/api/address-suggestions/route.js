@@ -14,29 +14,25 @@ const ASTANA_CENTER = { lat: 51.1694, lon: 71.4491 };
 
 const CURATED_PLACES = [
   {
-    id: "W507841374",
-    name: "Международный аэропорт Нурсултан Назарбаев",
-    aliases: [
-      "аэропорт", "әуежай", "airport", "nqz", "uacc",
-      "нурсултан", "нурсултан назарбаев", "международный аэропорт астаны",
-      "астана халықаралық әуежайы",
-    ],
-    lat: 51.02589,
-    lon: 71.46629,
+    id: "W166500591",
+    name: "Терминал T1 — международные рейсы",
+    aliases: ["терминал t1", "терминал 1", "t1 аэропорт", "международный терминал", "международные рейсы"],
+    lat: 51.0279841,
+    lon: 71.4630878,
     osm_type: "W",
-    osm_id: 507841374,
+    osm_id: 166500591,
     osm_key: "aeroway",
-    osm_value: "aerodrome",
+    osm_value: "terminal",
     street: "",
     housenumber: "",
-    display_name: "Международный аэропорт Нурсултан Назарбаев, Астана, Казахстан",
+    display_name: "Международный терминал T1 аэропорта Астаны, Астана",
   },
   {
     id: "W166500593",
-    name: "Терминал T2 — аэропорт Астаны",
-    aliases: ["терминал t2", "терминал 2", "t2 аэропорт", "внутренний терминал"],
-    lat: 51.02697,
-    lon: 71.46082,
+    name: "Терминал T2 — внутренние рейсы",
+    aliases: ["терминал t2", "терминал 2", "t2 аэропорт", "внутренний терминал", "внутренние рейсы"],
+    lat: 51.0269837,
+    lon: 71.4606156,
     osm_type: "W",
     osm_id: 166500593,
     osm_key: "aeroway",
@@ -44,6 +40,24 @@ const CURATED_PLACES = [
     street: "проспект Кабанбай батыра",
     housenumber: "119",
     display_name: "Терминал T2, проспект Кабанбай батыра, 119, Астана",
+  },
+  {
+    id: "W507841374",
+    name: "Международный аэропорт Нурсултан Назарбаев — территория аэродрома",
+    aliases: [
+      "аэропорт", "әуежай", "airport", "nqz", "uacc",
+      "нурсултан", "нурсултан назарбаев", "международный аэропорт астаны",
+      "астана халықаралық әуежайы",
+    ],
+    lat: 51.0258535,
+    lon: 71.4641981,
+    osm_type: "W",
+    osm_id: 507841374,
+    osm_key: "aeroway",
+    osm_value: "aerodrome",
+    street: "",
+    housenumber: "",
+    display_name: "Международный аэропорт Нурсултан Назарбаев — территория аэродрома, Астана",
   },
   {
     id: "W460703779",
@@ -298,8 +312,8 @@ function queryVariants(query) {
   const variants = [{ term: query, osmTag: "" }];
   if (matchesAirport(query)) {
     variants.push({
-      term: "Nursultan Nazarbayev International Airport",
-      osmTag: "aeroway:aerodrome",
+      term: "Astana Airport",
+      osmTag: "",
     });
   } else if (matchesGenericMall(query)) {
     variants.push({ term: "shopping mall Astana", osmTag: "" });
