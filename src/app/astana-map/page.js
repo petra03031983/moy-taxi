@@ -2203,6 +2203,7 @@ export default function AstanaMapPage() {
                     this.renderer.render(this.scene, this.camera);
                   },
                   onRemove() {
+                    this._astanaTreeCleanup?.();
                     if (this.meshes) {
                       this.meshes.forEach(mesh => {
                         mesh.geometry?.dispose?.();
@@ -2228,7 +2229,7 @@ export default function AstanaMapPage() {
                   const north = bounds.getNorth();
                   const east = bounds.getEast();
                   const cacheKey = [
-                    south.toFixed(2), west.toFixed(2), north.toFixed(2), east.toFixed(2),
+                    south.toFixed(3), west.toFixed(3), north.toFixed(3), east.toFixed(3),
                   ].join("|");
                   if (cacheKey === lastTreeKey) return;
                   lastTreeKey = cacheKey;
