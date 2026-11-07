@@ -202,13 +202,16 @@ function matchesCuratedAddress(query, place) {
 
 function curatedFeatures(query) {
   const airport = matchesAirport(query);
+  const explicitT1 = /\\b(t1|терминал 1)\\b|международн/.test(query);
+  const explicitT2 = /\\b(t2|терминал 2)\\b|внутренн/.test(query);
   const genericMall = matchesGenericMall(query);
-
   const station = matchesStation(query);
 
   return CURATED_PLACES
     .filter(place => {
-      if (airport && place.osm_key === "aeroway") return true;
+      if (airport && explicitT1) return place.osm_id === 166500591;
+      if (airport && explicitT2) return place.osm_id === 166500593;
+      if (airport) return place.osm_key === "aeroway";
       if (genericMall && place.osm_value === "mall") return true;
       if (station && place.osm_key === "railway" && place.osm_value === "station") return true;
       if (matchesCuratedAddress(query, place)) return true;
@@ -332,13 +335,32 @@ function dedupeFeatures(features, query) {
   const unique = [];
   const seen = new Set();
   const curatedPriority = curatedFirst(query);
+  const airportQuery = matchesAirport(normalize(query));
+  const terminalOnly = /\\b(t1|t2|терминал 1|терминал 2)\\b|международн|внутренн/.test(normalize(query));
+  const airportFeatures = airportQuery
+    ? features.filter(feature => {
+        const properties = feature?.properties || {};
+        const isAirportObject =
+          properties.osm_key === "aeroway" &&
+          ["aerodrome", "terminal", "gate"].includes(String(properties.osm_value || "").toLowerCase());
+        if (!isAirportObject) return false;
+        if (terminalOnly && /\\b(t1|терминал 1)\\b|международн/.test(normalize(query))) {
+          return Number(properties.osm_id) === 166500591;
+        }
+        if (terminalOnly && /\\b(t2|терминал 2)\\b|внутренн/.test(normalize(query))) {
+          return Number(properties.osm_id) === 166500593;
+        }
+        return true;
+      })
+    : features;
 
+  const sourceFeatures = airportQuery ? airportFeatures : features;
   const sorted = curatedPriority
     ? [
-        ...features.filter(feature => feature?.properties?.extra?.source === "OpenStreetMap curated OSM object"),
-        ...features.filter(feature => feature?.properties?.extra?.source !== "OpenStreetMap curated OSM object"),
+        ...sourceFeatures.filter(feature => feature?.properties?.extra?.source === "OpenStreetMap curated OSM object"),
+        ...sourceFeatures.filter(feature => feature?.properties?.extra?.source !== "OpenStreetMap curated OSM object"),
       ]
-    : features;
+    : sourceFeatures;
 
   for (const feature of sorted) {
     const coordinates = feature?.geometry?.coordinates;
