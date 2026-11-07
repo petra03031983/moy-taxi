@@ -199,6 +199,38 @@ function matchesAirport(query) {
   return /аэропорт|әуежай|airport|nqz|uacc|нурсултан/.test(query);
 }
 
+function isGenericAirportQuery(query) {
+  const words = normalize(query).split(/\s+/).filter(Boolean);
+  const genericWords = new Set([
+    "аэропорт", "аэропорта", "аэропорту", "аэропорты",
+    "әуежай", "әуежайы", "әуежайға",
+    "airport", "airports",
+    "международный", "международного", "международная", "международное",
+    "international", "intl",
+    "ближайший", "ближайшего", "рядом", "поблизости",
+    "near", "nearest", "nearby",
+  ]);
+  return words.length > 0 && words.every(word => genericWords.has(word));
+}
+
+function distanceBetweenCoordinates(lat1, lon1, lat2, lon2) {
+  const toRadians = value => value * Math.PI / 180;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const startLat = toRadians(lat1);
+  const endLat = toRadians(lat2);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(startLat) * Math.cos(endLat) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+}
+
+function isWithinAstanaSearchArea(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return distanceBetweenCoordinates(
+    lat, lon, ASTANA_CENTER.lat, ASTANA_CENTER.lon
+  ) <= 70;
+}
+
 function matchesGenericMall(query) {
   return /^(тц|трц|т\.ц\.?)$/.test(query) ||
     /торгов(ый|о-развлекательн)(ый)? центр|shopping mall|shopping centre|молл/.test(query);
@@ -304,7 +336,10 @@ async function fetchPhoton(term, options, signal) {
     url.searchParams.set("lon", String(options.lon));
     // Give the current region a strong preference over distant duplicate names.
     // This is a ranking hint only: it never excludes addresses outside the region.
-    url.searchParams.set("zoom", "9");
+    // Keep generic searches focused on the current neighbourhood rather than
+    // spreading the location preference across several distant regions.
+    // Explicit city names still work globally because this is not a filter.
+    url.searchParams.set("zoom", "13");
     url.searchParams.set("location_bias_scale", "0.05");
   }
   url.searchParams.set("dedupe", "1");
@@ -462,11 +497,17 @@ function dedupeFeatures(features, query, searchCenter = null) {
       else score -= 12;
     }
 
-    // Prefer equally relevant results near the driver's current region.
-    // The bonus fades over 180 km and never removes distant/global matches.
+    // For a generic airport query, proximity is the main intent: prefer the
+    // closest airport, while an explicitly named city (e.g. "Omsk airport")
+    // still wins on text relevance because distant places get no distance bonus.
     const distanceKm = distanceKmFromCenter(feature, searchCenter);
     if (Number.isFinite(distanceKm)) {
-      score += Math.max(0, 45 - Math.min(distanceKm, 180) * 0.25);
+      if (matchesAirport(normalizedQuery)) {
+        score += Math.max(0, 180 - Math.min(distanceKm, 300) * 0.6);
+      } else {
+        // For ordinary addresses, gently prefer results in the current region.
+        score += Math.max(0, 45 - Math.min(distanceKm, 180) * 0.25);
+      }
     }
 
     if (curatedPriority && properties.extra?.source === "OpenStreetMap curated OSM object") score += 1000;
@@ -510,10 +551,15 @@ export async function GET(request) {
 
   const requestedLat = validCoordinate(incoming.searchParams.get("lat"), -90, 90);
   const requestedLon = validCoordinate(incoming.searchParams.get("lon"), -180, 180);
-  const astanaContext = useAstanaCurated(normalize(query));
+  const normalizedQuery = normalize(query);
+  // A generic "airport" search should use Astana's verified local airport
+  // record only when the current GPS is actually in the Astana area.
+  // "Omsk airport" and other city-qualified searches remain global.
+  const astanaContext = useAstanaCurated(normalizedQuery) ||
+    (isGenericAirportQuery(normalizedQuery) &&
+      isWithinAstanaSearchArea(requestedLat, requestedLon));
   const lat = requestedLat ?? (astanaContext ? ASTANA_CENTER.lat : null);
   const lon = requestedLon ?? (astanaContext ? ASTANA_CENTER.lon : null);
-  const normalizedQuery = normalize(query);
   const key = [normalizedQuery, limit, lat === null ? "" : lat.toFixed(3), lon === null ? "" : lon.toFixed(3)].join("|");
   const { cache, inflight } = getCache();
   const now = Date.now();
