@@ -517,3 +517,98 @@
 /* Invisible slot keeps the zoom buttons at their existing right-side position. */
 .astana-nav-voice-spacer{width:53px;height:53px;flex:none}
 @media(max-width:520px){.astana-nav-voice-spacer{width:45px;height:45px}}
+
+
+/* Астана Гид — единая тёмная тема карты и её домашних панелей. */
+.astana-map-page,
+.astana-map-canvas,
+.astana-map-canvas .leaflet-container {
+  background: #0a141d !important;
+}
+.astana-map-canvas .leaflet-control-attribution,
+.astana-map-canvas .maplibregl-ctrl-attrib {
+  background: rgba(7, 13, 19, .86) !important;
+  color: #aebdc8 !important;
+  border-radius: 10px 0 0 0;
+}
+.astana-map-canvas .leaflet-control-attribution a,
+.astana-map-canvas .maplibregl-ctrl-attrib a {
+  color: #d2e0e8 !important;
+}
+.astana-search-wrap-home {
+  background: rgba(13, 21, 29, .985) !important;
+  color: #edf4f8 !important;
+  border: 1px solid rgba(142, 170, 188, .12);
+  box-shadow: 0 -8px 34px rgba(0, 0, 0, .42) !important;
+}
+.astana-home-handle span { background: #52616d !important; }
+.astana-search-wrap-home .astana-search-box,
+.astana-home-menu {
+  background: #202d37 !important;
+  color: #edf4f8 !important;
+}
+.astana-search-wrap-home .astana-search-icon { color: #afc0cb !important; }
+.astana-search-wrap-home .astana-search-box input { color: #f3f7fa !important; }
+.astana-search-wrap-home .astana-search-box input::placeholder { color: #91a2ad !important; }
+.astana-search-wrap-home .astana-clear,
+.astana-search-wrap-home .astana-mic { color: #ccd7de !important; }
+.astana-shortcut {
+  background: #202e38 !important;
+  color: #e5edf2 !important;
+}
+.astana-home-interesting h2 { color: #edf4f8 !important; }
+.astana-interesting-card {
+  background-color: #1b2933 !important;
+  color: #edf4f8 !important;
+  border: 1px solid rgba(160, 184, 198, .13);
+}
+.astana-interesting-copy span { color: #b0bec7 !important; }
+.astana-home-bottom-nav {
+  background: rgba(10, 18, 26, .99) !important;
+  border-top-color: #293944 !important;
+  color: #9aabb6 !important;
+}
+.astana-home-bottom-nav .active { color: #36d879 !important; }
+.astana-home-locate,
+.astana-home-weather {
+  background: rgba(22, 33, 43, .97) !important;
+  color: #eef5f8 !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .45) !important;
+  border: 1px solid rgba(171, 193, 206, .16);
+}
+.astana-search-wrap-selected .astana-search-box {
+  background: rgba(22, 33, 43, .98) !important;
+  border-color: rgba(171, 193, 206, .16) !important;
+}
+.astana-search-wrap-selected .astana-search-icon,
+.astana-search-wrap-selected .astana-clear,
+.astana-search-wrap-selected .astana-mic { color: #c5d2da !important; }
+.astana-search-wrap-selected .astana-search-box input { color: #f3f7fa !important; }
+.astana-search-wrap-selected .astana-results {
+  background: rgba(14, 23, 31, .99) !important;
+  color: #edf4f8 !important;
+}
+.astana-search-wrap-selected .astana-result {
+  color: #edf4f8 !important;
+  border-bottom-color: #2a3944 !important;
+}
+.astana-search-wrap-selected .astana-result small { color: #a8b8c2 !important; }
+.astana-place-card {
+  background: rgba(13, 21, 29, .99) !important;
+  color: #edf4f8 !important;
+  box-shadow: 0 -5px 28px rgba(0, 0, 0, .48) !important;
+  border-top: 1px solid rgba(158, 184, 199, .14);
+}
+.astana-place-address,
+.astana-place-category,
+.astana-place-meta,
+.astana-place-tabs { color: #b4c3cd !important; }
+.astana-place-icon-action,
+.astana-place-close {
+  background: #263641 !important;
+  color: #edf4f8 !important;
+}
+.astana-place-tabs { border-bottom-color: #31424e !important; }
+.astana-place-tabs .active { color: #45d982 !important; }
+.astana-place-handle span,
+.astana-route-handle span { background: #52616d !important; }
