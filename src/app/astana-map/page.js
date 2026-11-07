@@ -2050,7 +2050,7 @@ export default function AstanaMapPage() {
                 }
                 const sources = [
                   "https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js",
-                  "https://unpkg.com/three@0.159.0/build/three.min.js",
+                  "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.159.0/three.min.js",
                 ];
                 let attempt = 0;
                 const next = () => {
@@ -2118,6 +2118,7 @@ export default function AstanaMapPage() {
                   type: "custom",
                   renderingMode: "3d",
                   onAdd(treeMap, gl) {
+                    this.map = treeMap;
                     this.scene = new THREE.Scene();
                     this.camera = new THREE.Camera();
                     this.renderer = new THREE.WebGLRenderer({
@@ -2193,6 +2194,7 @@ export default function AstanaMapPage() {
                       mesh.instanceMatrix.needsUpdate = true;
                       mesh.computeBoundingSphere();
                     });
+                    this.map?.triggerRepaint?.();
                   },
                   render(gl, args) {
                     const matrix = args?.defaultProjectionData?.mainMatrix;
@@ -2219,6 +2221,7 @@ export default function AstanaMapPage() {
                 const refreshTrees = async () => {
                   if (cancelled || !map.getLayer("moy3d-natural-trees")) return;
                   if (map.getZoom() < 15.2) {
+                    lastTreeKey = "";
                     treeLayer.setPoints([]);
                     return;
                   }
@@ -2273,6 +2276,7 @@ export default function AstanaMapPage() {
                 const scheduleTreeRefresh = () => {
                   if (treeTimer !== null) window.clearTimeout(treeTimer);
                   if (map.getZoom() < 15.2) {
+                    lastTreeKey = "";
                     treeLayer.setPoints([]);
                     return;
                   }
