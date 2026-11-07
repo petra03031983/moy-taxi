@@ -312,15 +312,16 @@ async function fetchPhoton(term, options, signal) {
 }
 
 function queryVariants(query) {
+  const normalizedQuery = normalize(query);
   const variants = [{ term: query, osmTag: "" }];
-  if (matchesAirport(query)) {
+  if (matchesAirport(normalizedQuery)) {
     variants.push({
       term: "Astana Airport",
       osmTag: "",
     });
-  } else if (matchesGenericMall(query)) {
+  } else if (matchesGenericMall(normalizedQuery)) {
     variants.push({ term: "shopping mall Astana", osmTag: "" });
-  } else if (matchesStation(query)) {
+  } else if (matchesStation(normalizedQuery)) {
     variants.push({ term: "Nurly Zhol station Astana", osmTag: "" });
     variants.push({ term: "Astana-1", osmTag: "" });
   }
