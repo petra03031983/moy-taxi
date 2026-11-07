@@ -8,8 +8,15 @@ const PHOTON_TIMEOUT_MS = 6500;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const STALE_TTL_MS = 24 * 60 * 60 * 1000;
 
-// Astana + nearby settlements. Photon uses minLon,minLat,maxLon,maxLat.
+// Astana is the default search area. A different city/region is searched only
+// when the user explicitly writes its name in the query.
 const ASTANA_CENTER = { lat: 51.1694, lon: 71.4491 };
+const ASTANA_CITY_BOUNDS = {
+  south: 50.999912,
+  north: 51.301212,
+  west: 71.220936,
+  east: 71.728067,
+};
 
 const ASTANA_ONLY_ALIASES = [
   "хан шатыр",
@@ -213,6 +220,102 @@ function isGenericAirportQuery(query) {
   return words.length > 0 && words.every(word => genericWords.has(word));
 }
 
+const EXPLICIT_LOCATION_OBJECT_WORDS = new Set([
+  "аэропорт", "аэропорта", "аэропорту", "әуежай", "әуежайы", "airport",
+  "кафе", "ресторан", "рестораны", "столовая", "бар",
+  "школа", "школы", "лицей", "университет", "колледж", "детсад",
+  "больница", "поликлиника", "аптека", "клиника", "медцентр",
+  "вокзал", "станция", "метро", "остановка",
+  "отель", "гостиница", "гостиницы", "hotel",
+  "торговый", "центр", "трц", "тц", "молл", "mall",
+  "парк", "музей", "театр", "кинотеатр", "стадион",
+  "заправка", "азс", "автосервис", "магазин", "рынок",
+]);
+const LOCATION_MARKER_WORDS = new Set([
+  "город", "города", "г", "область", "обл", "регион", "район", "р-н",
+  "городской", "областной", "край", "республика", "province", "region",
+  "city", "town", "district", "county",
+]);
+const NON_LOCATION_QUERY_WORDS = new Set([
+  "улица", "ул", "проспект", "пр-т", "дом", "д", "корпус", "кв",
+  "строение", "переулок", "шоссе", "набережная", "микрорайон", "мкр",
+  "ближайший", "ближайшего", "рядом", "поблизости", "международный",
+  "международного", "международная", "международное", "international",
+]);
+
+function explicitLocationTokens(query) {
+  return normalize(query)
+    .split(/[\\s,;]+/)
+    .map(token => token.replace(/^[.]+|[.]+$/g, ""))
+    .filter(token =>
+      token.length >= 3 &&
+      !/^\\d/.test(token) &&
+      !EXPLICIT_LOCATION_OBJECT_WORDS.has(token) &&
+      !LOCATION_MARKER_WORDS.has(token) &&
+      !NON_LOCATION_QUERY_WORDS.has(token)
+    );
+}
+
+function hasExplicitLocationQualifier(query) {
+  const tokens = normalize(query).split(/[\\s,;]+/).filter(Boolean);
+  const hasObjectType = tokens.some(token => EXPLICIT_LOCATION_OBJECT_WORDS.has(token));
+  const hasAreaMarker = tokens.some(token => LOCATION_MARKER_WORDS.has(token));
+  const remainder = explicitLocationTokens(query);
+  return remainder.length > 0 && (hasObjectType || hasAreaMarker);
+}
+
+function featureLocationText(feature) {
+  const properties = feature?.properties || {};
+  return normalize([
+    properties.city, properties.town, properties.village,
+    properties.municipality, properties.locality,
+    properties.district, properties.county, properties.state,
+    properties.region, properties.country,
+  ].filter(Boolean).join(" "));
+}
+
+function featureMatchesLocationTokens(feature, tokens) {
+  if (!tokens.length) return false;
+  const location = featureLocationText(feature);
+  return tokens.some(token => location.includes(token));
+}
+
+function featureIsExplicitPlaceMatch(feature, query) {
+  const properties = feature?.properties || {};
+  const isPlace = String(properties.osm_key || "").toLowerCase() === "place" ||
+    ["city", "town", "village", "municipality", "region", "state"].includes(
+      String(properties.osm_value || "").toLowerCase()
+    ) ||
+    ["city", "town", "village"].includes(String(properties.type || "").toLowerCase());
+  if (!isPlace) return false;
+  const name = normalize(properties.name || properties.display_name || "");
+  const requested = normalize(query);
+  return name === requested || name.startsWith(requested + " ") ||
+    requested.startsWith(name + " ");
+}
+
+function featureIsInsideAstana(feature) {
+  const properties = feature?.properties || {};
+  const coordinates = feature?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return false;
+  const lon = Number(coordinates[0]);
+  const lat = Number(coordinates[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+
+  const cityName = normalize(
+    properties.city || properties.town || properties.village ||
+    properties.municipality || ""
+  );
+  if (cityName) {
+    return /(^|[\\s,])(?:астана|astana|нур султан|nur sultan)(?=$|[\\s,])/.test(cityName);
+  }
+
+  const countryCode = String(properties.countrycode || "").toUpperCase();
+  return (!countryCode || countryCode === "KZ") &&
+    lat >= ASTANA_CITY_BOUNDS.south && lat <= ASTANA_CITY_BOUNDS.north &&
+    lon >= ASTANA_CITY_BOUNDS.west && lon <= ASTANA_CITY_BOUNDS.east;
+}
+
 function distanceBetweenCoordinates(lat1, lon1, lat2, lon2) {
   const toRadians = value => value * Math.PI / 180;
   const dLat = toRadians(lat2 - lat1);
@@ -369,7 +472,7 @@ async function fetchPhoton(term, options, signal) {
   return Array.isArray(payload?.features) ? payload.features : [];
 }
 
-function queryVariants(query) {
+function queryVariants(query, addDefaultAstanaContext = false) {
   const normalizedQuery = normalize(query);
   const variants = [{ term: String(query || "").trim(), osmTag: "" }];
   const add = term => {
@@ -381,9 +484,12 @@ function queryVariants(query) {
     }
   };
 
-  // Astana-only English aliases are used only when the user actually asks
-  // for Astana or one of its uniquely named landmarks. Never append "Astana"
-  // to a query that may refer to another city or country.
+  // With no city/region in the user's text, make Astana the default search
+  // context. A typed city/region bypasses this and is searched as requested.
+  if (addDefaultAstanaContext && !mentionsAstana(normalizedQuery)) {
+    add(String(query || "").trim() + " Астана");
+  }
+
   if (useAstanaCurated(normalizedQuery)) {
     if (matchesAirport(normalizedQuery)) {
       add("Astana Airport");
@@ -424,7 +530,7 @@ function distanceKmFromCenter(feature, center) {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
 }
 
-function dedupeFeatures(features, query, searchCenter = null) {
+function dedupeFeatures(features, query, searchCenter = null, options = {}) {
   const unique = [];
   const seen = new Set();
   const normalizedQuery = normalize(query);
@@ -459,7 +565,10 @@ function dedupeFeatures(features, query, searchCenter = null) {
       })
     : features;
 
-  const sourceFeatures = airportQuery ? airportFeatures : mallQuery ? mallFeatures : features;
+  const unfilteredFeatures = airportQuery ? airportFeatures : mallQuery ? mallFeatures : features;
+  const sourceFeatures = options.astanaOnly
+    ? unfilteredFeatures.filter(featureIsInsideAstana)
+    : unfilteredFeatures;
   const relevanceQuery = normalize(query).replace(
     /^(?:(?:город|г\.?|улица|ул\.?|проспект|пр-т|пр\.?|даңғылы|көшесі)\s+)+/i,
     ""
@@ -555,11 +664,12 @@ export async function GET(request) {
   // A generic "airport" search should use Astana's verified local airport
   // record only when the current GPS is actually in the Astana area.
   // "Omsk airport" and other city-qualified searches remain global.
-  const astanaContext = useAstanaCurated(normalizedQuery) ||
-    (isGenericAirportQuery(normalizedQuery) &&
-      isWithinAstanaSearchArea(requestedLat, requestedLon));
-  const lat = requestedLat ?? (astanaContext ? ASTANA_CENTER.lat : null);
-  const lon = requestedLon ?? (astanaContext ? ASTANA_CENTER.lon : null);
+  const typedLocationInQuery = hasExplicitLocationQualifier(normalizedQuery);
+  const astanaContext = useAstanaCurated(normalizedQuery) || !typedLocationInQuery;
+  // The map's default area is Astana, not whichever distant result a global
+  // geocoder happens to rank first. Typed city/region searches stay global.
+  const lat = typedLocationInQuery ? null : ASTANA_CENTER.lat;
+  const lon = typedLocationInQuery ? null : ASTANA_CENTER.lon;
   const key = [normalizedQuery, limit, lat === null ? "" : lat.toFixed(3), lon === null ? "" : lon.toFixed(3)].join("|");
   const { cache, inflight } = getCache();
   const now = Date.now();
@@ -603,7 +713,8 @@ export async function GET(request) {
       }
     }
 
-    const variants = queryVariants(query);
+    const defaultAstanaContext = !hasExplicitLocationQualifier(normalizedQuery);
+    const variants = queryVariants(query, defaultAstanaContext);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);
     let providerFeatures = [];
@@ -646,13 +757,30 @@ export async function GET(request) {
       clearTimeout(timeout);
     }
 
-    const searchCenter = lat !== null && lon !== null ? { lat, lon } : null;
+    const explicitTokens = explicitLocationTokens(normalizedQuery);
+    const hasTypedLocation = hasExplicitLocationQualifier(normalizedQuery) ||
+      providerFeatures.some(feature => featureIsExplicitPlaceMatch(feature, normalizedQuery));
+    const searchCenter = hasTypedLocation
+      ? null
+      : { lat: ASTANA_CENTER.lat, lon: ASTANA_CENTER.lon };
+
+    let candidateFeatures = curatedFirst(normalizedQuery)
+      ? [...localCurated, ...providerFeatures]
+      : [...providerFeatures, ...localCurated];
+
+    if (hasTypedLocation && explicitTokens.length) {
+      const locationMatched = candidateFeatures.filter(feature =>
+        featureMatchesLocationTokens(feature, explicitTokens) ||
+        featureIsExplicitPlaceMatch(feature, normalizedQuery)
+      );
+      if (locationMatched.length) candidateFeatures = locationMatched;
+    }
+
     const features = dedupeFeatures(
-      curatedFirst(normalizedQuery)
-        ? [...localCurated, ...providerFeatures]
-        : [...providerFeatures, ...localCurated],
+      candidateFeatures,
       normalizedQuery,
-      searchCenter
+      searchCenter,
+      { astanaOnly: !hasTypedLocation }
     ).slice(0, limit);
 
     if (!providerFeatures.length && !features.length) {
