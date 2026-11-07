@@ -87,6 +87,34 @@ const CURATED_PLACES = [
     housenumber: "62",
     display_name: "ТРЦ MEGA Silk Way, проспект Кабанбай батыра, 62, Астана",
   },
+  {
+    id: "N4020137343",
+    name: "Железнодорожный вокзал Астана-1",
+    aliases: ["жд вокзал", "ж/д вокзал", "железнодорожный вокзал", "астана-1", "астана 1", "старый вокзал", "вокзал гете"],
+    lat: 51.1958965,
+    lon: 71.4099867,
+    osm_type: "N",
+    osm_id: 4020137343,
+    osm_key: "railway",
+    osm_value: "station",
+    street: "улица Гёте",
+    housenumber: "",
+    display_name: "Железнодорожный вокзал Астана-1, улица Гёте, Астана",
+  },
+  {
+    id: "N13612447905",
+    name: "Железнодорожный вокзал Нурлы Жол",
+    aliases: ["жд вокзал", "ж/д вокзал", "железнодорожный вокзал", "нурлы жол", "нурлыжол", "nurly zhol", "вокзал нурлы жол", "новый вокзал"],
+    lat: 51.1119775,
+    lon: 71.5288523,
+    osm_type: "N",
+    osm_id: 13612447905,
+    osm_key: "railway",
+    osm_value: "station",
+    street: "улица Мухамеджан Тынышбайулы",
+    housenumber: "",
+    display_name: "Железнодорожный вокзал Нурлы Жол, улица Мухамеджан Тынышбайулы, Астана",
+  },
 ];
 
 function json(body, status = 200, cacheSeconds = 30) {
@@ -139,14 +167,37 @@ function matchesGenericMall(query) {
     /торгов(ый|о-развлекательн)(ый)? центр|shopping mall|shopping centre|молл/.test(query);
 }
 
+function matchesStation(query) {
+  return /вокзал|железнодорожн|(^|\\s)жд($|\\s)|станци|temirzhol/.test(query);
+}
+
+function normalizeStreet(value) {
+  return normalize(value)
+    .replace(/^(улица|ул\\.?|проспект|пр-т|пр\\.?|даңғылы|көшесі)\\s+/i, "")
+    .replace(/\\s+/g, " ")
+    .trim();
+}
+
+function matchesCuratedAddress(query, place) {
+  const house = normalize(place.housenumber);
+  const street = normalizeStreet(place.street);
+  if (!house || !street || !query.includes(house)) return false;
+  const words = street.split(/\\s+/).filter(word => word.length > 2);
+  return words.length > 0 && words.every(word => query.includes(word));
+}
+
 function curatedFeatures(query) {
   const airport = matchesAirport(query);
   const genericMall = matchesGenericMall(query);
 
+  const station = matchesStation(query);
+
   return CURATED_PLACES
     .filter(place => {
-      if (airport && (place.osm_key === "aeroway")) return true;
+      if (airport && place.osm_key === "aeroway") return true;
       if (genericMall && place.osm_value === "mall") return true;
+      if (station && place.osm_key === "railway" && place.osm_value === "station") return true;
+      if (matchesCuratedAddress(query, place)) return true;
       return place.aliases.some(alias => {
         const candidate = normalize(alias);
         return query.length >= 3 && (
@@ -198,18 +249,21 @@ function featureIdentity(feature) {
 }
 
 function curatedFirst(query) {
-  return matchesAirport(query) || matchesGenericMall(query) ||
-    CURATED_PLACES.some(place => place.aliases.some(alias => {
-      const candidate = normalize(alias);
-      return query.length >= 3 && candidate.includes(query);
-    }));
+  return matchesAirport(query) || matchesGenericMall(query) || matchesStation(query) ||
+    CURATED_PLACES.some(place =>
+      matchesCuratedAddress(query, place) ||
+      place.aliases.some(alias => {
+        const candidate = normalize(alias);
+        return query.length >= 3 && candidate.includes(query);
+      })
+    );
 }
 
 async function fetchPhoton(term, options, signal) {
   const url = new URL(PHOTON_API);
   url.searchParams.set("q", term);
   url.searchParams.set("limit", String(options.limit));
-  url.searchParams.set("lang", "ru");
+  url.searchParams.set("lang", "default");
   url.searchParams.set("countrycode", "KZ");
   url.searchParams.set("bbox", ASTANA_BBOX);
   url.searchParams.set("lat", String(options.lat));
@@ -223,7 +277,6 @@ async function fetchPhoton(term, options, signal) {
     method: "GET",
     headers: {
       Accept: "application/geo+json, application/json",
-      "Accept-Language": "ru-RU,ru;q=0.9,kk;q=0.8,en;q=0.7",
       "User-Agent": "AstanaGuide/1.0 (https://astana-map-roads.vercel.app/; OpenStreetMap search)",
       Referer: "https://astana-map-roads.vercel.app/",
     },
@@ -249,7 +302,10 @@ function queryVariants(query) {
       osmTag: "aeroway:aerodrome",
     });
   } else if (matchesGenericMall(query)) {
-    variants.push({ term: "shopping mall", osmTag: "shop:mall" });
+    variants.push({ term: "shopping mall Astana", osmTag: "" });
+  } else if (matchesStation(query)) {
+    variants.push({ term: "Nurly Zhol station Astana", osmTag: "" });
+    variants.push({ term: "Astana-1", osmTag: "" });
   }
   return variants;
 }
