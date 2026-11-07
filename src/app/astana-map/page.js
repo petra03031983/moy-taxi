@@ -2578,7 +2578,7 @@ export default function AstanaMapPage() {
 
       const suggestionParams = new URLSearchParams({
         q: value,
-        limit: "12",
+        limit: "16",
       });
       const focus = positionRef.current || origin;
       if (focus && Number.isFinite(focus.lat) && Number.isFinite(focus.lng)) {
@@ -2652,7 +2652,7 @@ export default function AstanaMapPage() {
     autocompleteTimerRef.current = window.setTimeout(() => {
       autocompleteTimerRef.current = null;
       void loadAddressSuggestions(text, requestId);
-    }, 450);
+    }, 300);
   }
 
   async function searchAddress(value = query) {
