@@ -168,13 +168,13 @@ function matchesGenericMall(query) {
 }
 
 function matchesStation(query) {
-  return /вокзал|железнодорожн|(^|\\s)жд($|\\s)|станци|temirzhol/.test(query);
+  return /вокзал|железнодорожн|(^|\s)жд($|\s)|станци|temirzhol/.test(query);
 }
 
 function normalizeStreet(value) {
   return normalize(value)
-    .replace(/^(улица|ул\\.?|проспект|пр-т|пр\\.?|даңғылы|көшесі)\\s+/i, "")
-    .replace(/\\s+/g, " ")
+    .replace(/^(улица|ул\.?|проспект|пр-т|пр\.?|даңғылы|көшесі)\s+/i, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -182,7 +182,7 @@ function matchesCuratedAddress(query, place) {
   const house = normalize(place.housenumber);
   const street = normalizeStreet(place.street);
   if (!house || !street || !query.includes(house)) return false;
-  const words = street.split(/\\s+/).filter(word => word.length > 2);
+  const words = street.split(/\s+/).filter(word => word.length > 2);
   return words.length > 0 && words.every(word => query.includes(word));
 }
 
