@@ -334,8 +334,10 @@ function queryVariants(query) {
 function dedupeFeatures(features, query) {
   const unique = [];
   const seen = new Set();
+  const normalizedQuery = normalize(query);
   const curatedPriority = curatedFirst(query);
-  const airportQuery = matchesAirport(normalize(query));
+  const airportQuery = matchesAirport(normalizedQuery);
+  const mallQuery = matchesGenericMall(normalizedQuery);
   const terminalOnly = /(?:\bt[12]\b|терминал\s*[12]|международн|внутренн)/.test(normalize(query));
   const airportFeatures = airportQuery
     ? features.filter(feature => {
@@ -354,7 +356,17 @@ function dedupeFeatures(features, query) {
       })
     : features;
 
-  const sourceFeatures = airportQuery ? airportFeatures : features;
+  const mallFeatures = mallQuery
+    ? features.filter(feature => {
+        const properties = feature?.properties || {};
+        const key = String(properties.osm_key || "").toLowerCase();
+        const value = String(properties.osm_value || "").toLowerCase();
+        return (key === "shop" && value === "mall") ||
+          (key === "building" && ["retail", "commercial"].includes(value));
+      })
+    : features;
+
+  const sourceFeatures = airportQuery ? airportFeatures : mallQuery ? mallFeatures : features;
   const sorted = curatedPriority
     ? [
         ...sourceFeatures.filter(feature => feature?.properties?.extra?.source === "OpenStreetMap curated OSM object"),
