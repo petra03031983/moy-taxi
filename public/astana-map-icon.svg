@@ -1,127 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<defs>
- <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#081d42"/><stop offset=".48" stop-color="#061326"/><stop offset="1" stop-color="#020812"/></linearGradient>
- <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d5ffff"/><stop offset=".28" stop-color="#00d9ff"/><stop offset=".65" stop-color="#176bff"/><stop offset="1" stop-color="#8cf4ff"/></linearGradient>
- <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#123e78"/><stop offset=".55" stop-color="#092548"/><stop offset="1" stop-color="#07192c"/></linearGradient>
- <linearGradient id="towerGold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff8bb"/><stop offset=".35" stop-color="#ffd66c"/><stop offset=".7" stop-color="#e99a26"/><stop offset="1" stop-color="#fff1a0"/></linearGradient>
- <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5ce6ff"/><stop offset=".5" stop-color="#1459a5"/><stop offset="1" stop-color="#071a36"/></linearGradient>
- <linearGradient id="road" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#8a9aa5"/><stop offset=".18" stop-color="#526575"/><stop offset="1" stop-color="#273847"/></linearGradient>
- <linearGradient id="building" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9aaeba"/><stop offset=".45" stop-color="#526777"/><stop offset="1" stop-color="#263b4b"/></linearGradient>
- <linearGradient id="park" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2d9c67"/><stop offset="1" stop-color="#0a493d"/></linearGradient>
- <linearGradient id="river" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4ceaff"/><stop offset=".46" stop-color="#087ed5"/><stop offset="1" stop-color="#06366f"/></linearGradient>
- <linearGradient id="route" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#baff7a"/><stop offset=".28" stop-color="#1dff62"/><stop offset="1" stop-color="#00b83f"/></linearGradient>
- <linearGradient id="pin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffb0a0"/><stop offset=".35" stop-color="#ff4d42"/><stop offset="1" stop-color="#a90035"/></linearGradient>
- <linearGradient id="title" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#b7e7ff"/></linearGradient>
- <filter id="shadow" x="-40%" y="-40%" width="180%" height="190%"><feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#000" flood-opacity=".72"/></filter>
- <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
- <filter id="routeGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 0.0 0 1 0 0 1 0 0 0 0 0.22 0 0 0 1 0" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
- <clipPath id="inside"><rect x="26" y="26" width="460" height="460" rx="78"/></clipPath>
- <g id="tower">
-  <path d="M0 0 L-3 18 L-13 85 L-20 123 M0 18 L0 123 M0 18 L13 85 L20 123" fill="none" stroke="url(#towerGold)" stroke-width="3"/>
-  <path d="M-3 18L-18 123M3 18L18 123M-10 62L10 62M-15 92L15 92M-18 111L18 111" fill="none" stroke="#fff0aa" stroke-width="1.7" opacity=".9"/>
-  <path d="M-21 122L21 122" stroke="#ffe59a" stroke-width="4"/>
-  <circle cy="-5" r="17" fill="url(#towerGold)" stroke="#fff6bd" stroke-width="2.5"/>
-  <path d="M-12 -5Q0 -18 12 -5Q0 8 -12 -5Z" fill="#fff5c0" opacity=".45"/>
-  <path d="M0 -22V-39" stroke="#fff4bd" stroke-width="2.5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Астана Гид">
+ <defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#10294b"/><stop offset=".48" stop-color="#06152c"/><stop offset="1" stop-color="#020914"/></linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d6ffff"/><stop offset=".35" stop-color="#00cfff"/><stop offset=".68" stop-color="#1266ff"/><stop offset="1" stop-color="#9ceeff"/></linearGradient>
+  <linearGradient id="silver" x1="0" y1="0" x2=".25" y2="1"><stop stop-color="#fff"/><stop offset=".35" stop-color="#e1eaf5"/><stop offset=".68" stop-color="#8ea4bd"/><stop offset="1" stop-color="#f4fbff"/></linearGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2=".25"><stop stop-color="#e87516"/><stop offset=".23" stop-color="#ffb52b"/><stop offset=".55" stop-color="#fff0a0"/><stop offset=".78" stop-color="#ffad20"/><stop offset="1" stop-color="#d96812"/></linearGradient>
+  <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b4fbff"/><stop offset=".3" stop-color="#28d8ff"/><stop offset=".7" stop-color="#087cff"/><stop offset="1" stop-color="#0043bd"/></linearGradient>
+  <radialGradient id="glow"><stop stop-color="#079aff" stop-opacity=".5"/><stop offset="1" stop-color="#079aff" stop-opacity="0"/></radialGradient>
+  <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="7"/><feOffset dy="7"/><feComponentTransfer><feFuncA type="linear" slope=".6"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="glowblue" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="clip"><rect x="18" y="18" width="476" height="476" rx="86"/></clipPath>
+ </defs>
+ <rect x="10" y="10" width="492" height="492" rx="94" fill="url(#bg)" stroke="url(#rim)" stroke-width="8"/>
+ <g clip-path="url(#clip)">
+  <circle cx="256" cy="230" r="230" fill="url(#glow)" opacity=".6"/>
+  <g opacity=".16" stroke="#6fb7e8" stroke-width="3" fill="none">
+   <path d="M-10 120L180 18M-15 208L235 18M20 300L325 18M130 500L500 180M250 512L510 250M365 510L510 365"/>
+   <path d="M18 92L420 492M90 18L494 422M18 220L292 494M215 18L494 295"/>
+  </g>
+  <circle cx="256" cy="222" r="164" fill="none" stroke="url(#rim)" stroke-width="9" stroke-dasharray="760 270" transform="rotate(-54 256 222)" opacity=".82"/>
+  <circle cx="256" cy="222" r="148" fill="none" stroke="#55cfff" stroke-width="2" opacity=".18"/>
+  <path d="M102 342L207 92Q215 73 235 73H279Q298 73 306 93L412 342H337L258 151L179 342Z" fill="url(#silver)" stroke="#f5fbff" stroke-width="2" filter="url(#shadow)"/>
+  <path d="M197 263H317" stroke="#536f91" stroke-width="11" opacity=".45"/>
+  <path d="M70 287C135 230 251 192 370 176C431 168 457 183 451 205C441 244 302 271 194 293C127 307 78 319 70 287Z" fill="none" stroke="#5a270b" stroke-width="24" opacity=".55"/>
+  <path d="M67 278C137 229 253 191 373 176C428 169 455 180 451 202C444 234 316 264 199 288C131 302 80 312 67 278Z" fill="none" stroke="url(#gold)" stroke-width="17" stroke-linecap="round" filter="url(#shadow)"/>
+  <path d="M83 271C155 228 275 193 381 180" fill="none" stroke="#fff4c0" stroke-width="2.2" stroke-linecap="round" opacity=".8"/>
+  <ellipse cx="309" cy="348" rx="80" ry="27" fill="url(#glow)" filter="url(#glowblue)"/>
+  <path d="M245 292L369 254Q382 250 377 265L326 390Q320 405 310 391L291 356L253 322Q237 308 245 292Z" fill="url(#blue)" stroke="#d8fbff" stroke-width="5" stroke-linejoin="round" filter="url(#shadow)"/>
+  <path d="M261 300L359 270L318 365L299 334Z" fill="#5deaff" opacity=".4"/>
+  <path d="M31 399Q256 378 481 399V489H31Z" fill="#020a16" opacity=".87"/>
+  <path d="M39 399Q256 382 473 399" fill="none" stroke="#1dbdf5" stroke-width="2" opacity=".7"/>
+  <text x="256" y="458" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="49" font-weight="800" letter-spacing="-1.8" fill="#f6fbff">Астана<tspan fill="#12d8ff">Гид</tspan></text>
+  <path d="M113 477Q256 450 399 477" fill="none" stroke="url(#rim)" stroke-width="5" stroke-linecap="round"/>
  </g>
- <g id="block">
-  <path d="M0 0L30 -8L42 0L12 9Z" fill="#a9bac4"/>
-  <path d="M0 0L12 9V29L0 21Z" fill="#385062"/>
-  <path d="M12 9L42 0V20L12 29Z" fill="url(#building)"/>
-  <path d="M18 13L23 12V17L18 18ZM29 10L34 9V14L29 15ZM18 22L23 21V26L18 27ZM29 19L34 18V23L29 24Z" fill="#a8eaff" opacity=".82"/>
- </g>
-</defs>
-<rect x="11" y="11" width="490" height="490" rx="91" fill="url(#shell)" stroke="url(#edge)" stroke-width="9"/>
-<rect x="20" y="20" width="472" height="472" rx="82" fill="none" stroke="#a5f7ff" stroke-opacity=".33" stroke-width="2"/>
-<g clip-path="url(#inside)">
- <rect x="26" y="26" width="460" height="460" fill="url(#sky)"/>
- <path d="M26 176Q120 132 216 162T486 150V260H26Z" fill="#09284b" opacity=".65"/>
- <g fill="#07182b" stroke="#2a6487" stroke-width="1.2">
-  <path d="M32 164V119H47V102H56V164Z"/><path d="M61 164V129H75V93H86V164Z"/>
-  <path d="M95 164V111H108V88H121V164Z"/><path d="M127 164V122H143V73H156V164Z"/>
-  <path d="M161 164V106H177V90H190V164Z"/><path d="M197 164V124H211V83H227V164Z"/>
-  <path d="M235 164V109H249V94H263V164Z"/><path d="M271 164V120H287V72H302V164Z"/>
-  <path d="M310 164V102H327V86H340V164Z"/><path d="M349 164V114H365V77H380V164Z"/>
-  <path d="M391 164V126H405V99H418V164Z"/><path d="M429 164V112H446V88H459V164Z"/>
- </g>
- <g fill="#7fe9ff" opacity=".72">
-  <path d="M40 127h4v7h-4zm0 14h4v7h-4zm31-34h4v7h-4zm0 17h4v7h-4zm37-22h4v7h-4zm0 18h4v7h-4zm38-32h4v7h-4zm0 20h4v7h-4zm37 6h4v7h-4zm0 17h4v7h-4zm42-45h4v7h-4zm0 18h4v7h-4zm44 13h4v7h-4zm0 18h4v7h-4zm44-46h4v7h-4zm0 19h4v7h-4zm43-6h4v7h-4zm0 18h4v7h-4zm43-29h4v7h-4zm0 18h4v7h-4zm39 13h4v7h-4z"/>
- </g>
- <path d="M26 173Q140 152 231 173T486 163" fill="none" stroke="#ffbb4f" stroke-width="2" opacity=".55"/>
- <!-- Khan Shatyr-inspired landmark -->
- <g filter="url(#shadow)" transform="translate(105 130)">
-  <path d="M-55 49Q-45 -6 0 -18Q45 -6 55 49Z" fill="#493c9c" stroke="#c8b8ff" stroke-width="2"/>
-  <path d="M-46 42Q-33 4 0 -11Q33 4 46 42Z" fill="#7d67d7" opacity=".75"/>
-  <path d="M0 -18V49M-33 3L-21 49M33 3L21 49M-49 30L-37 49M49 30L37 49" stroke="#d8caff" stroke-width="2" opacity=".8"/>
-  <path d="M-56 49H56L45 57H-45Z" fill="#d1c9ff"/>
-  <path d="M-39 29H39M-47 40H47" stroke="#fff" stroke-width="1.6" opacity=".65"/>
- </g>
- <!-- Bayterek landmark -->
- <g filter="url(#shadow)" transform="translate(382 117) scale(1.02)">
-  <ellipse cx="0" cy="125" rx="49" ry="8" fill="#ffca63" opacity=".26"/>
-  <use href="#tower"/>
-  <circle cx="0" cy="-5" r="21" fill="none" stroke="#fff2b2" stroke-width="1" opacity=".35"/>
- </g>
- <!-- Isometric city map plane -->
- <path d="M20 218L257 176L493 222V468L256 501L20 455Z" fill="#071722" opacity=".86" stroke="#5c8296" stroke-width="2"/>
- <path d="M20 218L257 176L493 222L493 250L256 208L20 250Z" fill="#1d3344" opacity=".72"/>
- <g opacity=".95">
-  <path d="M36 267L252 225L480 266M28 328L254 286L488 331M25 389L256 348L488 393M22 447L256 408L490 454" fill="none" stroke="#334858" stroke-width="24"/>
-  <path d="M36 267L252 225L480 266M28 328L254 286L488 331M25 389L256 348L488 393M22 447L256 408L490 454" fill="none" stroke="url(#road)" stroke-width="17"/>
-  <path d="M36 267L252 225L480 266M28 328L254 286L488 331M25 389L256 348L488 393M22 447L256 408L490 454" fill="none" stroke="#e2e9e9" stroke-width="1.5" stroke-dasharray="10 13" opacity=".55"/>
-  <path d="M75 222L77 468M146 199L148 485M220 184L222 496M296 184L296 496M370 196L369 486M442 210L439 475" fill="none" stroke="#2e4352" stroke-width="20"/>
-  <path d="M75 222L77 468M146 199L148 485M220 184L222 496M296 184L296 496M370 196L369 486M442 210L439 475" fill="none" stroke="#82939d" stroke-width="13"/>
-  <path d="M75 222L77 468M146 199L148 485M220 184L222 496M296 184L296 496M370 196L369 486M442 210L439 475" fill="none" stroke="#e6edef" stroke-width="1.2" stroke-dasharray="8 12" opacity=".48"/>
- </g>
- <!-- River crossing the city -->
- <path d="M20 305Q76 281 130 301T240 323Q304 339 357 308T493 295L493 326Q409 341 365 357T240 350Q162 326 119 327T20 338Z" fill="#061d30" opacity=".7"/>
- <path d="M20 300Q76 276 130 296T240 318Q304 334 357 303T493 290L493 316Q409 331 365 347T240 340Q162 316 119 317T20 328Z" fill="url(#river)" stroke="#5de6ff" stroke-width="2"/>
- <path d="M30 310Q94 286 134 306T243 329Q303 345 363 315T484 301" fill="none" stroke="#bbf7ff" stroke-width="2" opacity=".45"/>
- <!-- Green spaces and planted blocks -->
- <g fill="url(#park)" stroke="#4fc98d" stroke-width="1.2">
-  <path d="M38 350L64 343L90 352L68 363Z"/><path d="M160 247L195 240L213 249L178 258Z"/>
-  <path d="M314 246L342 252L331 269L302 262Z"/><path d="M397 372L430 364L451 376L416 385Z"/>
-  <path d="M93 414L128 407L146 417L111 425Z"/><path d="M246 375L273 369L292 378L264 385Z"/>
- </g>
- <g fill="#9bdfa0" opacity=".9">
-  <circle cx="51" cy="351" r="3"/><circle cx="74" cy="354" r="3"/><circle cx="184" cy="249" r="3"/><circle cx="324" cy="255" r="3"/><circle cx="414" cy="374" r="3"/><circle cx="121" cy="416" r="3"/><circle cx="270" cy="378" r="3"/>
- </g>
- <!-- Detailed 3D building blocks -->
- <g filter="url(#shadow)">
-  <use href="#block" transform="translate(39 286) scale(.82)"/>
-  <use href="#block" transform="translate(98 270) scale(.74)"/>
-  <use href="#block" transform="translate(168 286) scale(.9)"/>
-  <use href="#block" transform="translate(238 260) scale(.8)"/>
-  <use href="#block" transform="translate(311 278) scale(.88)"/>
-  <use href="#block" transform="translate(384 291) scale(.82)"/>
-  <use href="#block" transform="translate(55 382) scale(.9)"/>
-  <use href="#block" transform="translate(123 363) scale(.76)"/>
-  <use href="#block" transform="translate(193 385) scale(.82)"/>
-  <use href="#block" transform="translate(282 367) scale(.88)"/>
-  <use href="#block" transform="translate(358 391) scale(.76)"/>
-  <use href="#block" transform="translate(420 356) scale(.78)"/>
- </g>
- <!-- Main vivid route, with dark underlay and glowing center -->
- <path d="M248 478C220 447 193 425 204 398C216 370 277 365 301 340C321 320 304 302 329 281C351 262 389 269 421 249" fill="none" stroke="#002a19" stroke-width="21" stroke-linecap="round" stroke-linejoin="round"/>
- <path d="M248 478C220 447 193 425 204 398C216 370 277 365 301 340C321 320 304 302 329 281C351 262 389 269 421 249" fill="none" stroke="#00ef4f" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" filter="url(#routeGlow)"/>
- <path d="M248 478C220 447 193 425 204 398C216 370 277 365 301 340C321 320 304 302 329 281C351 262 389 269 421 249" fill="none" stroke="#d9ffb4" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
- <!-- Direction arrow -->
- <g transform="translate(234 398) rotate(25)" filter="url(#shadow)">
-  <path d="M0 -34L28 22L3 14L-13 34L-11 -1Z" fill="#13a9ff" stroke="#e5faff" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M0 -25L12 7L2 3Z" fill="#b9f4ff" opacity=".9"/>
- </g>
- <!-- Destination pin -->
- <g transform="translate(420 238)" filter="url(#shadow)">
-  <path d="M0 -43C-24 -43 -40 -25 -40 -4C-40 27 0 62 0 62S40 27 40 -4C40 -25 24 -43 0 -43Z" fill="url(#pin)" stroke="#ffb5a4" stroke-width="3"/>
-  <circle cy="-5" r="15" fill="#effaff" stroke="#fff" stroke-width="3"/>
- </g>
- <!-- Bottom title plate -->
- <path d="M27 427Q256 393 485 427V486H27Z" fill="#020a16" opacity=".88"/>
- <path d="M31 426Q256 394 481 426" fill="none" stroke="#21cfff" stroke-width="2.5" opacity=".8"/>
- <g font-family="Arial,Helvetica,sans-serif" font-weight="900" text-anchor="middle" filter="url(#shadow)">
-  <text x="256" y="462" font-size="38" letter-spacing=".3" fill="url(#title)" stroke="#09234a" stroke-width="1">Астана <tspan fill="#16dbff">Гид</tspan></text>
- </g>
-</g>
-<rect x="19" y="19" width="474" height="474" rx="83" fill="none" stroke="url(#edge)" stroke-width="4" filter="url(#softGlow)" opacity=".9"/>
-<rect x="27" y="27" width="458" height="458" rx="77" fill="none" stroke="#d2ffff" stroke-opacity=".24" stroke-width="1.3"/>
+ <rect x="18" y="18" width="476" height="476" rx="86" fill="none" stroke="#d2ffff" stroke-opacity=".28" stroke-width="2"/>
 </svg>
