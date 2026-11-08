@@ -6,9 +6,9 @@ export const metadata = {
   applicationName: "Астана Гид",
   manifest: "/astana-map-manifest.webmanifest",
   icons: {
-    icon: "/astana-map-icon.jpg",
-    shortcut: "/astana-map-icon.jpg",
-    apple: "/astana-map-icon.jpg"
+    icon: "/astana-map-icon.svg",
+    shortcut: "/astana-map-icon.svg",
+    apple: "/astana-map-icon.svg"
   }
 };
 
