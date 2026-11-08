@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Астана Гид">
+ <defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#10294b"/><stop offset=".48" stop-color="#06152c"/><stop offset="1" stop-color="#020914"/></linearGradient>
+  <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d6ffff"/><stop offset=".35" stop-color="#00cfff"/><stop offset=".68" stop-color="#1266ff"/><stop offset="1" stop-color="#9ceeff"/></linearGradient>
+  <linearGradient id="silver" x1="0" y1="0" x2=".25" y2="1"><stop stop-color="#fff"/><stop offset=".35" stop-color="#e1eaf5"/><stop offset=".68" stop-color="#8ea4bd"/><stop offset="1" stop-color="#f4fbff"/></linearGradient>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2=".25"><stop stop-color="#e87516"/><stop offset=".23" stop-color="#ffb52b"/><stop offset=".55" stop-color="#fff0a0"/><stop offset=".78" stop-color="#ffad20"/><stop offset="1" stop-color="#d96812"/></linearGradient>
+  <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b4fbff"/><stop offset=".3" stop-color="#28d8ff"/><stop offset=".7" stop-color="#087cff"/><stop offset="1" stop-color="#0043bd"/></linearGradient>
+  <radialGradient id="glow"><stop stop-color="#079aff" stop-opacity=".5"/><stop offset="1" stop-color="#079aff" stop-opacity="0"/></radialGradient>
+  <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="7"/><feOffset dy="7"/><feComponentTransfer><feFuncA type="linear" slope=".6"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="glowblue" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="clip"><rect x="18" y="18" width="476" height="476" rx="86"/></clipPath>
+ </defs>
+ <rect x="10" y="10" width="492" height="492" rx="94" fill="url(#bg)" stroke="url(#rim)" stroke-width="8"/>
+ <g clip-path="url(#clip)">
+  <circle cx="256" cy="230" r="230" fill="url(#glow)" opacity=".6"/>
+  <g opacity=".16" stroke="#6fb7e8" stroke-width="3" fill="none"><path d="M-10 120L180 18M-15 208L235 18M20 300L325 18M130 500L500 180M250 512L510 250M365 510L510 365"/><path d="M18 92L420 492M90 18L494 422M18 220L292 494M215 18L494 295"/></g>
+  <circle cx="256" cy="222" r="164" fill="none" stroke="url(#rim)" stroke-width="9" stroke-dasharray="760 270" transform="rotate(-54 256 222)" opacity=".82"/>
+  <circle cx="256" cy="222" r="148" fill="none" stroke="#55cfff" stroke-width="2" opacity=".18"/>
+  <path d="M102 342L207 92Q215 73 235 73H279Q298 73 306 93L412 342H337L258 151L179 342Z" fill="url(#silver)" stroke="#f5fbff" stroke-width="2" filter="url(#shadow)"/>
+  <path d="M197 263H317" stroke="#536f91" stroke-width="11" opacity=".45"/>
+  <path d="M70 287C135 230 251 192 370 176C431 168 457 183 451 205C441 244 302 271 194 293C127 307 78 319 70 287Z" fill="none" stroke="#5a270b" stroke-width="24" opacity=".55"/>
+  <path d="M67 278C137 229 253 191 373 176C428 169 455 180 451 202C444 234 316 264 199 288C131 302 80 312 67 278Z" fill="none" stroke="url(#gold)" stroke-width="17" stroke-linecap="round" filter="url(#shadow)"/>
+  <path d="M83 271C155 228 275 193 381 180" fill="none" stroke="#fff4c0" stroke-width="2.2" stroke-linecap="round" opacity=".8"/>
+  <ellipse cx="309" cy="348" rx="80" ry="27" fill="url(#glow)" filter="url(#glowblue)"/>
+  <path d="M245 292L369 254Q382 250 377 265L326 390Q320 405 310 391L291 356L253 322Q237 308 245 292Z" fill="url(#blue)" stroke="#d8fbff" stroke-width="5" stroke-linejoin="round" filter="url(#shadow)"/>
+  <path d="M261 300L359 270L318 365L299 334Z" fill="#5deaff" opacity=".4"/>
+  <path d="M31 399Q256 378 481 399V489H31Z" fill="#020a16" opacity=".87"/>
+  <path d="M39 399Q256 382 473 399" fill="none" stroke="#1dbdf5" stroke-width="2" opacity=".7"/>
+  <text x="256" y="458" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="49" font-weight="800" letter-spacing="-1.8" fill="#f6fbff">Астана<tspan fill="#12d8ff">Гид</tspan></text>
+  <path d="M113 477Q256 450 399 477" fill="none" stroke="url(#rim)" stroke-width="5" stroke-linecap="round"/>
+ </g>
+ <rect x="18" y="18" width="476" height="476" rx="86" fill="none" stroke="#d2ffff" stroke-opacity=".28" stroke-width="2"/>
+</svg>
