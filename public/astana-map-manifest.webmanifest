@@ -12,6 +12,12 @@
   "prefer_related_applications": false,
   "icons": [
     {
+      "src": "/astana-map-icon.jpg",
+      "sizes": "160x160",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
       "src": "/astana-map-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
