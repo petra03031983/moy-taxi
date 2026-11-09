@@ -683,3 +683,11 @@
   .astana-search-wrap-map-pick .astana-search-box { height: 54px !important; }
   .astana-place-map-controls { right: 10px !important; top: 20% !important; }
 }
+
+
+/* Keep the 2D fallback clean at city scale; reveal road-safety icons only on close zoom. */
+.astana-map-canvas:not(.astana-road-icons-detailed) .moy-road-object-icon-detail {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
