@@ -730,12 +730,14 @@ function roadObjectShortLabel(kind) {
 function roadObjectIconHtml(kind, speedLimit = null) {
   if (kind === "speed-camera-limit") {
     const value = Number.isFinite(Number(speedLimit)) ? String(Math.round(Number(speedLimit))) : "!";
-    return '<span class="moy-road-object-speed-camera" aria-label="Камера контроля скорости, ограничение ' + escapeHtml(value) + ' километров в час">'
-      + '<span class="moy-road-object-speed-camera-beam moy-road-object-speed-camera-beam-front"></span>'
-      + '<span class="moy-road-object-speed-camera-beam moy-road-object-speed-camera-beam-back"></span>'
-      + '<span class="moy-road-object-speed-camera-center">' + roadObjectIconHtml("camera") + '</span>'
-      + '<span class="moy-road-object-speed-camera-limit">' + escapeHtml(value) + '</span>'
-      + '</span>';
+    return '<span class="moy-road-object-speed-camera-pin" aria-label="Камера контроля скорости, ограничение ' + escapeHtml(value) + ' километров в час">'
+      + '<svg viewBox="0 0 88 108" role="img" aria-hidden="true">'
+      + '<path d="M44 5C22 5 6 21 6 42c0 20 20 43 38 61 18-18 38-41 38-61C82 21 66 5 44 5Z" fill="#fff" stroke="#d92c3a" stroke-width="6" stroke-linejoin="round"/>'
+      + '<text x="43" y="57" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="34" font-weight="900" fill="#171b20">' + escapeHtml(value) + '</text>'
+      + '<circle cx="72" cy="18" r="14" fill="#d92c3a" stroke="#fff" stroke-width="2"/>'
+      + '<path d="M65 15h13v8H65zM68 12h6l2 3h-10z" fill="#fff"/>'
+      + '<circle cx="71.5" cy="19" r="2.2" fill="#d92c3a"/>'
+      + '</svg></span>';
   }
   if (kind === "speed-sign") {
     const value = Number.isFinite(Number(speedLimit)) ? String(Math.round(Number(speedLimit))) : "!";
@@ -2006,6 +2008,56 @@ export default function AstanaMapPage() {
               map.addImage(name, ctx.getImageData(0, 0, width, height), { pixelRatio: 2 });
             };
 
+            const drawSpeedCameraPin = (ctx, limit) => {
+              ctx.save();
+              ctx.shadowColor = "rgba(0,0,0,0.42)";
+              ctx.shadowBlur = 6;
+              ctx.shadowOffsetY = 2;
+              ctx.beginPath();
+              ctx.moveTo(44, 5);
+              ctx.bezierCurveTo(22, 5, 6, 21, 6, 42);
+              ctx.bezierCurveTo(6, 62, 26, 85, 44, 103);
+              ctx.bezierCurveTo(62, 85, 82, 62, 82, 42);
+              ctx.bezierCurveTo(82, 21, 66, 5, 44, 5);
+              ctx.closePath();
+              ctx.fillStyle = "#ffffff";
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.lineWidth = 5;
+              ctx.strokeStyle = "#d92c3a";
+              ctx.stroke();
+              ctx.fillStyle = "#171b20";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.font = "900 34px Arial, Helvetica, sans-serif";
+              ctx.fillText(String(limit), 43, 48);
+              ctx.beginPath();
+              ctx.arc(72, 18, 14, 0, Math.PI * 2);
+              ctx.fillStyle = "#d92c3a";
+              ctx.fill();
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = "#ffffff";
+              ctx.stroke();
+              ctx.fillStyle = "#ffffff";
+              roundRect(ctx, 65, 15, 13, 8, 2);
+              ctx.fill();
+              ctx.beginPath();
+              ctx.moveTo(68, 15);
+              ctx.lineTo(70, 12);
+              ctx.lineTo(75, 12);
+              ctx.lineTo(77, 15);
+              ctx.closePath();
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(71.5, 19, 2.3, 0, Math.PI * 2);
+              ctx.fillStyle = "#d92c3a";
+              ctx.fill();
+              ctx.restore();
+            };
+            [20, 40, 50, 60, 80].forEach(limit => {
+              addCanvasRoadIcon("astana-road-speed-camera-pin-" + limit, 88, 108, ctx => drawSpeedCameraPin(ctx, limit));
+            });
+
             addCanvasRoadIcon("astana-road-camera", 64, 64, (ctx) => {
               ctx.save();
               ctx.shadowColor = "rgba(0,0,0,0.38)";
@@ -2301,7 +2353,15 @@ export default function AstanaMapPage() {
                 "icon-image": [
                   "match", ["get", "kind"],
                   "camera", "astana-road-camera",
-                  "speed-camera-limit", "astana-road-camera",
+                  "speed-camera-limit", [
+                    "match", ["get", "speedLimit"],
+                    20, "astana-road-speed-camera-pin-20",
+                    40, "astana-road-speed-camera-pin-40",
+                    50, "astana-road-speed-camera-pin-50",
+                    60, "astana-road-speed-camera-pin-60",
+                    80, "astana-road-speed-camera-pin-80",
+                    "astana-road-speed-camera-pin-60"
+                  ],
                   "traffic-light", "astana-road-traffic-light",
                   "speed-sign", "astana-road-speed-limit",
                   "pedestrian-crossing", "astana-road-pedestrian-crossing",
@@ -2310,7 +2370,7 @@ export default function AstanaMapPage() {
                 "icon-size": [
                   "match", ["get", "kind"],
                   "camera", 1.0,
-                  "speed-camera-limit", 1.0,
+                  "speed-camera-limit", 1.28,
                   "traffic-light", 1.05,
                   "speed-sign", 0.95,
                   "pedestrian-crossing", 0.92,
@@ -2320,41 +2380,6 @@ export default function AstanaMapPage() {
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true,
                 "icon-padding": 1,
-              },
-            }, labelLayerId);
-            addLayerBeforeLabels(map, {
-              id: "moy3d-speed-camera-limit-badges",
-              type: "symbol",
-              source: "moy3d-road-objects",
-              minzoom: 16,
-              filter: ["==", ["get", "kind"], "speed-camera-limit"],
-              layout: {
-                "icon-image": "astana-road-speed-limit",
-                "icon-size": 0.62,
-                "icon-offset": [20, -18],
-                "icon-allow-overlap": true,
-                "icon-ignore-placement": true,
-              },
-            }, labelLayerId);
-            addLayerBeforeLabels(map, {
-              id: "moy3d-speed-camera-limit-numbers",
-              type: "symbol",
-              source: "moy3d-road-objects",
-              minzoom: 16,
-              filter: ["==", ["get", "kind"], "speed-camera-limit"],
-              layout: {
-                "text-field": ["to-string", ["get", "speedLimit"]],
-                "text-size": 10,
-                "text-font": ["Open Sans Regular"],
-                "text-offset": [2, -1.8],
-                "text-anchor": "center",
-                "text-allow-overlap": true,
-                "text-ignore-placement": true,
-              },
-              paint: {
-                "text-color": "#20242a",
-                "text-halo-color": "#ffffff",
-                "text-halo-width": 0.35,
               },
             }, labelLayerId);
             addLayerBeforeLabels(map, {
@@ -4037,8 +4062,8 @@ export default function AstanaMapPage() {
           const icon = L.divIcon({
             className: "moy-road-object-icon" + (isRoadSafetyMarker ? " moy-road-object-icon-detail" : ""),
             html: roadObjectIconHtml(visualKind, item.speedLimit),
-            iconSize: visualKind === "speed-camera-limit" ? [78, 86] : isCamera ? [42, 42] : isSignal ? [32, 46] : isSpeedSign || isParking || isCrossing ? [42, 42] : [38, 38],
-            iconAnchor: visualKind === "speed-camera-limit" ? [39, 43] : isCamera ? [21, 21] : isSignal ? [16, 23] : isSpeedSign || isParking || isCrossing ? [21, 21] : [19, 19],
+            iconSize: visualKind === "speed-camera-limit" ? [64, 78] : isCamera ? [42, 42] : isSignal ? [32, 46] : isSpeedSign || isParking || isCrossing ? [42, 42] : [38, 38],
+            iconAnchor: visualKind === "speed-camera-limit" ? [32, 75] : isCamera ? [21, 21] : isSignal ? [16, 23] : isSpeedSign || isParking || isCrossing ? [21, 21] : [19, 19],
           });
           const marker = L.marker([item.lat, item.lng], {
             icon,
@@ -5032,8 +5057,10 @@ export default function AstanaMapPage() {
   async function saveManualRoadObject() {
     const kindLabels = {
       "traffic-light": "Светофор",
-      "speed-camera": "Камера контроля скорости",
-      "speed-camera-limit": "Камера с ограничением скорости " + manualRoadSpeedLimit + " км/ч",
+      ...Object.fromEntries([20, 40, 50, 60, 80].map(speedLimit => [
+        "speed-camera-limit-" + speedLimit,
+        "Камера контроля скорости · " + speedLimit + " км/ч",
+      ])),
       "surveillance-camera": "Камера видеонаблюдения",
       "pedestrian-crossing": "Пешеходный переход",
     };
@@ -5045,17 +5072,19 @@ export default function AstanaMapPage() {
     let failed = null;
     try {
       for (const kind of selectedKinds) {
+        const speedPreset = /^speed-camera-limit-(20|40|50|60|80)$/.exec(kind);
+        const speedLimit = speedPreset ? Number(speedPreset[1]) : null;
         const response = await fetch("/api/road-manual-objects", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({
-            kind: kind === "speed-camera-limit" ? "speed-camera" : kind,
+            kind: speedPreset ? "speed-camera" : kind,
             lat: manualRoadPosition.lat,
             lng: manualRoadPosition.lng,
             label: kindLabels[kind],
             notes: [
-              kind === "speed-camera-limit" ? "[SPEED_LIMIT=" + Math.round(Number(manualRoadSpeedLimit)) + "]" : "",
+              speedLimit ? "[SPEED_LIMIT=" + speedLimit + "]" : "",
               kind === "pedestrian-crossing" && Number.isFinite(Number(manualRoadPosition.roadBearing))
                 ? "[CROSSING_BEARING=" + Number(manualRoadPosition.roadBearing).toFixed(1) + "]"
                 : "",
@@ -5176,30 +5205,33 @@ export default function AstanaMapPage() {
           <b style={{ color: "#fff", fontSize: 16 }}>Что отметить в одной точке?</b>
           {[
             { value: "traffic-light", label: "Светофор", icon: "🚦" },
-            { value: "speed-camera", label: "Камера контроля скорости", icon: "📷" },
-            { value: "speed-camera-limit", label: "Камера с ограничением скорости", icon: "📷" },
+            ...[20, 40, 50, 60, 80].map(speedLimit => ({
+              value: "speed-camera-limit-" + speedLimit,
+              label: "Камера контроля скорости · " + speedLimit + " км/ч",
+              speedLimit,
+            })),
             { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" },
             { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
           ].map(option => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 42, padding: "7px 9px", border: "1px solid #355a75", borderRadius: 11, background: manualRoadKinds.includes(option.value) ? "rgba(16,96,139,.48)" : "#102536", color: "#fff", fontSize: 14, fontWeight: 700 }}>
             <input type="checkbox" checked={manualRoadKinds.includes(option.value)} disabled={manualRoadBusy} onChange={event => {
               const checked = event.target.checked;
               setManualRoadKinds(current => {
-                const cameraChoices = ["speed-camera", "speed-camera-limit"];
-                const remaining = cameraChoices.includes(option.value)
-                  ? current.filter(value => !cameraChoices.includes(value))
+                const isSpeedCameraPreset = String(option.value).startsWith("speed-camera-limit-");
+                const remaining = isSpeedCameraPreset
+                  ? current.filter(value => !String(value).startsWith("speed-camera-limit-") && !["speed-camera", "speed-camera-limit"].includes(value))
                   : current;
                 return checked ? [...new Set([...remaining, option.value])] : remaining.filter(value => value !== option.value);
               });
               if (checked) setManualRoadKind(option.value);
             }} style={{ width: 20, height: 20, accentColor: "#27c4ff" }} />
-            <span style={{ fontSize: 19 }}>{option.icon}</span><span>{option.label}</span>
+            {option.speedLimit ? <svg viewBox="0 0 88 108" width="39" height="48" aria-hidden="true" style={{ flex: "0 0 39px" }}>
+              <path d="M44 5C22 5 6 21 6 42c0 20 20 43 38 61 18-18 38-41 38-61C82 21 66 5 44 5Z" fill="#fff" stroke="#d92c3a" strokeWidth="6" strokeLinejoin="round" />
+              <text x="43" y="57" textAnchor="middle" fontSize="34" fontWeight="900" fill="#171b20">{option.speedLimit}</text>
+              <circle cx="72" cy="18" r="14" fill="#d92c3a" stroke="#fff" strokeWidth="2" />
+              <path d="M65 15h13v8H65zM68 12h6l2 3h-10z" fill="#fff" />
+              <circle cx="71.5" cy="19" r="2.2" fill="#d92c3a" />
+            </svg> : <span style={{ fontSize: 19 }}>{option.icon}</span>}<span>{option.label}</span>
           </label>)}
-          {manualRoadKinds.includes("speed-camera-limit") && <label style={{ display: "grid", gap: 6, padding: "8px 9px", borderRadius: 10, background: "#102536", color: "#fff", fontSize: 13, fontWeight: 800 }}>
-            Ограничение на камере
-            <select value={manualRoadSpeedLimit} onChange={event => setManualRoadSpeedLimit(event.target.value)} disabled={manualRoadBusy} style={{ minHeight: 42, borderRadius: 9, border: "1px solid #47657d", background: "#20394d", color: "#fff", padding: "7px 9px", fontSize: 16, fontWeight: 800 }}>
-              {[20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120].map(value => <option key={value} value={String(value)}>{value} км/ч</option>)}
-            </select>
-          </label>}
           <button type="button" onClick={beginManualRoadAdd} disabled={manualRoadBusy || manualRoadKinds.length === 0} style={{ minHeight: 48, padding: "11px 12px", border: 0, borderRadius: 12, background: "#087cf0", color: "#fff", fontSize: 15, fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>📍 Выбрать место на карте</button>
           <button type="button" onClick={() => {
             const nextOpen = !manualRoadManagerOpen;
@@ -5359,31 +5391,34 @@ export default function AstanaMapPage() {
         <div style={{ display: "grid", gap: 7 }}>
           {[
             { value: "traffic-light", label: "Светофор", icon: "🚦" },
-            { value: "speed-camera", label: "Камера контроля скорости", icon: "📷" },
-            { value: "speed-camera-limit", label: "Камера с ограничением скорости", icon: "📷" },
+            ...[20, 40, 50, 60, 80].map(speedLimit => ({
+              value: "speed-camera-limit-" + speedLimit,
+              label: "Камера контроля скорости · " + speedLimit + " км/ч",
+              speedLimit,
+            })),
             { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" },
             { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
           ].map(option => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 9, minHeight: 38, padding: "6px 8px", border: "1px solid #d4dee5", borderRadius: 10, background: manualRoadKinds.includes(option.value) ? "#e8f5ff" : "#f7f9fa", fontSize: 14, fontWeight: 700 }}>
             <input type="checkbox" checked={manualRoadKinds.includes(option.value)} disabled={manualRoadBusy} onChange={event => {
               const checked = event.target.checked;
               setManualRoadKinds(current => {
-                const cameraChoices = ["speed-camera", "speed-camera-limit"];
-                const remaining = cameraChoices.includes(option.value)
-                  ? current.filter(value => !cameraChoices.includes(value))
+                const isSpeedCameraPreset = String(option.value).startsWith("speed-camera-limit-");
+                const remaining = isSpeedCameraPreset
+                  ? current.filter(value => !String(value).startsWith("speed-camera-limit-") && !["speed-camera", "speed-camera-limit"].includes(value))
                   : current;
                 return checked ? [...new Set([...remaining, option.value])] : remaining.filter(value => value !== option.value);
               });
               if (checked) setManualRoadKind(option.value);
             }} style={{ width: 19, height: 19, accentColor: "#087cf0" }} />
-            <span style={{ fontSize: 18 }}>{option.icon}</span><span>{option.label}</span>
+            {option.speedLimit ? <svg viewBox="0 0 88 108" width="34" height="42" aria-hidden="true" style={{ flex: "0 0 34px" }}>
+              <path d="M44 5C22 5 6 21 6 42c0 20 20 43 38 61 18-18 38-41 38-61C82 21 66 5 44 5Z" fill="#fff" stroke="#d92c3a" strokeWidth="6" strokeLinejoin="round" />
+              <text x="43" y="57" textAnchor="middle" fontSize="34" fontWeight="900" fill="#171b20">{option.speedLimit}</text>
+              <circle cx="72" cy="18" r="14" fill="#d92c3a" stroke="#fff" strokeWidth="2" />
+              <path d="M65 15h13v8H65zM68 12h6l2 3h-10z" fill="#fff" />
+              <circle cx="71.5" cy="19" r="2.2" fill="#d92c3a" />
+            </svg> : <span style={{ fontSize: 18 }}>{option.icon}</span>}<span>{option.label}</span>
           </label>)}
         </div>
-        {manualRoadKinds.includes("speed-camera-limit") && <label style={{ display: "grid", gap: 6, marginTop: 12, fontSize: 13, fontWeight: 800 }}>
-          Ограничение на камере
-          <select value={manualRoadSpeedLimit} onChange={event => setManualRoadSpeedLimit(event.target.value)} disabled={manualRoadBusy} style={{ width: "100%", minHeight: 43, border: "1px solid #a7b5bf", borderRadius: 10, background: "#fff", padding: "8px 10px", fontSize: 16, fontWeight: 800 }}>
-            {[20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120].map(value => <option key={value} value={String(value)}>{value} км/ч</option>)}
-          </select>
-        </label>}
         <label htmlFor="manual-road-notes" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Заметка для всех объектов (необязательно)</label>
         <textarea id="manual-road-notes" value={manualRoadNotes} onChange={event => setManualRoadNotes(event.target.value)} rows={2} maxLength={500} placeholder="Например: перекрёсток, направление в центр" style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 14 }} />
         {manualRoadStatus && <p role="status" style={{ fontSize: 12, lineHeight: 1.4, color: "#126e59" }}>{manualRoadStatus}</p>}
