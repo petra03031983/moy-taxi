@@ -1167,6 +1167,9 @@ export default function AstanaMapPage() {
   const [manualRoadAddMode, setManualRoadAddMode] = useState(false);
   const [manualRoadPosition, setManualRoadPosition] = useState(null);
   const [manualRoadQuickOpen, setManualRoadQuickOpen] = useState(false);
+  const [manualRoadManagerOpen, setManualRoadManagerOpen] = useState(false);
+  const [manualRoadManagerBusy, setManualRoadManagerBusy] = useState(false);
+  const [manualRoadObjects, setManualRoadObjects] = useState([]);
   const [manualRoadKind, setManualRoadKind] = useState("traffic-light");
   const [manualRoadKinds, setManualRoadKinds] = useState(["traffic-light"]);
   const [manualRoadSpeedLimit, setManualRoadSpeedLimit] = useState("60");
@@ -2316,14 +2319,18 @@ export default function AstanaMapPage() {
               const featureLng = Number(featureCoordinates?.[0]);
               const featureLat = Number(featureCoordinates?.[1]);
               const featureKind = kind === "speed-camera-limit" ? "camera" : kind;
+              const manualCandidates = [
+                ...(roadObjectsRef.current || []),
+                ...(privateRoadObjectsRef.current || []),
+              ];
               const nearbyManualPin = Number.isFinite(featureLat) && Number.isFinite(featureLng)
-                ? (roadObjectsRef.current || []).find(item => {
+                ? manualCandidates.find(item => {
                     if (!(item.manualRoadObject === true || item.manual === true)) return false;
                     if (String(item.kind || "") !== featureKind) return false;
                     const itemLat = Number(item.lat);
                     const itemLng = Number(item.lng);
                     if (!Number.isFinite(itemLat) || !Number.isFinite(itemLng)) return false;
-                    return distanceBetween([featureLat, featureLng], [itemLat, itemLng]) <= 2;
+                    return distanceBetween([featureLat, featureLng], [itemLat, itemLng]) <= 12;
                   })
                 : null;
               const isManualPin = props.manualRoadObject === true ||
@@ -4822,12 +4829,40 @@ export default function AstanaMapPage() {
         throw new Error(payload?.error || "Не удалось удалить отметку.");
       }
       setManualRoadStatus("Ручная отметка удалена.");
+      setManualRoadObjects(current => current.filter(item => String(item.id) !== normalizedId));
       setRoadScanRevision(value => value + 1);
       setRoadObjectsRevision(value => value + 1);
       return true;
     } catch (error) {
       setManualRoadStatus(String(error?.message || "Не удалось удалить отметку.").slice(0, 180));
       return false;
+    }
+  }
+
+  async function refreshManualRoadObjects() {
+    setManualRoadManagerBusy(true);
+    try {
+      const response = await fetch("/api/road-manual-objects", {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.ok !== true || !Array.isArray(payload.objects)) {
+        throw new Error(payload?.error || "Не удалось загрузить личные отметки.");
+      }
+      setManualRoadObjects(payload.objects.map(item => ({
+        ...item,
+        id: String(item.id || ""),
+        kind: String(item.kind || ""),
+        lat: Number(item.lat),
+        lng: Number(item.lng),
+      })).filter(item => item.id));
+      setManualRoadStatus("");
+    } catch (error) {
+      setManualRoadStatus(String(error?.message || "Не удалось загрузить личные отметки.").slice(0, 180));
+    } finally {
+      setManualRoadManagerBusy(false);
     }
   }
 
@@ -5020,6 +5055,46 @@ export default function AstanaMapPage() {
             </select>
           </label>}
           <button type="button" onClick={beginManualRoadAdd} disabled={manualRoadBusy || manualRoadKinds.length === 0} style={{ minHeight: 48, padding: "11px 12px", border: 0, borderRadius: 12, background: "#087cf0", color: "#fff", fontSize: 15, fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>📍 Выбрать место на карте</button>
+          <button type="button" onClick={() => {
+            const nextOpen = !manualRoadManagerOpen;
+            setManualRoadManagerOpen(nextOpen);
+            if (nextOpen) void refreshManualRoadObjects();
+          }} style={{ minHeight: 46, padding: "10px 12px", border: "1px solid #37b9ed", borderRadius: 12, background: "#132f43", color: "#fff", fontSize: 14, fontWeight: 900 }}>
+            🗂 Мои отметки — исправить или удалить
+          </button>
+          {manualRoadManagerOpen && <div style={{ display: "grid", gap: 8, maxHeight: "34dvh", overflowY: "auto", padding: 9, borderRadius: 12, background: "#0b1d2b", border: "1px solid #34546a" }}>
+            <b style={{ color: "#fff", fontSize: 14 }}>Сохранённые личные отметки: {manualRoadObjects.length}</b>
+            {manualRoadManagerBusy && <small style={{ color: "#b9d2e3" }}>Загружаем список…</small>}
+            {!manualRoadManagerBusy && manualRoadObjects.length === 0 && <small style={{ color: "#b9d2e3" }}>Личных отметок пока нет.</small>}
+            {manualRoadObjects.map(item => {
+              const labels = {
+                "traffic-light": "Светофор",
+                "speed-camera": "Камера контроля скорости",
+                "surveillance-camera": "Камера видеонаблюдения",
+                "speed-limit": "Знак ограничения скорости",
+                "traffic-sign": "Дорожный знак",
+                "stop-sign": "Знак STOP",
+                "give-way-sign": "Уступи дорогу",
+                "pedestrian-crossing": "Пешеходный переход",
+                "no-stopping": "Остановка запрещена",
+                "no-parking": "Стоянка запрещена",
+                "parking": "Парковка",
+                "roadwork": "Дорожные работы",
+                "road-hazard": "Дорожная опасность",
+              };
+              return <div key={item.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: 8, borderRadius: 9, background: "#183448" }}>
+                <div style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                  <b style={{ color: "#fff", fontSize: 13 }}>{labels[item.kind] || item.label || "Дорожная отметка"}</b>
+                  <small style={{ color: "#b9d2e3", fontSize: 11 }}>{Number.isFinite(item.lat) && Number.isFinite(item.lng) ? item.lat.toFixed(5) + ", " + item.lng.toFixed(5) : "Координаты не указаны"}</small>
+                </div>
+                <button type="button" disabled={manualRoadBusy} onClick={async () => {
+                  const deleted = await deleteManualRoadObject(item.id, labels[item.kind] || item.label || "дорожную отметку");
+                  if (deleted) setManualRoadObjects(current => current.filter(entry => String(entry.id) !== String(item.id)));
+                }} style={{ flexShrink: 0, minHeight: 40, padding: "7px 10px", border: 0, borderRadius: 9, background: "#a92c39", color: "#fff", fontWeight: 900 }}>Удалить</button>
+              </div>;
+            })}
+            <button type="button" onClick={() => void refreshManualRoadObjects()} disabled={manualRoadManagerBusy} style={{ minHeight: 38, border: "1px solid #53748d", borderRadius: 9, background: "#173248", color: "#fff", fontWeight: 800 }}>Обновить список</button>
+          </div>}
           {manualRoadStatus && <small role="status" style={{ color: "#9bdfff", lineHeight: 1.4 }}>{manualRoadStatus}</small>}
           <small style={{ color: "#a9c0d1", lineHeight: 1.4 }}>Выбери сразу несколько объектов. Одним нажатием на перекрёсток задашь общую точку для всех выбранных значков. Сохраняй только после безопасной остановки.</small>
         </div>}
