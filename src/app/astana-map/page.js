@@ -1159,6 +1159,7 @@ export default function AstanaMapPage() {
   const [manualRoadPosition, setManualRoadPosition] = useState(null);
   const [manualRoadQuickOpen, setManualRoadQuickOpen] = useState(false);
   const [manualRoadKind, setManualRoadKind] = useState("traffic-light");
+  const [manualRoadKinds, setManualRoadKinds] = useState(["traffic-light"]);
   const [manualRoadLabel, setManualRoadLabel] = useState("");
   const [manualRoadNotes, setManualRoadNotes] = useState("");
   const [manualRoadStatus, setManualRoadStatus] = useState("");
@@ -3368,6 +3369,7 @@ export default function AstanaMapPage() {
             "speed-camera": { label: "Камера контроля скорости", icon: "📷" },
             "surveillance-camera": { label: "Камера видеонаблюдения", icon: "🎥" },
             "traffic-light": { label: "Светофор", icon: "🚦" },
+            "pedestrian-crossing": { label: "Пешеходный переход", icon: "🚸" },
           };
           const kind = item.manual
             ? (manualKinds[item.kind] || { label: item.label || "Дорожный объект", icon: "📍" })
@@ -4572,48 +4574,86 @@ export default function AstanaMapPage() {
   }
 
   function beginManualRoadAdd() {
+    if (!manualRoadKinds.length) {
+      setManualRoadStatus("Сначала выбери хотя бы один объект.");
+      return;
+    }
     setRoadScanPanelOpen(false);
     setManualRoadPosition(null);
-    setManualRoadStatus("Нажми на точное место объекта. После выбора точки карта автоматически вернётся в 4D.");
+    setManualRoadStatus("Нажми один раз на нужный перекрёсток или место объекта.");
     setManualRoadAddMode(true);
     map3dEnabledRef.current = false;
     setMap3dEnabled(false);
+    const map = mapRef.current;
+    if (map?.getCenter && map?.getZoom) {
+      map.setView(map.getCenter(), Math.max(17.5, Number(map.getZoom()) || 0), { animate: true });
+    }
   }
 
   async function saveManualRoadObject() {
-    if (!manualRoadPosition || manualRoadBusy) return;
+    const kindLabels = {
+      "traffic-light": "Светофор",
+      "speed-camera": "Камера контроля скорости",
+      "surveillance-camera": "Камера видеонаблюдения",
+      "pedestrian-crossing": "Пешеходный переход",
+    };
+    const selectedKinds = [...new Set(manualRoadKinds)].filter(kind => kindLabels[kind]);
+    if (!manualRoadPosition || manualRoadBusy || !selectedKinds.length) return;
     setManualRoadBusy(true);
-    setManualRoadStatus("");
+    setManualRoadStatus("Сохраняем выбранные объекты в одной точке…");
+    const saved = [];
+    let failed = null;
     try {
-      const response = await fetch("/api/road-manual-objects", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          kind: manualRoadKind,
-          lat: manualRoadPosition.lat,
-          lng: manualRoadPosition.lng,
-          label: manualRoadLabel.trim(),
-          notes: manualRoadNotes.trim(),
-          accuracy_m: Number(manualRoadPosition.accuracy || 10),
-        }),
-        cache: "no-store",
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.ok) {
-        setManualRoadStatus(payload?.error || "Не удалось сохранить объект.");
+      for (const kind of selectedKinds) {
+        const response = await fetch("/api/road-manual-objects", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            kind,
+            lat: manualRoadPosition.lat,
+            lng: manualRoadPosition.lng,
+            label: kindLabels[kind],
+            notes: manualRoadNotes.trim(),
+            accuracy_m: 10,
+          }),
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+          failed = { kind, message: payload?.error || "Ошибка сохранения" };
+          break;
+        }
+        saved.push({ kind, duplicate: payload.duplicate === true });
+      }
+
+      if (failed) {
+        const completedNames = saved.map(item => kindLabels[item.kind]).join(", ");
+        const prefix = completedNames ? "Уже обработано: " + completedNames + ". " : "";
+        setManualRoadStatus(prefix + "Не удалось сохранить «" + kindLabels[failed.kind] + "»: " + failed.message + ". Нажми «Сохранить» ещё раз — уже записанные отметки не потеряются.");
+        if (saved.length) {
+          setRoadScanRevision(value => value + 1);
+          setRoadObjectsRevision(value => value + 1);
+        }
         return;
       }
-      setManualRoadStatus(payload.duplicate
-        ? "Такой объект уже есть рядом — существующая точка обновлена."
-        : "Объект сохранён в личной базе «Астана Гид».");
+
+      const added = saved.filter(item => !item.duplicate).map(item => kindLabels[item.kind]);
+      const existed = saved.filter(item => item.duplicate).map(item => kindLabels[item.kind]);
+      const summary = [
+        added.length ? "Сохранено: " + added.join(" + ") : "",
+        existed.length ? "Уже были в базе: " + existed.join(" + ") : "",
+      ].filter(Boolean).join(". ");
+      setManualRoadStatus(summary || "Отметки обработаны.");
       setManualRoadPosition(null);
       setManualRoadNotes("");
       setManualRoadLabel("");
+      setManualRoadQuickOpen(false);
       setRoadScanRevision(value => value + 1);
       setRoadObjectsRevision(value => value + 1);
     } catch {
-      setManualRoadStatus("Нет связи с базой. Объект пока не сохранён.");
+      const completedNames = saved.map(item => kindLabels[item.kind]).join(", ");
+      setManualRoadStatus((completedNames ? "Уже обработано: " + completedNames + ". " : "") + "Нет связи с базой. Повтори сохранение — отметки с одной точкой не потеряются.");
     } finally {
       setManualRoadBusy(false);
     }
@@ -4631,7 +4671,7 @@ export default function AstanaMapPage() {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       setManualRoadPosition({ lat, lng });
       setManualRoadAddMode(false);
-      setManualRoadStatus("Проверь координаты и сохрани объект.");
+      setManualRoadStatus("Место выбрано. Все отмеченные типы сохранятся по этой одной точке.");
       const center = map.getCenter?.();
       if (center && map3dRef.current && map3dReadyRef.current) {
         map3dRef.current.jumpTo({
@@ -4674,13 +4714,26 @@ export default function AstanaMapPage() {
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
       <div style={{ position: "fixed", right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)", zIndex: 8000, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, fontFamily: "system-ui,sans-serif" }}>
-        {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объект на карту" style={{ width: "min(78vw,300px)", padding: 12, borderRadius: 16, background: "rgba(7,20,35,.97)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 8 }}>
-          <b style={{ color: "#fff", fontSize: 15 }}>Что добавить рядом?</b>
-          <button type="button" onClick={() => void beginQuickGpsRoadAdd("traffic-light")} disabled={manualRoadBusy} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700, opacity: manualRoadBusy ? 0.6 : 1 }}>🚦 Светофор</button>
-          <button type="button" onClick={() => void beginQuickGpsRoadAdd("speed-camera")} disabled={manualRoadBusy} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700, opacity: manualRoadBusy ? 0.6 : 1 }}>📷 Камера контроля скорости</button>
-          <button type="button" onClick={() => void beginQuickGpsRoadAdd("surveillance-camera")} disabled={manualRoadBusy} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700, opacity: manualRoadBusy ? 0.6 : 1 }}>🎥 Камера видеонаблюдения</button>
+        {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объекты на карту" style={{ width: "min(86vw,330px)", padding: 13, borderRadius: 16, background: "rgba(7,20,35,.98)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 9 }}>
+          <b style={{ color: "#fff", fontSize: 16 }}>Что отметить в одной точке?</b>
+          {[
+            { value: "traffic-light", label: "Светофор", icon: "🚦" },
+            { value: "speed-camera", label: "Камера контроля скорости", icon: "📷" },
+            { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" },
+            { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
+          ].map(option => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 42, padding: "7px 9px", border: "1px solid #355a75", borderRadius: 11, background: manualRoadKinds.includes(option.value) ? "rgba(16,96,139,.48)" : "#102536", color: "#fff", fontSize: 14, fontWeight: 700 }}>
+            <input type="checkbox" checked={manualRoadKinds.includes(option.value)} disabled={manualRoadBusy} onChange={event => {
+              const checked = event.target.checked;
+              setManualRoadKinds(current => checked
+                ? [...new Set([...current, option.value])]
+                : current.filter(value => value !== option.value));
+              if (checked) setManualRoadKind(option.value);
+            }} style={{ width: 20, height: 20, accentColor: "#27c4ff" }} />
+            <span style={{ fontSize: 19 }}>{option.icon}</span><span>{option.label}</span>
+          </label>)}
+          <button type="button" onClick={beginManualRoadAdd} disabled={manualRoadBusy || manualRoadKinds.length === 0} style={{ minHeight: 48, padding: "11px 12px", border: 0, borderRadius: 12, background: "#087cf0", color: "#fff", fontSize: 15, fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>📍 Указать одно место на карте</button>
           {manualRoadStatus && <small role="status" style={{ color: "#9bdfff", lineHeight: 1.4 }}>{manualRoadStatus}</small>}
-          <small style={{ color: "#a9c0d1" }}>Нажми тип объекта — GPS сохранит отметку и значок появится на карте. Добавляй только после безопасной остановки.</small>
+          <small style={{ color: "#a9c0d1", lineHeight: 1.4 }}>Выбери сразу несколько объектов. Одним нажатием на перекрёсток задашь общую точку для всех выбранных значков. Сохраняй только после безопасной остановки.</small>
         </div>}
         <button type="button" onClick={() => { setManualRoadQuickOpen(value => !value); setManualRoadStatus(""); }} aria-expanded={manualRoadQuickOpen} style={{ minWidth: 70, minHeight: 64, border: "1px solid #46d9ff", borderRadius: 18, background: "linear-gradient(145deg,#087cf0,#0346a8)", color: "#fff", boxShadow: "0 4px 22px #008cff88", fontSize: 15, fontWeight: 800, padding: "8px 13px" }}><span style={{ display: "block", fontSize: 25, lineHeight: 1 }}>＋</span>Добавить</button>
       </div>
@@ -4810,45 +4863,32 @@ export default function AstanaMapPage() {
           setMap3dEnabled(true);
         }} style={{ marginTop: 10, border: 0, background: "#e8edf0", padding: "9px 12px", borderRadius: 9, fontWeight: 700 }}>Отмена</button>
       </div>}
-      {manualRoadPosition && <div role="dialog" aria-modal="true" aria-label="Сохранить дорожный объект" style={{ position: "fixed", zIndex: 9100, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(92vw,440px)", maxHeight: "86dvh", overflowY: "auto", boxSizing: "border-box", padding: 20, borderRadius: 18, background: "#fff", color: "#15222b", boxShadow: "0 12px 48px #0006", fontFamily: "system-ui,sans-serif" }}>
-        <b style={{ fontSize: 20 }}>Сохранить в личную базу</b>
-        <p style={{ fontSize: 13, color: "#52616d" }}>Координаты: {manualRoadPosition.lat.toFixed(6)}, {manualRoadPosition.lng.toFixed(6)}</p>
-        <label htmlFor="manual-road-kind" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Тип объекта</label>
-        <select id="manual-road-kind" value={manualRoadKind} onChange={event => {
-          const next = event.target.value;
-          setManualRoadKind(next);
-          const labels = {
-            "traffic-light": "Светофор", "speed-camera": "Камера контроля скорости",
-            "surveillance-camera": "Камера видеонаблюдения", "speed-limit": "Ограничение скорости",
-            "traffic-sign": "Дорожный знак", "stop-sign": "Знак STOP", "give-way-sign": "Уступи дорогу",
-            "pedestrian-crossing": "Пешеходный переход", "no-stopping": "Остановка запрещена",
-            "no-parking": "Стоянка запрещена", "parking": "Парковка",
-            "roadwork": "Дорожные работы", "road-hazard": "Опасный участок",
-          };
-          setManualRoadLabel(labels[next] || "Дорожный объект");
-        }} style={{ width: "100%", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }}>
-          <option value="traffic-light">🚦 Светофор</option>
-          <option value="speed-camera">📷 Камера контроля скорости</option>
-          <option value="surveillance-camera">🎥 Камера видеонаблюдения</option>
-          <option value="speed-limit">🔵 Ограничение скорости</option>
-          <option value="traffic-sign">🛑 Дорожный знак</option>
-          <option value="stop-sign">🛑 Знак STOP</option>
-          <option value="give-way-sign">🔻 Уступи дорогу</option>
-          <option value="pedestrian-crossing">🚸 Пешеходный переход</option>
-          <option value="no-stopping">⛔ Остановка запрещена</option>
-          <option value="no-parking">🚫 Стоянка запрещена</option>
-          <option value="parking">🅿️ Парковка</option>
-          <option value="roadwork">🚧 Дорожные работы</option>
-          <option value="road-hazard">⚠️ Опасный участок</option>
-        </select>
-        <label htmlFor="manual-road-label" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Название</label>
-        <input id="manual-road-label" value={manualRoadLabel} onChange={event => setManualRoadLabel(event.target.value)} maxLength={100} placeholder="Например: светофор на перекрёстке" style={{ width: "100%", boxSizing: "border-box", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }} />
-        <label htmlFor="manual-road-notes" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Заметка (необязательно)</label>
-        <textarea id="manual-road-notes" value={manualRoadNotes} onChange={event => setManualRoadNotes(event.target.value)} rows={2} maxLength={500} placeholder="Например: Талапкер, направление в город" style={{ width: "100%", boxSizing: "border-box", padding: 11, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 15 }} />
-        {manualRoadStatus && <p role="status" style={{ fontSize: 13, color: "#126e59" }}>{manualRoadStatus}</p>}
-        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <button type="button" onClick={() => { setManualRoadPosition(null); setManualRoadStatus(""); }} style={{ flex: 1, padding: 12, border: 0, borderRadius: 10, background: "#e8edf0", fontWeight: 700 }}>Отмена</button>
-          <button type="button" disabled={manualRoadBusy || manualRoadLabel.trim().length < 2} onClick={() => void saveManualRoadObject()} style={{ flex: 1, padding: 12, border: 0, borderRadius: 10, background: "#126e59", color: "#fff", fontWeight: 800, opacity: manualRoadBusy ? 0.7 : 1 }}>{manualRoadBusy ? "Сохраняем…" : "Сохранить точку"}</button>
+      {manualRoadPosition && <div role="dialog" aria-modal="true" aria-label="Сохранить объекты в одной точке" style={{ position: "fixed", zIndex: 9100, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(92vw,440px)", maxHeight: "86dvh", overflowY: "auto", boxSizing: "border-box", padding: 18, borderRadius: 18, background: "#fff", color: "#15222b", boxShadow: "0 12px 48px #0006", fontFamily: "system-ui,sans-serif" }}>
+        <b style={{ fontSize: 19 }}>Сохранить объекты в одной точке</b>
+        <p style={{ fontSize: 12, color: "#52616d", margin: "7px 0 12px" }}>Координаты выбранного места: {manualRoadPosition.lat.toFixed(6)}, {manualRoadPosition.lng.toFixed(6)}</p>
+        <div style={{ display: "grid", gap: 7 }}>
+          {[
+            { value: "traffic-light", label: "Светофор", icon: "🚦" },
+            { value: "speed-camera", label: "Камера контроля скорости", icon: "📷" },
+            { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" },
+            { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
+          ].map(option => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 9, minHeight: 38, padding: "6px 8px", border: "1px solid #d4dee5", borderRadius: 10, background: manualRoadKinds.includes(option.value) ? "#e8f5ff" : "#f7f9fa", fontSize: 14, fontWeight: 700 }}>
+            <input type="checkbox" checked={manualRoadKinds.includes(option.value)} disabled={manualRoadBusy} onChange={event => {
+              const checked = event.target.checked;
+              setManualRoadKinds(current => checked
+                ? [...new Set([...current, option.value])]
+                : current.filter(value => value !== option.value));
+              if (checked) setManualRoadKind(option.value);
+            }} style={{ width: 19, height: 19, accentColor: "#087cf0" }} />
+            <span style={{ fontSize: 18 }}>{option.icon}</span><span>{option.label}</span>
+          </label>)}
+        </div>
+        <label htmlFor="manual-road-notes" style={{ display: "block", fontWeight: 700, margin: "12px 0 6px" }}>Заметка для всех объектов (необязательно)</label>
+        <textarea id="manual-road-notes" value={manualRoadNotes} onChange={event => setManualRoadNotes(event.target.value)} rows={2} maxLength={500} placeholder="Например: перекрёсток, направление в центр" style={{ width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #a7b5bf", borderRadius: 10, fontSize: 14 }} />
+        {manualRoadStatus && <p role="status" style={{ fontSize: 12, lineHeight: 1.4, color: "#126e59" }}>{manualRoadStatus}</p>}
+        <div style={{ display: "flex", gap: 9, marginTop: 13 }}>
+          <button type="button" onClick={() => { setManualRoadPosition(null); setManualRoadStatus("Выбор точки отменён."); }} style={{ flex: 1, minHeight: 45, padding: 10, border: 0, borderRadius: 10, background: "#e8edf0", fontWeight: 700 }}>Отмена</button>
+          <button type="button" disabled={manualRoadBusy || manualRoadKinds.length === 0} onClick={() => void saveManualRoadObject()} style={{ flex: 1.25, minHeight: 45, padding: 10, border: 0, borderRadius: 10, background: "#126e59", color: "#fff", fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>{manualRoadBusy ? "Сохраняем…" : "Сохранить всё"}</button>
         </div>
       </div>}
       {!route && <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
