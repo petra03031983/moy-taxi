@@ -792,7 +792,7 @@ function deduplicatePhysicalRoadObjects(items, toleranceMeters = 4) {
   for (const item of items || []) {
     if (!isRoadObjectCoordinateUsable(item)) continue;
     const kind = String(item.kind || "");
-    if (!["camera", "traffic-light", "speed-sign"].includes(kind)) continue;
+    if (!["camera", "traffic-light", "speed-sign", "pedestrian-crossing"].includes(kind)) continue;
 
     const duplicateIndex = result.findIndex(existing =>
       existing.kind === kind &&
@@ -1949,6 +1949,43 @@ export default function AstanaMapPage() {
               ctx.restore();
             });
 
+            addCanvasRoadIcon("astana-road-pedestrian-crossing", 64, 64, (ctx) => {
+              ctx.save();
+              ctx.shadowColor = "rgba(0,0,0,0.32)";
+              ctx.shadowBlur = 5;
+              ctx.shadowOffsetY = 2;
+              roundRect(ctx, 3, 3, 58, 58, 13);
+              ctx.fillStyle = "#0877c9";
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineWidth = 4;
+              ctx.lineCap = "round";
+              [18, 27, 36, 45].forEach(x => {
+                ctx.beginPath();
+                ctx.moveTo(x, 43);
+                ctx.lineTo(x + 4, 51);
+                ctx.stroke();
+              });
+              ctx.fillStyle = "#ffffff";
+              ctx.beginPath();
+              ctx.arc(33, 17, 4.5, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.lineWidth = 4.5;
+              ctx.beginPath();
+              ctx.moveTo(33, 23);
+              ctx.lineTo(29, 34);
+              ctx.lineTo(39, 39);
+              ctx.moveTo(31, 29);
+              ctx.lineTo(23, 34);
+              ctx.moveTo(31, 32);
+              ctx.lineTo(26, 42);
+              ctx.moveTo(35, 32);
+              ctx.lineTo(43, 42);
+              ctx.stroke();
+              ctx.restore();
+            });
+
             addCanvasRoadIcon("astana-road-speed-limit", 64, 64, (ctx) => {
               ctx.save();
               ctx.shadowColor = "rgba(0,0,0,0.30)";
@@ -2089,13 +2126,14 @@ export default function AstanaMapPage() {
               id: "moy3d-road-object-icons",
               type: "symbol",
               source: "moy3d-road-objects",
-              filter: ["in", ["get", "kind"], ["literal", ["camera", "traffic-light", "speed-sign"]]],
+              filter: ["in", ["get", "kind"], ["literal", ["camera", "traffic-light", "speed-sign", "pedestrian-crossing"]]],
               layout: {
                 "icon-image": [
                   "match", ["get", "kind"],
                   "camera", "astana-road-camera",
                   "traffic-light", "astana-road-traffic-light",
                   "speed-sign", "astana-road-speed-limit",
+                  "pedestrian-crossing", "astana-road-pedestrian-crossing",
                   "astana-road-camera"
                 ],
                 "icon-size": [
@@ -2103,8 +2141,10 @@ export default function AstanaMapPage() {
                   "camera", 1.0,
                   "traffic-light", 1.05,
                   "speed-sign", 0.95,
+                  "pedestrian-crossing", 0.92,
                   1.0
                 ],
+                "icon-offset": ["get", "iconOffset"],
                 "icon-allow-overlap": true,
                 "icon-ignore-placement": true,
                 "icon-padding": 1,
@@ -2374,7 +2414,7 @@ export default function AstanaMapPage() {
 
     const routeRelevantObjects = (roadObjectsRef.current || []).filter(item => {
       if (!isRoadObjectCoordinateUsable(item)) return false;
-      if (!["camera", "traffic-light", "speed-sign"].includes(String(item.kind || ""))) return false;
+      if (!["camera", "traffic-light", "speed-sign", "pedestrian-crossing"].includes(String(item.kind || ""))) return false;
       if (item.kind === "speed-sign" && (!Number.isFinite(Number(item.speedLimit)) || Number(item.speedLimit) <= 0)) return false;
       if (routePointsForObjects.length > 1) {
         const snapped = snapToRoute({ lat: Number(item.lat), lng: Number(item.lng) }, routePointsForObjects);
@@ -2397,19 +2437,34 @@ export default function AstanaMapPage() {
     });
 
     const uniquePhysicalRoadObjects = deduplicatePhysicalRoadObjects(routeRelevantObjects, 4);
-    const roadFeatures = uniquePhysicalRoadObjects.map(item => ({
-      type: "Feature",
-      properties: {
-        id: String(item.id || ""),
-        kind: item.kind || "traffic-light",
-        label: item.shortLabel || roadObjectShortLabel(item.kind),
-        title: item.title || roadObjectTitle(item.kind),
-        speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
-        catalogSource: item.catalogSource || (item.tags?.source === "astana-gis" ? "astana-gis" : ""),
-        sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
-      },
-      geometry: { type: "Point", coordinates: [item.lng, item.lat] },
-    }));
+    const colocatedRoadGroups = new Map();
+    for (const item of uniquePhysicalRoadObjects) {
+      const key = Number(item.lat).toFixed(6) + "," + Number(item.lng).toFixed(6);
+      if (!colocatedRoadGroups.has(key)) colocatedRoadGroups.set(key, []);
+      colocatedRoadGroups.get(key).push(item);
+    }
+    const roadFeatures = uniquePhysicalRoadObjects.map(item => {
+      const key = Number(item.lat).toFixed(6) + "," + Number(item.lng).toFixed(6);
+      const colocated = colocatedRoadGroups.get(key) || [item];
+      const index = colocated.indexOf(item);
+      const horizontalOffset = colocated.length > 1
+        ? (index - (colocated.length - 1) / 2) * 0.62
+        : 0;
+      return {
+        type: "Feature",
+        properties: {
+          id: String(item.id || ""),
+          kind: item.kind || "traffic-light",
+          label: item.shortLabel || roadObjectShortLabel(item.kind),
+          title: item.title || roadObjectTitle(item.kind),
+          speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
+          iconOffset: [horizontalOffset, 0],
+          catalogSource: item.catalogSource || (item.tags?.source === "astana-gis" ? "astana-gis" : ""),
+          sourceUrl: item.catalogSource === "qazgeo" ? String(item.tags?.source_url || "") : "",
+        },
+        geometry: { type: "Point", coordinates: [item.lng, item.lat] },
+      };
+    });
     setGeoJson("moy3d-road-objects", {
       type: "FeatureCollection",
       features: roadFeatures,
@@ -3340,6 +3395,7 @@ export default function AstanaMapPage() {
         const L = window.L;
         group.clearLayers();
         for (const item of observations) {
+          if (item.manual === true) continue;
           const screenEvidence = item.source === "screen-evidence";
           if (screenEvidence && (item.estimatedLat == null || item.estimatedLng == null)) continue;
           if (screenEvidence && !isRoadObjectCoordinateUsable({
@@ -3427,6 +3483,49 @@ export default function AstanaMapPage() {
                 : 'Это предварительная отметка сканера. Она сохранена локально и не является подтверждённым дорожным объектом.') +
             '</p></div>';
           marker.bindPopup(popup).addTo(group);
+        }
+
+        // Show co-located manual objects as one compact multi-icon badge in 2D.
+        // Their original database rows stay separate for navigation warnings.
+        const manualMarkerGroups = new Map();
+        for (const item of observations) {
+          if (item.manual !== true) continue;
+          const lat = Number(item.lat);
+          const lng = Number(item.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          const key = lat.toFixed(6) + "," + lng.toFixed(6);
+          if (!manualMarkerGroups.has(key)) manualMarkerGroups.set(key, []);
+          manualMarkerGroups.get(key).push(item);
+        }
+        const manualVisuals = {
+          "traffic-light": { label: "Светофор", icon: "🚦" },
+          "speed-camera": { label: "Камера контроля скорости", icon: "📷" },
+          "surveillance-camera": { label: "Камера видеонаблюдения", icon: "🎥" },
+          "pedestrian-crossing": { label: "Пешеходный переход", icon: "🚸" },
+        };
+        for (const items of manualMarkerGroups.values()) {
+          const uniqueKinds = [...new Map(items.map(item => [String(item.kind || ""), item])).values()];
+          const first = uniqueKinds[0];
+          if (!first) continue;
+          const lat = Number(first.lat);
+          const lng = Number(first.lng);
+          const visuals = uniqueKinds.map(item => manualVisuals[item.kind] || {
+            label: item.label || "Дорожный объект",
+            icon: "📍",
+          });
+          const combinedLabel = visuals.map(item => item.label).join(" + ");
+          const combinedIcons = visuals.map(item => item.icon).join("");
+          const iconWidth = Math.max(40, Math.min(76, 18 + visuals.length * 22));
+          const icon = L.divIcon({
+            className: "astana-road-scan-map-icon astana-road-scan-multi-icon",
+            html: '<span style="width:' + iconWidth + 'px;min-width:' + iconWidth + 'px;font-size:17px;letter-spacing:-4px;padding:0 5px;box-sizing:border-box;">' + escapeHtml(combinedIcons) + '</span>',
+            iconSize: [iconWidth, 38],
+            iconAnchor: [iconWidth / 2, 19],
+          });
+          const marker = L.marker([lat, lng], { icon, zIndexOffset: 2750 });
+          const latest = Math.max(...uniqueKinds.map(item => new Date(item.capturedAt || Date.now()).getTime()));
+          const when = new Date(latest).toLocaleString("ru-RU");
+          marker.bindPopup('<div class="astana-road-scan-popup"><b>' + escapeHtml(combinedLabel) + '</b><div>Ручные отметки владельца личной базы</div><div>Все выбранные объекты сохранены по одной координате</div><small>' + escapeHtml(when) + '</small><p>Объекты учитываются отдельно для предупреждений навигатора.</p></div>').addTo(group);
         }
       } catch (error) {
         console.warn("[Astana Guide] Could not load local road scan markers", error);
@@ -3804,7 +3903,7 @@ export default function AstanaMapPage() {
       if (!phrase) continue;
 
       const snapped = snapToRoute({ lat: item.lat, lng: item.lng }, points);
-      const lateralLimit = item.kind === "traffic-light" ? 28 : item.kind === "speed-sign" ? 22 : 18;
+      const lateralLimit = item.kind === "traffic-light" ? 28 : item.kind === "speed-sign" ? 22 : item.kind === "pedestrian-crossing" ? 24 : 18;
       if (!Number.isFinite(snapped.distance) || snapped.distance > lateralLimit) continue;
       if (snapped.progress < routeProgressRef.current - 0.1) continue;
       const meters = routeDistanceBetweenProgress(points, routeProgressRef.current, snapped.progress);
