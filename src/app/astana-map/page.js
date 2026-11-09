@@ -757,6 +757,106 @@ function roadObjectIconHtml(kind, speedLimit = null) {
   return '<span class="moy-road-object-badge moy-road-object-signal" aria-label="Светофор"><i></i><i></i><i></i></span>';
 }
 
+function crossingBearingFromNotes(notes) {
+  const match = String(notes || "").match(/\\[CROSSING_BEARING=(-?\\d+(?:\\.\\d+)?)\\]/i);
+  if (!match) return null;
+  const bearing = Number(match[1]);
+  return Number.isFinite(bearing) ? ((bearing % 360) + 360) % 360 : null;
+}
+
+// Estimate the selected road's direction from the visible OpenFreeMap transportation lines.
+function estimateRenderedRoadBearing(map, lat, lng) {
+  try {
+    if (!map || typeof map.queryRenderedFeatures !== "function" || typeof map.project !== "function") return null;
+    const layers = (map.getStyle()?.layers || [])
+      .filter(layer => layer.type === "line" && String(layer["source-layer"] || "").toLowerCase() === "transportation")
+      .map(layer => layer.id)
+      .filter(id => id && map.getLayer(id));
+    if (!layers.length) return null;
+    const center = map.project([Number(lng), Number(lat)]);
+    const queryBox = [[center.x - 34, center.y - 34], [center.x + 34, center.y + 34]];
+    const features = map.queryRenderedFeatures(queryBox, { layers });
+    let best = null;
+
+    const inspectLine = coordinates => {
+      if (!Array.isArray(coordinates) || coordinates.length < 2) return;
+      for (let index = 1; index < coordinates.length; index += 1) {
+        const a = coordinates[index - 1];
+        const b = coordinates[index];
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) continue;
+        const p1 = map.project([Number(a[0]), Number(a[1])]);
+        const p2 = map.project([Number(b[0]), Number(b[1])]);
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const lengthSquared = dx * dx + dy * dy;
+        if (!Number.isFinite(lengthSquared) || lengthSquared < 0.01) continue;
+        const t = Math.max(0, Math.min(1, ((center.x - p1.x) * dx + (center.y - p1.y) * dy) / lengthSquared));
+        const distance = Math.hypot(center.x - (p1.x + t * dx), center.y - (p1.y + t * dy));
+        if (best && distance >= best.distance) continue;
+        const averageLat = (Number(a[1]) + Number(b[1])) / 2;
+        const east = (Number(b[0]) - Number(a[0])) * Math.cos(averageLat * Math.PI / 180);
+        const north = Number(b[1]) - Number(a[1]);
+        if (!Number.isFinite(east) || !Number.isFinite(north) || Math.hypot(east, north) < 1e-10) continue;
+        best = { distance, bearing: (Math.atan2(east, north) * 180 / Math.PI + 360) % 360 };
+      }
+    };
+
+    for (const feature of features || []) {
+      const geometry = feature?.geometry;
+      if (geometry?.type === "LineString") inspectLine(geometry.coordinates);
+      else if (geometry?.type === "MultiLineString") {
+        for (const line of geometry.coordinates || []) inspectLine(line);
+      }
+    }
+    return best && best.distance <= 30 ? best.bearing : null;
+  } catch {
+    return null;
+  }
+}
+
+// Seven white transverse bars across the roadway, represented as road-surface polygons.
+function buildCrosswalkStripePolygons(lat, lng, bearingDegrees, idPrefix = "crosswalk") {
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  const bearing = Number(bearingDegrees);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(bearing)) return [];
+  const angle = bearing * Math.PI / 180;
+  const alongEast = Math.sin(angle);
+  const alongNorth = Math.cos(angle);
+  const acrossEast = Math.cos(angle);
+  const acrossNorth = -Math.sin(angle);
+  const metersPerDegreeLng = 111320 * Math.max(0.2, Math.cos(latitude * Math.PI / 180));
+  const toCoordinate = (east, north) => [
+    longitude + east / metersPerDegreeLng,
+    latitude + north / 111320,
+  ];
+  const stripeCount = 7;
+  const spacing = 0.72;
+  const halfThickness = 0.19;
+  const halfRoadWidth = 3.2;
+  return Array.from({ length: stripeCount }, (_, index) => {
+    const offset = (index - (stripeCount - 1) / 2) * spacing;
+    const centerEast = alongEast * offset;
+    const centerNorth = alongNorth * offset;
+    const corner = (alongOffset, acrossOffset) => toCoordinate(
+      centerEast + alongEast * alongOffset + acrossEast * acrossOffset,
+      centerNorth + alongNorth * alongOffset + acrossNorth * acrossOffset,
+    );
+    const ring = [
+      corner(-halfThickness, -halfRoadWidth),
+      corner(-halfThickness, halfRoadWidth),
+      corner(halfThickness, halfRoadWidth),
+      corner(halfThickness, -halfRoadWidth),
+    ];
+    ring.push(ring[0]);
+    return {
+      type: "Feature",
+      properties: { id: idPrefix + "-" + index },
+      geometry: { type: "Polygon", coordinates: [ring] },
+    };
+  });
+}
+
 function isRoadObjectCoordinateUsable(item) {
   if (!item || !Number.isFinite(Number(item.lat)) || !Number.isFinite(Number(item.lng))) return false;
 
@@ -2075,6 +2175,17 @@ export default function AstanaMapPage() {
             map.addSource("moy3d-alternative-routes", { type: "geojson", data: emptyCollection });
             map.addSource("moy3d-location-points", { type: "geojson", data: emptyCollection });
             map.addSource("moy3d-road-objects", { type: "geojson", data: emptyCollection });
+            map.addSource("moy3d-manual-crosswalks", { type: "geojson", data: emptyCollection });
+            addLayerBeforeLabels(map, {
+              id: "moy3d-manual-crosswalk-stripes",
+              type: "fill",
+              source: "moy3d-manual-crosswalks",
+              paint: {
+                "fill-color": "#F6F8FA",
+                "fill-opacity": 0.96,
+                "fill-outline-color": "#FFFFFF",
+              },
+            }, labelLayerId);
 
             addLayerBeforeLabels(map, {
               id: "moy3d-alternative-route-lines",
@@ -2578,13 +2689,28 @@ export default function AstanaMapPage() {
     });
 
     const uniquePhysicalRoadObjects = deduplicatePhysicalRoadObjects(routeRelevantObjects, 4);
+    const manualCrossingObjects = uniquePhysicalRoadObjects.filter(item =>
+      item.kind === "pedestrian-crossing" && item.manualRoadObject === true
+    );
+    const manualCrosswalkFeatures = manualCrossingObjects.flatMap(item => {
+      const bearing = crossingBearingFromNotes(item.manualNotes || item.notes) ??
+        estimateRenderedRoadBearing(map, item.lat, item.lng) ?? 0;
+      return buildCrosswalkStripePolygons(item.lat, item.lng, bearing, String(item.id || "crosswalk"));
+    });
+    setGeoJson("moy3d-manual-crosswalks", {
+      type: "FeatureCollection",
+      features: manualCrosswalkFeatures,
+    });
+    const displayedRoadObjects = uniquePhysicalRoadObjects.filter(item =>
+      !(item.kind === "pedestrian-crossing" && item.manualRoadObject === true)
+    );
     const colocatedRoadGroups = new Map();
-    for (const item of uniquePhysicalRoadObjects) {
+    for (const item of displayedRoadObjects) {
       const key = Number(item.lat).toFixed(6) + "," + Number(item.lng).toFixed(6);
       if (!colocatedRoadGroups.has(key)) colocatedRoadGroups.set(key, []);
       colocatedRoadGroups.get(key).push(item);
     }
-    const roadFeatures = uniquePhysicalRoadObjects.map(item => {
+    const roadFeatures = displayedRoadObjects.map(item => {
       const key = Number(item.lat).toFixed(6) + "," + Number(item.lng).toFixed(6);
       const colocated = colocatedRoadGroups.get(key) || [item];
       const index = colocated.indexOf(item);
@@ -3538,6 +3664,7 @@ export default function AstanaMapPage() {
             catalogSource: "",
             privateRoadObject: true,
             manualRoadObject: item?.manual === true,
+            manualNotes: String(item?.notes || ""),
             coordinateMethod: item?.coordinateMethod || item?.coordinate_method || "",
             detectionMethod: item?.detectionMethod || item?.detection_method || "",
             observedLat: item?.observedLat ?? item?.observed_lat ?? null,
@@ -3891,6 +4018,21 @@ export default function AstanaMapPage() {
             } else if (!map.getBounds().contains([Number(item.lng), Number(item.lat)])) {
               continue;
             }
+          }
+          if (isCrossing && item.manualRoadObject === true) {
+            const bearing = crossingBearingFromNotes(item.manualNotes || item.notes) ?? 0;
+            const stripeFeatures = buildCrosswalkStripePolygons(item.lat, item.lng, bearing, String(item.id || "crosswalk"));
+            for (const stripe of stripeFeatures) {
+              const ring = stripe.geometry.coordinates[0].map(coordinate => [coordinate[1], coordinate[0]]);
+              L.polygon(ring, {
+                stroke: false,
+                color: "#F6F8FA",
+                fillColor: "#F6F8FA",
+                fillOpacity: 0.96,
+                interactive: false,
+              }).addTo(group);
+            }
+            continue;
           }
           const icon = L.divIcon({
             className: "moy-road-object-icon" + (isRoadSafetyMarker ? " moy-road-object-icon-detail" : ""),
@@ -4914,6 +5056,9 @@ export default function AstanaMapPage() {
             label: kindLabels[kind],
             notes: [
               kind === "speed-camera-limit" ? "[SPEED_LIMIT=" + Math.round(Number(manualRoadSpeedLimit)) + "]" : "",
+              kind === "pedestrian-crossing" && Number.isFinite(Number(manualRoadPosition.roadBearing))
+                ? "[CROSSING_BEARING=" + Number(manualRoadPosition.roadBearing).toFixed(1) + "]"
+                : "",
               manualRoadNotes.trim().slice(0, 450),
             ].filter(Boolean).join("\n"),
             accuracy_m: 10,
@@ -4983,7 +5128,8 @@ export default function AstanaMapPage() {
       const lat = Number(latValue);
       const lng = Number(lngValue);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      setManualRoadPosition({ lat, lng });
+      const roadBearing = estimateRenderedRoadBearing(map3dRef.current, lat, lng);
+      setManualRoadPosition({ lat, lng, roadBearing });
       setManualRoadAddMode(false);
       setManualRoadStatus("Точка выбрана. Проверь координаты и сохрани отметки.");
       if (!manualRoadLabel.trim()) {
