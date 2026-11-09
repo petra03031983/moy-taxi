@@ -5201,7 +5201,7 @@ export default function AstanaMapPage() {
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
       <div style={{ position: "fixed", right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)", zIndex: 8000, display: (manualRoadAddMode || manualRoadPosition) ? "none" : "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, fontFamily: "system-ui,sans-serif" }}>
-        {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объекты на карту" style={{ width: "min(86vw,330px)", padding: 13, borderRadius: 16, background: "rgba(7,20,35,.98)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 9 }}>
+        {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объекты на карту" style={{ width: "min(86vw,330px)", maxHeight: "min(72dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 190px))", overflowY: "auto", overflowX: "hidden", overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch", touchAction: "pan-y", scrollbarWidth: "thin", padding: 13, borderRadius: 16, background: "rgba(7,20,35,.98)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 9 }}>
           <b style={{ color: "#fff", fontSize: 16 }}>Что отметить в одной точке?</b>
           {[
             { value: "traffic-light", label: "Светофор", icon: "🚦" },
