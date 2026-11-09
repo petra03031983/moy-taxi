@@ -2270,6 +2270,7 @@ export default function AstanaMapPage() {
               const props = feature.properties || {};
               const content = document.createElement("div");
               content.className = "moy-road-object-popup";
+              const popup = new window.maplibregl.Popup({ closeButton: true, maxWidth: "260px" });
               const heading = document.createElement("b");
               heading.textContent = String(props.title || roadObjectTitle(String(props.kind || "")));
               content.appendChild(heading);
@@ -2309,10 +2310,25 @@ export default function AstanaMapPage() {
                 link.textContent = "Открыть источник";
                 content.appendChild(link);
               }
-              new window.maplibregl.Popup({ closeButton: true, maxWidth: "260px" })
-                .setLngLat(event.lngLat)
-                .setDOMContent(content)
-                .addTo(map);
+              const isManualPin = props.manualRoadObject === true || props.manualRoadObject === "true";
+              if (isManualPin && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(props.id || ""))) {
+                const removeButton = document.createElement("button");
+                removeButton.type = "button";
+                removeButton.className = "astana-manual-road-delete";
+                removeButton.textContent = "Удалить отметку";
+                removeButton.addEventListener("click", async () => {
+                  removeButton.disabled = true;
+                  removeButton.textContent = "Удаляем…";
+                  const deleted = await deleteManualRoadObject(String(props.id), heading.textContent);
+                  if (deleted) popup.remove();
+                  else {
+                    removeButton.disabled = false;
+                    removeButton.textContent = "Удалить отметку";
+                  }
+                });
+                content.appendChild(removeButton);
+              }
+              popup.setLngLat(event.lngLat).setDOMContent(content).addTo(map);
             });
             map.on("mouseenter", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = "pointer"; });
             map.on("mouseleave", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = ""; });
