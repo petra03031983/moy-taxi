@@ -55,3 +55,30 @@ export async function POST(request) {
     return privateApiError(error);
   }
 }
+
+export async function DELETE(request) {
+  const key = readAccessKey(request);
+  if (!key) return json({ ok: false, error: "Нужен личный ключ базы «Астана Гид»." }, 401);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: "Не удалось прочитать выбранную отметку." }, 400); }
+
+  const id = String(body?.id || "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return json({ ok: false, error: "Некорректный номер ручной отметки." }, 400);
+  }
+
+  try {
+    const result = await callAstanaRpc("astana_guide_delete_manual_object", {
+      p_access_key: key,
+      p_id: id,
+    });
+    if (result?.ok === true && result?.deleted === true) {
+      return json({ ok: true, deleted: true, id });
+    }
+    return json({ ok: false, error: "Эта ручная отметка не найдена или уже удалена." }, 404);
+  } catch (error) {
+    return privateApiError(error);
+  }
+}
