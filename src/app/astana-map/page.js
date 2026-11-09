@@ -3372,7 +3372,7 @@ export default function AstanaMapPage() {
             lat,
             lng,
             speedLimit: item?.speedLimit == null ? null : Number(item.speedLimit),
-            tags: { source: "astana-gid-private", review_status: item?.reviewStatus || "needs-review" },
+            tags: { source: "astana-gid-private", review_status: item?.reviewStatus || "needs-review", ...(rawKind === "speed-camera" ? { enforcement: "speed_camera" } : {}) },
             catalogSource: "",
             privateRoadObject: true,
             manualRoadObject: item?.manual === true,
