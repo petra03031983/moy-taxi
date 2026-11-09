@@ -1157,6 +1157,7 @@ export default function AstanaMapPage() {
   const [roadScanPanelOpen, setRoadScanPanelOpen] = useState(false);
   const [manualRoadAddMode, setManualRoadAddMode] = useState(false);
   const [manualRoadPosition, setManualRoadPosition] = useState(null);
+  const [manualRoadQuickOpen, setManualRoadQuickOpen] = useState(false);
   const [manualRoadKind, setManualRoadKind] = useState("traffic-light");
   const [manualRoadLabel, setManualRoadLabel] = useState("");
   const [manualRoadNotes, setManualRoadNotes] = useState("");
@@ -4450,6 +4451,50 @@ export default function AstanaMapPage() {
     setRoadScanBusy(false);
   }
 
+  async function beginQuickGpsRoadAdd(kind) {
+    const labels = {
+      "traffic-light": "Светофор",
+      "speed-camera": "Камера контроля скорости",
+      "surveillance-camera": "Камера видеонаблюдения",
+    };
+    if (!labels[kind] || !navigator.geolocation) {
+      setManualRoadStatus("GPS недоступен на этом устройстве.");
+      return;
+    }
+    setManualRoadKind(kind);
+    setManualRoadLabel(labels[kind]);
+    setManualRoadNotes("");
+    setManualRoadPosition(null);
+    setManualRoadStatus("Определяем точные GPS-координаты…");
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const lat = Number(position.coords.latitude);
+        const lng = Number(position.coords.longitude);
+        const accuracy = Number(position.coords.accuracy || 999);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          setManualRoadStatus("Не удалось получить координаты GPS. Попробуй ещё раз.");
+          return;
+        }
+        if (accuracy > 60) {
+          setManualRoadStatus("GPS пока неточный (±" + Math.round(accuracy) + " м). Подожди немного на безопасной остановке и повтори.");
+          return;
+        }
+        setManualRoadPosition({ lat, lng, accuracy });
+        setManualRoadStatus("GPS-точка получена. Проверь тип объекта и сохрани отметку.");
+        setManualRoadQuickOpen(false);
+      },
+      error => {
+        const message = error?.code === 1
+          ? "Разреши доступ к геолокации для Астана Гид."
+          : error?.code === 3
+            ? "GPS не успел определить место. Попробуй ещё раз."
+            : "Не удалось получить GPS. Проверь геолокацию телефона.";
+        setManualRoadStatus(message);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    );
+  }
+
   function beginManualRoadAdd() {
     setRoadScanPanelOpen(false);
     setManualRoadPosition(null);
@@ -4474,7 +4519,7 @@ export default function AstanaMapPage() {
           lng: manualRoadPosition.lng,
           label: manualRoadLabel.trim(),
           notes: manualRoadNotes.trim(),
-          accuracy_m: 10,
+          accuracy_m: Number(manualRoadPosition.accuracy || 10),
         }),
         cache: "no-store",
       });
@@ -4552,6 +4597,17 @@ export default function AstanaMapPage() {
     <main className="astana-map-page">
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
+      <div style={{ position: "fixed", right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)", zIndex: 8000, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, fontFamily: "system-ui,sans-serif" }}>
+        {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объект на карту" style={{ width: "min(78vw,300px)", padding: 12, borderRadius: 16, background: "rgba(7,20,35,.97)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 8 }}>
+          <b style={{ color: "#fff", fontSize: 15 }}>Что добавить рядом?</b>
+          <button type="button" onClick={() => void beginQuickGpsRoadAdd("traffic-light")} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700 }}>🚦 Светофор</button>
+          <button type="button" onClick={() => void beginQuickGpsRoadAdd("speed-camera")} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700 }}>📷 Камера контроля скорости</button>
+          <button type="button" onClick={() => void beginQuickGpsRoadAdd("surveillance-camera")} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700 }}>🎥 Камера видеонаблюдения</button>
+          {manualRoadStatus && !manualRoadPosition && <small role="status" style={{ color: "#9bdfff", lineHeight: 1.4 }}>{manualRoadStatus}</small>}
+          <small style={{ color: "#a9c0d1" }}>Точка берётся из GPS телефона. Добавляй объект только после безопасной остановки.</small>
+        </div>}
+        <button type="button" onClick={() => { setManualRoadQuickOpen(value => !value); setManualRoadStatus(""); }} aria-expanded={manualRoadQuickOpen} style={{ minWidth: 70, minHeight: 64, border: "1px solid #46d9ff", borderRadius: 18, background: "linear-gradient(145deg,#087cf0,#0346a8)", color: "#fff", boxShadow: "0 4px 22px #008cff88", fontSize: 15, fontWeight: 800, padding: "8px 13px" }}><span style={{ display: "block", fontSize: 25, lineHeight: 1 }}>＋</span>Добавить</button>
+      </div>
       {showRoadDataDiagnostics && <aside className="astana-road-diagnostics" aria-live="polite">
         <b>Диагностика дорожных данных</b>
         <div>Сервис дороги: {roadDataDiagnostics?.roadStatus === "ok" ? (roadDataDiagnostics?.partial ? "частичная загрузка" : "ответ получен") : roadDataDiagnostics?.roadStatus === "error" ? "ошибка запроса" : "загрузка…"}</div>
