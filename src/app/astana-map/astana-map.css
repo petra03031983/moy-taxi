@@ -691,3 +691,71 @@
   visibility: hidden !important;
   pointer-events: none !important;
 }
+
+
+/* Camera with a speed-limit sign and two-way radar beams (manual Astana Guide pins). */
+.moy-road-object-speed-camera {
+  position: relative;
+  display: block;
+  width: 78px;
+  height: 86px;
+  overflow: visible;
+}
+.moy-road-object-speed-camera-beam {
+  position: absolute;
+  left: 50%;
+  width: 72px;
+  height: 43px;
+  background: linear-gradient(180deg, rgba(76, 151, 255, .06), rgba(76, 151, 255, .34));
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+.moy-road-object-speed-camera-beam-front { top: 0; }
+.moy-road-object-speed-camera-beam-back {
+  bottom: 0;
+  transform: translateX(-50%) rotate(180deg);
+  background: linear-gradient(180deg, rgba(76, 151, 255, .34), rgba(76, 151, 255, .06));
+}
+.moy-road-object-speed-camera-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  width: 42px;
+  height: 42px;
+}
+.moy-road-object-speed-camera-center .moy-road-object-camera {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.moy-road-object-speed-camera-center .moy-road-object-camera svg {
+  width: 28px;
+  height: 28px;
+}
+.moy-road-object-speed-camera-limit {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 4;
+  width: 29px;
+  height: 29px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #df2638;
+  border-radius: 50%;
+  background: #fff;
+  color: #151a1e;
+  box-shadow: 0 2px 7px rgba(0,0,0,.42);
+  font: 900 11px/1 Arial,sans-serif;
+  text-shadow: none;
+  pointer-events: none;
+}
