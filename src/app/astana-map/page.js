@@ -4579,6 +4579,7 @@ export default function AstanaMapPage() {
       return;
     }
     setRoadScanPanelOpen(false);
+    setManualRoadQuickOpen(false);
     setManualRoadPosition(null);
     setManualRoadStatus("Нажми один раз на нужный перекрёсток или место объекта.");
     setManualRoadAddMode(true);
@@ -4648,7 +4649,7 @@ export default function AstanaMapPage() {
       setManualRoadPosition(null);
       setManualRoadNotes("");
       setManualRoadLabel("");
-      setManualRoadQuickOpen(false);
+      setManualRoadQuickOpen(true);
       setRoadScanRevision(value => value + 1);
       setRoadObjectsRevision(value => value + 1);
     } catch {
