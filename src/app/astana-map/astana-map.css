@@ -759,3 +759,34 @@
   text-shadow: none;
   pointer-events: none;
 }
+
+
+/* Explicit confirmation action for owner-created Astana Guide road pins only. */
+.astana-manual-road-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d94a52;
+  border-radius: 10px;
+  background: #fff1f1;
+  color: #a51f2b;
+  font: 800 13px/1.2 Arial, Helvetica, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.astana-manual-road-delete:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+.moy-road-object-popup .astana-manual-road-delete,
+.astana-road-scan-popup .astana-manual-road-delete {
+  width: 100%;
+  box-sizing: border-box;
+}
+.maplibregl-popup-content .astana-manual-road-delete {
+  width: 100%;
+  box-sizing: border-box;
+}
