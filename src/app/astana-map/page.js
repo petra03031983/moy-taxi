@@ -4523,8 +4523,8 @@ export default function AstanaMapPage() {
         setManualRoadBusy(false);
         return;
       }
-      if (accuracy > 60) {
-        setManualRoadStatus("GPS пока неточный (±" + Math.round(accuracy) + " м). Остановись в безопасном месте и повтори.");
+      if (accuracy > 30) {
+        setManualRoadStatus("GPS пока неточный (±" + Math.round(accuracy) + " м). Остановись в безопасном месте, подожди более точный сигнал и повтори.");
         setManualRoadBusy(false);
         return;
       }
