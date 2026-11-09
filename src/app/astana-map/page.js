@@ -4897,7 +4897,7 @@ export default function AstanaMapPage() {
             { value: "traffic-light", label: "Светофор", icon: "🚦" },
             { value: "speed-camera", label: "Камера контроля скорости", icon: "📷" },
             { value: "speed-camera-limit", label: "Камера с ограничением скорости", icon: "📷" },
-            { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" }
+            { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" },
             { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
           ].map(option => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 42, padding: "7px 9px", border: "1px solid #355a75", borderRadius: 11, background: manualRoadKinds.includes(option.value) ? "rgba(16,96,139,.48)" : "#102536", color: "#fff", fontSize: 14, fontWeight: 700 }}>
             <input type="checkbox" checked={manualRoadKinds.includes(option.value)} disabled={manualRoadBusy} onChange={event => {
@@ -5040,7 +5040,7 @@ export default function AstanaMapPage() {
             { value: "traffic-light", label: "Светофор", icon: "🚦" },
             { value: "speed-camera", label: "Камера контроля скорости", icon: "📷" },
             { value: "speed-camera-limit", label: "Камера с ограничением скорости", icon: "📷" },
-            { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" }
+            { value: "surveillance-camera", label: "Камера видеонаблюдения", icon: "🎥" },
             { value: "pedestrian-crossing", label: "Пешеходный переход", icon: "🚸" },
           ].map(option => <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 9, minHeight: 38, padding: "6px 8px", border: "1px solid #d4dee5", borderRadius: 10, background: manualRoadKinds.includes(option.value) ? "#e8f5ff" : "#f7f9fa", fontSize: 14, fontWeight: 700 }}>
             <input type="checkbox" checked={manualRoadKinds.includes(option.value)} disabled={manualRoadBusy} onChange={event => {
