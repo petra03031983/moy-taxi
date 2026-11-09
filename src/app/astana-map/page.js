@@ -758,7 +758,7 @@ function roadObjectIconHtml(kind, speedLimit = null) {
 }
 
 function crossingBearingFromNotes(notes) {
-  const match = String(notes || "").match(/\\[CROSSING_BEARING=(-?\\d+(?:\\.\\d+)?)\\]/i);
+  const match = String(notes || "").match(/\[CROSSING_BEARING=(-?\d+(?:\.\d+)?)\]/i);
   if (!match) return null;
   const bearing = Number(match[1]);
   return Number.isFinite(bearing) ? ((bearing % 360) + 360) % 360 : null;
