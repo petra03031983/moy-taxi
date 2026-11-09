@@ -2562,6 +2562,7 @@ export default function AstanaMapPage() {
           label: item.shortLabel || roadObjectShortLabel(item.kind),
           title: item.title || roadObjectTitle(item.kind),
           speedLimit: Number.isFinite(Number(item.speedLimit)) ? Number(item.speedLimit) : 0,
+          manualRoadObject: item.manualRoadObject === true,
           cameraHeading: Number.isFinite(cameraHeading) ? cameraHeading : 0,
           iconOffset: [horizontalOffset, 0],
           catalogSource: item.catalogSource || (item.tags?.source === "astana-gis" ? "astana-gis" : ""),
@@ -4750,6 +4751,60 @@ export default function AstanaMapPage() {
     map3dEnabledRef.current = true;
     setMap3dEnabled(true);
     setManualRoadAddMode(true);
+  }
+
+
+  async function deleteManualRoadObject(id, title = "дорожную отметку") {
+    const normalizedId = String(id || "").trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId)) {
+      setManualRoadStatus("Эту отметку нельзя удалить: неверный номер.");
+      return false;
+    }
+    const safeTitle = String(title || "дорожную отметку").replace(/[\r\n]+/g, " ").slice(0, 100);
+    if (typeof window === "undefined" || !window.confirm("Удалить «" + safeTitle + "» из личной базы? Это действие нельзя отменить.")) return false;
+
+    try {
+      setManualRoadStatus("Удаляем ручную отметку…");
+      const response = await fetch("/api/road-manual-objects", {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ id: normalizedId }),
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || payload?.ok !== true || payload?.deleted !== true) {
+        throw new Error(payload?.error || "Не удалось удалить отметку.");
+      }
+      setManualRoadStatus("Ручная отметка удалена.");
+      setRoadScanRevision(value => value + 1);
+      setRoadObjectsRevision(value => value + 1);
+      return true;
+    } catch (error) {
+      setManualRoadStatus(String(error?.message || "Не удалось удалить отметку.").slice(0, 180));
+      return false;
+    }
+  }
+
+  function bindManualRoadDeleteButton(marker, id, title) {
+    const normalizedId = String(id || "");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId)) return;
+    marker.on("popupopen", event => {
+      const popupElement = event?.popup?.getElement?.();
+      const button = popupElement?.querySelector('[data-manual-road-id="' + normalizedId + '"]');
+      if (!button || button.dataset.bound === "1") return;
+      button.dataset.bound = "1";
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        button.textContent = "Удаляем…";
+        const deleted = await deleteManualRoadObject(normalizedId, title);
+        if (deleted) marker.closePopup();
+        else {
+          button.disabled = false;
+          button.textContent = "Удалить отметку";
+        }
+      });
+    });
   }
 
   async function saveManualRoadObject() {
