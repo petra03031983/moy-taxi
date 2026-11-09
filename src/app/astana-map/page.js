@@ -3662,7 +3662,14 @@ export default function AstanaMapPage() {
           const marker = L.marker([lat, lng], { icon, zIndexOffset: 2750 });
           const latest = Math.max(...uniqueKinds.map(item => new Date(item.capturedAt || Date.now()).getTime()));
           const when = new Date(latest).toLocaleString("ru-RU");
-          marker.bindPopup('<div class="astana-road-scan-popup"><b>' + escapeHtml(combinedLabel) + '</b><div>Ручные отметки владельца личной базы</div><div>Все выбранные объекты сохранены по одной координате</div><small>' + escapeHtml(when) + '</small><p>Объекты учитываются отдельно для предупреждений навигатора.</p></div>').addTo(group);
+          const deleteButtons = uniqueKinds.map(item => {
+            const label = manualVisuals[item.kind]?.label || item.label || "дорожную отметку";
+            return '<button type="button" class="astana-manual-road-delete" data-manual-road-id="' + escapeHtml(item.id) + '">Удалить: ' + escapeHtml(label) + '</button>';
+          }).join("");
+          marker.bindPopup('<div class="astana-road-scan-popup"><b>' + escapeHtml(combinedLabel) + '</b><div>Ручные отметки владельца личной базы</div><div>Все выбранные объекты сохранены по одной координате</div><small>' + escapeHtml(when) + '</small><p>Объекты учитываются отдельно для предупреждений навигатора.</p>' + deleteButtons + '</div>').addTo(group);
+          for (const item of uniqueKinds) {
+            bindManualRoadDeleteButton(marker, item.id, manualVisuals[item.kind]?.label || item.label || "дорожную отметку");
+          }
         }
       } catch (error) {
         console.warn("[Astana Guide] Could not load local road scan markers", error);
@@ -3894,7 +3901,11 @@ export default function AstanaMapPage() {
             }
           }
           if (isEvent) detailParts.push('<small class="moy-road-object-popup-caveat">Отметка OpenStreetMap; это не подтверждение текущего перекрытия или активных работ.</small>');
+          if (item.manualRoadObject === true) {
+            detailParts.push('<button type="button" class="astana-manual-road-delete" data-manual-road-id="' + escapeHtml(item.id) + '">Удалить отметку</button>');
+          }
           marker.bindPopup('<div class="moy-road-object-popup"><b>' + escapeHtml(title) + '</b>' + detailParts.join("") + '</div>');
+          if (item.manualRoadObject === true) bindManualRoadDeleteButton(marker, item.id, title);
           marker.addTo(group);
         }
         setRoadObjectsRevision(value => value + 1);
