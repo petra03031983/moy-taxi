@@ -790,3 +790,17 @@
   width: 100%;
   box-sizing: border-box;
 }
+
+/* 2GIS-style speed-camera pin: value and camera badge are one symbol. */
+.moy-road-object-speed-camera-pin{
+  display:block;
+  width:64px;
+  height:78px;
+  overflow:visible;
+  filter:drop-shadow(0 2px 5px rgba(0,0,0,.42));
+}
+.moy-road-object-speed-camera-pin svg{
+  display:block;
+  width:100%;
+  height:100%;
+}
