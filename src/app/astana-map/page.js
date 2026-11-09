@@ -3230,6 +3230,43 @@ export default function AstanaMapPage() {
         } catch (error) {
           console.warn("[Astana Guide] Shared screen evidence unavailable", error);
         }
+        // Load the user's own saved map pins. These are separate from approximate
+        // screen-scanner observations and are drawn as confirmed manual road objects.
+        try {
+          const response = await fetch("/api/road-manual-objects", {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const manualItems = Array.isArray(payload?.objects) ? payload.objects : [];
+            const manualPins = manualItems.map(item => ({
+              ...item,
+              id: String(item.id || ""),
+              lat: Number(item.lat),
+              lng: Number(item.lng),
+              estimatedLat: Number(item.lat),
+              estimatedLng: Number(item.lng),
+              accuracy: Number(item.accuracy_m ?? item.accuracy ?? 20),
+              capturedAt: item.updated_at || item.created_at || new Date().toISOString(),
+              source: "manual-user",
+              manual: true,
+            })).filter(item =>
+              item.id && Number.isFinite(item.lat) && item.lat >= 47 && item.lat <= 55 &&
+              Number.isFinite(item.lng) && item.lng >= 65 && item.lng <= 77
+            );
+            const merged = new Map(observations.map(item => [String(item.id || item.source_id), item]));
+            for (const item of manualPins) merged.set("manual-" + item.id, item);
+            observations = Array.from(merged.values());
+            privateCoordinates = [...privateCoordinates, ...manualPins];
+          } else if (response.status !== 401) {
+            console.warn("[Astana Guide] Manual road objects could not be loaded");
+          }
+        } catch (error) {
+          console.warn("[Astana Guide] Manual road objects unavailable", error);
+        }
+
         if (cancelled || !roadScanLayerRef.current) return;
 
         // Keep verified/private database coordinates in a shared collection too.
@@ -3327,9 +3364,16 @@ export default function AstanaMapPage() {
             "roadwork": { label: "Дорожные работы", icon: "🚧" },
             "road-hazard": { label: "Дорожная опасность", icon: "⚠️" },
           };
-          const kind = screenEvidence
-            ? (screenKinds[item.kind] || { label: "Подсказка с экрана", icon: "📍" })
-            : (ROAD_SCAN_KINDS.find(option => option.value === item.kind) || ROAD_SCAN_KINDS[ROAD_SCAN_KINDS.length - 1]);
+          const manualKinds = {
+            "speed-camera": { label: "Камера контроля скорости", icon: "📷" },
+            "surveillance-camera": { label: "Камера видеонаблюдения", icon: "🎥" },
+            "traffic-light": { label: "Светофор", icon: "🚦" },
+          };
+          const kind = item.manual
+            ? (manualKinds[item.kind] || { label: item.label || "Дорожный объект", icon: "📍" })
+            : screenEvidence
+              ? (screenKinds[item.kind] || { label: "Подсказка с экрана", icon: "📍" })
+              : (ROAD_SCAN_KINDS.find(option => option.value === item.kind) || ROAD_SCAN_KINDS[ROAD_SCAN_KINDS.length - 1]);
           const icon = L.divIcon({
             className: "astana-road-scan-map-icon" + (screenEvidence ? " astana-road-scan-screen-icon" : ""),
             html: '<span>' + escapeHtml(kind.icon) + '</span>',
@@ -4451,48 +4495,80 @@ export default function AstanaMapPage() {
     setRoadScanBusy(false);
   }
 
-  async function beginQuickGpsRoadAdd(kind) {
+  function beginQuickGpsRoadAdd(kind) {
     const labels = {
       "traffic-light": "Светофор",
       "speed-camera": "Камера контроля скорости",
       "surveillance-camera": "Камера видеонаблюдения",
     };
-    if (!labels[kind] || !navigator.geolocation) {
-      setManualRoadStatus("GPS недоступен на этом устройстве.");
+    if (!labels[kind]) return;
+    if (manualRoadBusy) return;
+    if (!navigator.geolocation) {
+      setManualRoadStatus("На этом телефоне GPS недоступен.");
       return;
     }
+
     setManualRoadKind(kind);
     setManualRoadLabel(labels[kind]);
     setManualRoadNotes("");
-    setManualRoadPosition(null);
-    setManualRoadStatus("Определяем точные GPS-координаты…");
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        const lat = Number(position.coords.latitude);
-        const lng = Number(position.coords.longitude);
-        const accuracy = Number(position.coords.accuracy || 999);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          setManualRoadStatus("Не удалось получить координаты GPS. Попробуй ещё раз.");
+    setManualRoadStatus("Получаем GPS и сразу сохраняем отметку…");
+    setManualRoadBusy(true);
+
+    navigator.geolocation.getCurrentPosition(async position => {
+      const lat = Number(position.coords.latitude);
+      const lng = Number(position.coords.longitude);
+      const accuracy = Number(position.coords.accuracy || 999);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 47 || lat > 55 || lng < 65 || lng > 77) {
+        setManualRoadStatus("GPS не определил Астану. Проверь геолокацию телефона и повтори.");
+        setManualRoadBusy(false);
+        return;
+      }
+      if (accuracy > 60) {
+        setManualRoadStatus("GPS пока неточный (±" + Math.round(accuracy) + " м). Остановись в безопасном месте и повтори.");
+        setManualRoadBusy(false);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/road-manual-objects", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            kind,
+            lat,
+            lng,
+            label: labels[kind],
+            notes: "",
+            accuracy_m: accuracy,
+          }),
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+          setManualRoadStatus(payload?.error || "Не удалось сохранить объект. Проверь доступ к личной базе.");
           return;
         }
-        if (accuracy > 60) {
-          setManualRoadStatus("GPS пока неточный (±" + Math.round(accuracy) + " м). Подожди немного на безопасной остановке и повтори.");
-          return;
-        }
-        setManualRoadPosition({ lat, lng, accuracy });
-        setManualRoadStatus("GPS-точка получена. Проверь тип объекта и сохрани отметку.");
-        setManualRoadQuickOpen(false);
-      },
-      error => {
-        const message = error?.code === 1
-          ? "Разреши доступ к геолокации для Астана Гид."
-          : error?.code === 3
-            ? "GPS не успел определить место. Попробуй ещё раз."
-            : "Не удалось получить GPS. Проверь геолокацию телефона.";
-        setManualRoadStatus(message);
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-    );
+
+        setManualRoadStatus(payload.duplicate
+          ? labels[kind] + ": такая отметка уже есть рядом."
+          : labels[kind] + " добавлен на карту.");
+        setRoadScanRevision(value => value + 1);
+        setRoadObjectsRevision(value => value + 1);
+      } catch {
+        setManualRoadStatus("Нет связи с базой. Отметка не сохранена — попробуй позже.");
+      } finally {
+        setManualRoadBusy(false);
+      }
+    }, error => {
+      const message = error?.code === 1
+        ? "Разреши доступ к геолокации для Астана Гид."
+        : error?.code === 3
+          ? "GPS не успел определить место. Попробуй ещё раз."
+          : "Не удалось получить GPS. Проверь геолокацию телефона.";
+      setManualRoadStatus(message);
+      setManualRoadBusy(false);
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
   }
 
   function beginManualRoadAdd() {
@@ -4600,11 +4676,11 @@ export default function AstanaMapPage() {
       <div style={{ position: "fixed", right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)", zIndex: 8000, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, fontFamily: "system-ui,sans-serif" }}>
         {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объект на карту" style={{ width: "min(78vw,300px)", padding: 12, borderRadius: 16, background: "rgba(7,20,35,.97)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 8 }}>
           <b style={{ color: "#fff", fontSize: 15 }}>Что добавить рядом?</b>
-          <button type="button" onClick={() => void beginQuickGpsRoadAdd("traffic-light")} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700 }}>🚦 Светофор</button>
-          <button type="button" onClick={() => void beginQuickGpsRoadAdd("speed-camera")} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700 }}>📷 Камера контроля скорости</button>
-          <button type="button" onClick={() => void beginQuickGpsRoadAdd("surveillance-camera")} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700 }}>🎥 Камера видеонаблюдения</button>
-          {manualRoadStatus && !manualRoadPosition && <small role="status" style={{ color: "#9bdfff", lineHeight: 1.4 }}>{manualRoadStatus}</small>}
-          <small style={{ color: "#a9c0d1" }}>Точка берётся из GPS телефона. Добавляй объект только после безопасной остановки.</small>
+          <button type="button" onClick={() => void beginQuickGpsRoadAdd("traffic-light")} disabled={manualRoadBusy} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700, opacity: manualRoadBusy ? 0.6 : 1 }}>🚦 Светофор</button>
+          <button type="button" onClick={() => void beginQuickGpsRoadAdd("speed-camera")} disabled={manualRoadBusy} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700, opacity: manualRoadBusy ? 0.6 : 1 }}>📷 Камера контроля скорости</button>
+          <button type="button" onClick={() => void beginQuickGpsRoadAdd("surveillance-camera")} disabled={manualRoadBusy} style={{ padding: "13px 12px", border: "1px solid #355a75", borderRadius: 12, background: "#102d43", color: "#fff", textAlign: "left", fontSize: 16, fontWeight: 700, opacity: manualRoadBusy ? 0.6 : 1 }}>🎥 Камера видеонаблюдения</button>
+          {manualRoadStatus && <small role="status" style={{ color: "#9bdfff", lineHeight: 1.4 }}>{manualRoadStatus}</small>}
+          <small style={{ color: "#a9c0d1" }}>Нажми тип объекта — GPS сохранит отметку и значок появится на карте. Добавляй только после безопасной остановки.</small>
         </div>}
         <button type="button" onClick={() => { setManualRoadQuickOpen(value => !value); setManualRoadStatus(""); }} aria-expanded={manualRoadQuickOpen} style={{ minWidth: 70, minHeight: 64, border: "1px solid #46d9ff", borderRadius: 18, background: "linear-gradient(145deg,#087cf0,#0346a8)", color: "#fff", boxShadow: "0 4px 22px #008cff88", fontSize: 15, fontWeight: 800, padding: "8px 13px" }}><span style={{ display: "block", fontSize: 25, lineHeight: 1 }}>＋</span>Добавить</button>
       </div>
