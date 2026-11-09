@@ -4604,14 +4604,11 @@ export default function AstanaMapPage() {
     setRoadScanPanelOpen(false);
     setManualRoadQuickOpen(false);
     setManualRoadPosition(null);
-    setManualRoadStatus("Нажми один раз на нужный перекрёсток или место объекта.");
+    setManualRoadStatus("");
+    // Оставляем активной 4D-карту: координата будет браться прямо из MapLibre.
+    map3dEnabledRef.current = true;
+    setMap3dEnabled(true);
     setManualRoadAddMode(true);
-    map3dEnabledRef.current = false;
-    setMap3dEnabled(false);
-    const map = mapRef.current;
-    if (map?.getCenter && map?.getZoom) {
-      map.setView(map.getCenter(), Math.max(17.5, Number(map.getZoom()) || 0), { animate: true });
-    }
   }
 
   async function saveManualRoadObject() {
@@ -4684,60 +4681,71 @@ export default function AstanaMapPage() {
   }
 
   useEffect(() => {
-    if (!leafletReady || !window.L || !mapRef.current || !manualRoadAddMode) return;
+    if (!manualRoadAddMode) return;
+
+    const labels = {
+      "traffic-light": "Светофор",
+      "speed-camera": "Камера контроля скорости",
+      "surveillance-camera": "Камера видеонаблюдения",
+      "speed-limit": "Ограничение скорости",
+      "traffic-sign": "Дорожный знак",
+      "stop-sign": "Знак STOP",
+      "give-way-sign": "Уступи дорогу",
+      "pedestrian-crossing": "Пешеходный переход",
+      "no-stopping": "Остановка запрещена",
+      "no-parking": "Стоянка запрещена",
+      parking: "Парковка",
+      roadwork: "Дорожные работы",
+      "road-hazard": "Опасный участок",
+    };
+
+    const savePickedCoordinate = (latValue, lngValue) => {
+      const lat = Number(latValue);
+      const lng = Number(lngValue);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setManualRoadPosition({ lat, lng });
+      setManualRoadAddMode(false);
+      setManualRoadStatus("Точка выбрана. Проверь координаты и сохрани отметки.");
+      if (!manualRoadLabel.trim()) {
+        setManualRoadLabel(labels[manualRoadKind] || "Дорожный объект");
+      }
+    };
+
+    // Основной режим: выбор координаты непосредственно на полноэкранной 4D-карте.
+    const map3d = map3dEnabled && map3dReady ? map3dRef.current : null;
+    if (map3d) {
+      const canvas = map3d.getCanvas?.();
+      const previousCursor = canvas?.style?.cursor || "";
+      if (canvas?.style) canvas.style.cursor = "crosshair";
+      const on3DMapClick = event => {
+        savePickedCoordinate(event?.lngLat?.lat, event?.lngLat?.lng);
+      };
+      map3d.on("click", on3DMapClick);
+      return () => {
+        map3d.off("click", on3DMapClick);
+        if (canvas?.style) canvas.style.cursor = previousCursor;
+      };
+    }
+
+    // Резервный режим 2D нужен только пока 4D-карта ещё загружается или недоступна.
+    if (!leafletReady || !window.L || !mapRef.current) return;
     const map = mapRef.current;
     const container = map.getContainer?.();
     const previousCursor = container?.style?.cursor || "";
     if (container?.style) container.style.cursor = "crosshair";
-    const onMapClick = event => {
-      const lat = Number(event?.latlng?.lat);
-      const lng = Number(event?.latlng?.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      setManualRoadPosition({ lat, lng });
-      setManualRoadAddMode(false);
-      setManualRoadStatus("Место выбрано. Все отмеченные типы сохранятся по этой одной точке.");
-      const center = map.getCenter?.();
-      if (center && map3dRef.current && map3dReadyRef.current) {
-        map3dRef.current.jumpTo({
-          center: [center.lng, center.lat],
-          zoom: Math.max(15.2, Number(map.getZoom?.() || map3dRef.current.getZoom())),
-          pitch: 52,
-          bearing: 0,
-        });
-      }
-      map3dEnabledRef.current = true;
-      setMap3dEnabled(true);
-      if (!manualRoadLabel.trim()) {
-        const labels = {
-          "traffic-light": "Светофор",
-          "speed-camera": "Камера контроля скорости",
-          "surveillance-camera": "Камера видеонаблюдения",
-          "speed-limit": "Ограничение скорости",
-          "traffic-sign": "Дорожный знак",
-          "stop-sign": "Знак STOP",
-          "give-way-sign": "Уступи дорогу",
-          "pedestrian-crossing": "Пешеходный переход",
-          "no-stopping": "Остановка запрещена",
-          "no-parking": "Стоянка запрещена",
-          "parking": "Парковка",
-          "roadwork": "Дорожные работы",
-          "road-hazard": "Опасный участок",
-        };
-        setManualRoadLabel(labels[manualRoadKind] || "Дорожный объект");
-      }
-    };
-    map.on("click", onMapClick);
+    const on2DMapClick = event => savePickedCoordinate(event?.latlng?.lat, event?.latlng?.lng);
+    map.on("click", on2DMapClick);
     return () => {
-      map.off("click", onMapClick);
+      map.off("click", on2DMapClick);
       if (container?.style) container.style.cursor = previousCursor;
     };
-  }, [leafletReady, manualRoadAddMode, manualRoadKind]);
+  }, [leafletReady, map3dReady, map3dEnabled, manualRoadAddMode, manualRoadKind, manualRoadLabel]);
 
   return (
     <main className="astana-map-page">
       <div ref={mapEl} className={`astana-map-canvas${navigating ? " astana-map-canvas-navigation" : ""}${map3dEnabled && map3dReady ? " astana-map-canvas-3d-hidden" : ""}`} />
       <div ref={map3dEl} className={`astana-map-3d-canvas${map3dEnabled && map3dReady ? " active" : ""}`} aria-hidden={!map3dEnabled || !map3dReady} />
-      <div style={{ position: "fixed", right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)", zIndex: 8000, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, fontFamily: "system-ui,sans-serif" }}>
+      <div style={{ position: "fixed", right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 112px)", zIndex: 8000, display: manualRoadAddMode ? "none" : "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, fontFamily: "system-ui,sans-serif" }}>
         {manualRoadQuickOpen && <div role="dialog" aria-label="Добавить объекты на карту" style={{ width: "min(86vw,330px)", padding: 13, borderRadius: 16, background: "rgba(7,20,35,.98)", border: "1px solid #20bdf4", boxShadow: "0 8px 30px #001a33", display: "grid", gap: 9 }}>
           <b style={{ color: "#fff", fontSize: 16 }}>Что отметить в одной точке?</b>
           {[
@@ -4755,7 +4763,7 @@ export default function AstanaMapPage() {
             }} style={{ width: 20, height: 20, accentColor: "#27c4ff" }} />
             <span style={{ fontSize: 19 }}>{option.icon}</span><span>{option.label}</span>
           </label>)}
-          <button type="button" onClick={beginManualRoadAdd} disabled={manualRoadBusy || manualRoadKinds.length === 0} style={{ minHeight: 48, padding: "11px 12px", border: 0, borderRadius: 12, background: "#087cf0", color: "#fff", fontSize: 15, fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>📍 Указать одно место на карте</button>
+          <button type="button" onClick={beginManualRoadAdd} disabled={manualRoadBusy || manualRoadKinds.length === 0} style={{ minHeight: 48, padding: "11px 12px", border: 0, borderRadius: 12, background: "#087cf0", color: "#fff", fontSize: 15, fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>📍 Выбрать место на карте</button>
           {manualRoadStatus && <small role="status" style={{ color: "#9bdfff", lineHeight: 1.4 }}>{manualRoadStatus}</small>}
           <small style={{ color: "#a9c0d1", lineHeight: 1.4 }}>Выбери сразу несколько объектов. Одним нажатием на перекрёсток задашь общую точку для всех выбранных значков. Сохраняй только после безопасной остановки.</small>
         </div>}
@@ -4867,26 +4875,7 @@ export default function AstanaMapPage() {
 
 
 
-      {manualRoadAddMode && <div style={{ position: "fixed", zIndex: 9000, left: "50%", top: 86, transform: "translateX(-50%)", width: "min(92vw,420px)", padding: 14, borderRadius: 16, background: "#fff", color: "#15222b", boxShadow: "0 8px 32px #0004", fontFamily: "system-ui,sans-serif" }}>
-        <b style={{ display: "block", marginBottom: 6 }}>Добавление дорожного объекта</b>
-        <div style={{ fontSize: 14, lineHeight: 1.4 }}>Нажми на карте ровно в месте светофора, камеры или знака.</div>
-        <div style={{ marginTop: 8, fontSize: 12, color: "#52616d" }}>После выбора точки карта автоматически вернётся в 4D.</div>
-        <button type="button" onClick={() => {
-          setManualRoadAddMode(false);
-          setManualRoadStatus("Добавление отменено.");
-          const center = mapRef.current?.getCenter?.();
-          if (center && map3dRef.current && map3dReadyRef.current) {
-            map3dRef.current.jumpTo({
-              center: [center.lng, center.lat],
-              zoom: Math.max(15.2, Number(mapRef.current?.getZoom?.() || map3dRef.current.getZoom())),
-              pitch: 52,
-              bearing: 0,
-            });
-          }
-          map3dEnabledRef.current = true;
-          setMap3dEnabled(true);
-        }} style={{ marginTop: 10, border: 0, background: "#e8edf0", padding: "9px 12px", borderRadius: 9, fontWeight: 700 }}>Отмена</button>
-      </div>}
+
       {manualRoadPosition && <div role="dialog" aria-modal="true" aria-label="Сохранить объекты в одной точке" style={{ position: "fixed", zIndex: 9100, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: "min(92vw,440px)", maxHeight: "86dvh", overflowY: "auto", boxSizing: "border-box", padding: 18, borderRadius: 18, background: "#fff", color: "#15222b", boxShadow: "0 12px 48px #0006", fontFamily: "system-ui,sans-serif" }}>
         <b style={{ fontSize: 19 }}>Сохранить объекты в одной точке</b>
         <p style={{ fontSize: 12, color: "#52616d", margin: "7px 0 12px" }}>Координаты выбранного места: {manualRoadPosition.lat.toFixed(6)}, {manualRoadPosition.lng.toFixed(6)}</p>
@@ -4915,8 +4904,8 @@ export default function AstanaMapPage() {
           <button type="button" disabled={manualRoadBusy || manualRoadKinds.length === 0} onClick={() => void saveManualRoadObject()} style={{ flex: 1.25, minHeight: 45, padding: 10, border: 0, borderRadius: 10, background: "#126e59", color: "#fff", fontWeight: 900, opacity: manualRoadBusy || manualRoadKinds.length === 0 ? 0.55 : 1 }}>{manualRoadBusy ? "Сохраняем…" : "Сохранить всё"}</button>
         </div>
       </div>}
-      {!route && <div className={`astana-search-wrap ${isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
-        {isHomeScreen && <div className="astana-home-handle"><span /></div>}
+      {!route && <div className={`astana-search-wrap ${manualRoadAddMode ? "astana-search-wrap-map-pick" : isHomeScreen ? "astana-search-wrap-home" : showPlaceMapControls ? "astana-search-wrap-selected" : "astana-search-wrap-active"}`}>
+        {isHomeScreen && !manualRoadAddMode && <div className="astana-home-handle"><span /></div>}
         <div className="astana-search-home-row">
           <div className="astana-search-box">
             <button className="astana-search-icon" onClick={() => searchAddress(query)} aria-label="Найти адрес" title="Найти адрес">⌕</button>
@@ -4943,7 +4932,7 @@ export default function AstanaMapPage() {
             {query && <button className="astana-clear" onClick={() => { cancelAddressSuggestions(); setQuery(""); setResults([]); setShowResultsPanel(false); setSearching(false); setDestination(null); setSelectedPlace(null); setRoute(null); setRouteOptions([]); setRouteOrigin(null); setNavigating(false); setSearchActive(false); setError(""); }}>×</button>}
             <button className={`astana-mic${listening ? " listening" : ""}`} onClick={startVoiceSearch} aria-label="Голосовой поиск" title="Голосовой поиск">🎙</button>
           </div>
-          {isHomeScreen && <button className="astana-home-menu" onClick={openHomeSearch} aria-label="Открыть поиск">☰</button>}
+          {isHomeScreen && !manualRoadAddMode && <button className="astana-home-menu" onClick={openHomeSearch} aria-label="Открыть поиск">☰</button>}
         </div>
         {searchActive && <button className="astana-search-cancel" onClick={() => { cancelAddressSuggestions(); setSearchActive(false); setShowResultsPanel(false); setResults([]); setSearching(false); setQuery(""); setError(""); searchInputRef.current?.blur(); }}>Отмена</button>}
         {showResultsPanel && <div className="astana-results">
@@ -4955,7 +4944,7 @@ export default function AstanaMapPage() {
           {!searching && !results.length && <div className="astana-result-loading">{error || "Ничего не найдено. Проверьте адрес и нажмите поиск."}</div>}
         </div>}
 
-        {isHomeScreen && <>
+        {isHomeScreen && !manualRoadAddMode && <>
           <div className="astana-home-shortcuts">
             <button className="astana-shortcut astana-shortcut-icon" onClick={openHomeSearch} aria-label="Сохранённые места">♧</button>
             <button className="astana-shortcut" onClick={openHomeSearch}><span className="shortcut-symbol">◉</span> Найти работу</button>
@@ -5010,10 +4999,14 @@ export default function AstanaMapPage() {
         </div>)}
       </div>}
 
-      {showPlaceMapControls && <div className="astana-place-map-controls" aria-label="Управление картой">
-        <button onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение" title="Моё местоположение">➤</button>
-        <button onClick={() => mapRef.current?.zoomIn()} aria-label="Приблизить" title="Приблизить">+</button>
-        <button onClick={() => mapRef.current?.zoomOut()} aria-label="Отдалить" title="Отдалить">−</button>
+      {(showPlaceMapControls || manualRoadAddMode) && <div className="astana-place-map-controls" aria-label="Управление картой">
+        <button onClick={() => {
+          if (!origin) return;
+          if (manualRoadAddMode && map3dReady && map3dRef.current) map3dRef.current.flyTo({ center: [origin.lng, origin.lat], zoom: 16 });
+          else mapRef.current?.setView([origin.lat, origin.lng], 16);
+        }} aria-label="Моё местоположение" title="Моё местоположение">➤</button>
+        <button onClick={() => manualRoadAddMode && map3dReady && map3dRef.current ? map3dRef.current.zoomIn() : mapRef.current?.zoomIn()} aria-label="Приблизить" title="Приблизить">+</button>
+        <button onClick={() => manualRoadAddMode && map3dReady && map3dRef.current ? map3dRef.current.zoomOut() : mapRef.current?.zoomOut()} aria-label="Отдалить" title="Отдалить">−</button>
         <button onClick={swapMapType} aria-label="Сменить карту" title="Сменить тип карты">◈</button>
       </div>}
 
@@ -5159,8 +5152,8 @@ export default function AstanaMapPage() {
       {error && <div className="astana-error">{error}</div>}
 
 
-      {isHomeScreen && <button className="astana-home-locate" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение">➤</button>}
-      {isHomeScreen && <div
+      {isHomeScreen && !manualRoadAddMode && <button className="astana-home-locate" onClick={() => { if (origin) mapRef.current?.setView([origin.lat, origin.lng], 16); }} aria-label="Моё местоположение">➤</button>}
+      {isHomeScreen && !manualRoadAddMode && <div
         className="astana-home-weather"
         aria-label={weatherData
           ? `Погода: ${Math.round(Number(weatherData.temperature_2m))} градусов, ${weatherSummary(weatherData.weather_code, weatherData.is_day)[0]}`
@@ -5171,7 +5164,7 @@ export default function AstanaMapPage() {
         <span>{weatherData ? weatherSummary(weatherData.weather_code, weatherData.is_day)[1] : weatherLoading ? "⏳" : "🌤️"}</span>
         <b>{weatherData ? `${Math.round(Number(weatherData.temperature_2m))}°C` : "—°C"}</b>
       </div>}
-      {isHomeScreen && <nav className="astana-home-bottom-nav" aria-label="Главное меню">
+      {isHomeScreen && !manualRoadAddMode && <nav className="astana-home-bottom-nav" aria-label="Главное меню">
         <button className="active" onClick={openHomeSearch}><span>▦</span><b>Поиск</b></button>
         <button onClick={() => { if (route) setShowSteps(true); else openHomeSearch(); }}><span>⌁</span><b>Проезд</b></button>
         <button onClick={() => { if (route) setNavigating(true); else openHomeSearch(); }}><span>➤</span><b>Навигатор</b></button>
