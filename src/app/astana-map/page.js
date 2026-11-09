@@ -1494,6 +1494,11 @@ export default function AstanaMapPage() {
       roadObjectsLayerRef.current = L.layerGroup().addTo(map);
       roadScanLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
+      const updateRoadIconZoom = () => {
+        mapEl.current?.classList.toggle("astana-road-icons-detailed", map.getZoom() >= 16);
+      };
+      map.on("zoomend", updateRoadIconZoom);
+      updateRoadIconZoom();
       if (libraryLoadWatchdog !== null) {
         window.clearTimeout(libraryLoadWatchdog);
         libraryLoadWatchdog = null;
@@ -2126,6 +2131,7 @@ export default function AstanaMapPage() {
               id: "moy3d-road-object-icons",
               type: "symbol",
               source: "moy3d-road-objects",
+              minzoom: 16,
               filter: ["in", ["get", "kind"], ["literal", ["camera", "traffic-light", "speed-sign", "pedestrian-crossing"]]],
               layout: {
                 "icon-image": [
@@ -2154,6 +2160,7 @@ export default function AstanaMapPage() {
               id: "moy3d-road-object-speed-labels",
               type: "symbol",
               source: "moy3d-road-objects",
+              minzoom: 16,
               filter: ["==", ["get", "kind"], "speed-sign"],
               layout: {
                 "text-field": ["to-string", ["get", "speedLimit"]],
@@ -2408,32 +2415,32 @@ export default function AstanaMapPage() {
       ? route.geometry.map(point => [point[1], point[0]])
       : [];
     const objectProgress = navigating && routeProgressRef.current >= 0 ? routeProgressRef.current : 0;
-    const mapBoundsForObjects = routePointsForObjects.length > 1
-      ? null
-      : (map3dRef.current?.getBounds?.() || mapRef.current?.getBounds?.() || null);
+    const mapBoundsForObjects = map3dRef.current?.getBounds?.() || mapRef.current?.getBounds?.() || null;
 
     const routeRelevantObjects = (roadObjectsRef.current || []).filter(item => {
       if (!isRoadObjectCoordinateUsable(item)) return false;
       if (!["camera", "traffic-light", "speed-sign", "pedestrian-crossing"].includes(String(item.kind || ""))) return false;
       if (item.kind === "speed-sign" && (!Number.isFinite(Number(item.speedLimit)) || Number(item.speedLimit) <= 0)) return false;
-      if (routePointsForObjects.length > 1) {
+
+      // During real navigation, only draw objects close ahead on the chosen carriageway.
+      // Spoken warnings use their own wider range and are not disabled by this visual filter.
+      if (navigating && routePointsForObjects.length > 1) {
         const snapped = snapToRoute({ lat: Number(item.lat), lng: Number(item.lng) }, routePointsForObjects);
-        // Keep real objects on the selected carriageway, not objects 2–3 lanes or
-        // an entire opposing carriageway away from the route.
         const lateralLimit = item.kind === "traffic-light" ? 28 : item.kind === "camera" ? 18 : 22;
         if (!Number.isFinite(snapped.distance) || snapped.distance > lateralLimit) return false;
         const metersAhead = snapped.progress >= objectProgress
           ? routeDistanceBetweenProgress(routePointsForObjects, objectProgress, snapped.progress)
           : -routeDistanceBetweenProgress(routePointsForObjects, snapped.progress, objectProgress);
-        // Show the next objects along the chosen travel direction. A few metres behind
-        // are retained for map continuity; passed city-wide points are not drawn ahead.
-        return metersAhead >= -35 && metersAhead <= 5000;
+        return metersAhead >= -45 && metersAhead <= 700;
       }
+
+      // When browsing or previewing a route, only keep objects inside the visible map.
+      // The symbol layers themselves appear only from zoom 16, so the city-wide view stays clean.
       if (mapBoundsForObjects?.contains) {
         return mapBoundsForObjects.contains([Number(item.lng), Number(item.lat)]);
       }
       const center = positionRef.current || origin || { lat: ASTANA[0], lng: ASTANA[1] };
-      return distanceBetween([center.lat, center.lng], [Number(item.lat), Number(item.lng)]) <= 1800;
+      return distanceBetween([center.lat, center.lng], [Number(item.lat), Number(item.lng)]) <= 900;
     });
 
     const uniquePhysicalRoadObjects = deduplicatePhysicalRoadObjects(routeRelevantObjects, 4);
@@ -3706,8 +3713,22 @@ export default function AstanaMapPage() {
           const isCrossing = item.kind === "pedestrian-crossing";
           const isEvent = ["roadwork", "closure", "hazard"].includes(item.kind);
           const title = item.title || roadObjectTitle(item.kind);
+          const isRoadSafetyMarker = isSignal || isCamera || isSpeedSign || isCrossing;
+          if (isRoadSafetyMarker) {
+            if (navigating && currentRoutePoints.length > 1) {
+              const snapped = snapToRoute({ lat: Number(item.lat), lng: Number(item.lng) }, currentRoutePoints);
+              const lateralLimit = isSignal ? 28 : isCamera ? 18 : 22;
+              if (!Number.isFinite(snapped.distance) || snapped.distance > lateralLimit) continue;
+              const metersAhead = snapped.progress >= currentProgress
+                ? routeDistanceBetweenProgress(currentRoutePoints, currentProgress, snapped.progress)
+                : -routeDistanceBetweenProgress(currentRoutePoints, snapped.progress, currentProgress);
+              if (metersAhead < -45 || metersAhead > 700) continue;
+            } else if (map.getZoom() < 16 || !map.getBounds().contains([Number(item.lng), Number(item.lat)])) {
+              continue;
+            }
+          }
           const icon = L.divIcon({
-            className: "moy-road-object-icon",
+            className: "moy-road-object-icon" + (isRoadSafetyMarker ? " moy-road-object-icon-detail" : ""),
             html: roadObjectIconHtml(item.kind, item.speedLimit),
             iconSize: isCamera ? [42, 42] : isSignal ? [32, 46] : isSpeedSign || isParking || isCrossing ? [42, 42] : [38, 38],
             iconAnchor: isCamera ? [21, 21] : isSignal ? [16, 23] : isSpeedSign || isParking || isCrossing ? [21, 21] : [19, 19],
