@@ -3723,7 +3723,7 @@ export default function AstanaMapPage() {
                 ? routeDistanceBetweenProgress(currentRoutePoints, currentProgress, snapped.progress)
                 : -routeDistanceBetweenProgress(currentRoutePoints, snapped.progress, currentProgress);
               if (metersAhead < -45 || metersAhead > 700) continue;
-            } else if (map.getZoom() < 16 || !map.getBounds().contains([Number(item.lng), Number(item.lat)])) {
+            } else if (!map.getBounds().contains([Number(item.lng), Number(item.lat)])) {
               continue;
             }
           }
