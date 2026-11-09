@@ -2310,20 +2310,38 @@ export default function AstanaMapPage() {
                 link.textContent = "Открыть источник";
                 content.appendChild(link);
               }
-              const isManualPin = props.manualRoadObject === true || props.manualRoadObject === "true";
-              if (isManualPin && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(props.id || ""))) {
+              const featureCoordinates = feature.geometry?.type === "Point"
+                ? feature.geometry.coordinates
+                : null;
+              const featureLng = Number(featureCoordinates?.[0]);
+              const featureLat = Number(featureCoordinates?.[1]);
+              const featureKind = kind === "speed-camera-limit" ? "camera" : kind;
+              const nearbyManualPin = Number.isFinite(featureLat) && Number.isFinite(featureLng)
+                ? (roadObjectsRef.current || []).find(item => {
+                    if (!(item.manualRoadObject === true || item.manual === true)) return false;
+                    if (String(item.kind || "") !== featureKind) return false;
+                    const itemLat = Number(item.lat);
+                    const itemLng = Number(item.lng);
+                    if (!Number.isFinite(itemLat) || !Number.isFinite(itemLng)) return false;
+                    return distanceBetween([featureLat, featureLng], [itemLat, itemLng]) <= 2;
+                  })
+                : null;
+              const isManualPin = props.manualRoadObject === true ||
+                props.manualRoadObject === "true" || Boolean(nearbyManualPin);
+              const manualPinId = String(nearbyManualPin?.id || props.id || "");
+              if (isManualPin && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(manualPinId)) {
                 const removeButton = document.createElement("button");
                 removeButton.type = "button";
                 removeButton.className = "astana-manual-road-delete";
-                removeButton.textContent = "Удалить отметку";
+                removeButton.textContent = "Удалить мою отметку";
                 removeButton.addEventListener("click", async () => {
                   removeButton.disabled = true;
                   removeButton.textContent = "Удаляем…";
-                  const deleted = await deleteManualRoadObject(String(props.id), heading.textContent);
+                  const deleted = await deleteManualRoadObject(manualPinId, nearbyManualPin?.title || heading.textContent);
                   if (deleted) popup.remove();
                   else {
                     removeButton.disabled = false;
-                    removeButton.textContent = "Удалить отметку";
+                    removeButton.textContent = "Удалить мою отметку";
                   }
                 });
                 content.appendChild(removeButton);
