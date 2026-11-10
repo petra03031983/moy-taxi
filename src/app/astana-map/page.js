@@ -895,15 +895,17 @@ function roadLaneDefaults(highway, oneWay) {
         : /living_street/.test(highway)
           ? 2.9
           : 2.8;
-  const lanesPerCarriageway = /motorway|trunk/.test(highway)
-    ? 4
-    : /primary/.test(highway)
-      ? 3
-      : /secondary/.test(highway)
-        ? 2
-        : /tertiary/.test(highway)
+  const lanesPerCarriageway = /_link$/.test(highway)
+    ? 2
+    : /motorway|trunk/.test(highway)
+      ? 4
+      : /primary/.test(highway)
+        ? 3
+        : /secondary/.test(highway)
           ? 2
-          : 1;
+          : /tertiary/.test(highway)
+            ? 1
+            : 1;
   return {
     laneWidth,
     laneCount: oneWay ? lanesPerCarriageway : lanesPerCarriageway * 2,
@@ -988,8 +990,8 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
       tags.name || tags["name:ru"] || tags["name:kk"] || tags.official_name || ""
     ).normalize("NFKC").toLowerCase().replace(/ё/g, "е");
     const isEightLaneAstanaCorridor =
-      /чингиз\\s+айтматов|шынгыс\\s+айтматов|ch[iy]ng?iz\\s+aitmatov/.test(roadName) ||
-      /нургиса\\s+тлендиев|нұрғиса\\s+тілендиев|nurgis[ay]\\s+tlendiev/.test(roadName);
+      /чингиз[а]?\\s+айтматов[а]?|шынгыс[а]?\\s+айтматов[а]?|ch[iy]ng?iz\\s+aitmatov/.test(roadName) ||
+      /нургис[аы]\\s+тлендиев[а]?|нұрғис[аы]\\s+тілендиев[а]?|nurgis[ay]\\s+tlendiev/.test(roadName);
     if (roadId && seenRoadIds.has(roadId)) continue;
     if (roadId) seenRoadIds.add(roadId);
 
@@ -3049,7 +3051,7 @@ export default function AstanaMapPage() {
                   markingsSource.setData(cachedRaw.markings);
                 } else if (
                   laneRawRequestCell !== rawCell &&
-                  (laneRawRequestCell === "" || Date.now() - laneRawAttemptAt > 120_000)
+                  (laneRawRequestCell === "" || Date.now() - laneRawAttemptAt > 30_000)
                 ) {
                   laneRawRequestController?.abort();
                   const controller = new AbortController();
