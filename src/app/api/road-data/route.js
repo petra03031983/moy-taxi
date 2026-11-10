@@ -76,6 +76,27 @@ function readPoints(params) {
 }
 
 function makeQuery(mode, points, radius) {
+  if (mode === "lanes") {
+    const lats = points.map(([lat]) => lat);
+    const lngs = points.map(([, lng]) => lng);
+    const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+    const latPadding = Math.max(0.001, radius / 111320 * 1.15);
+    const lngPadding = Math.max(
+      0.001,
+      radius / (111320 * Math.max(0.35, Math.cos(centerLat * Math.PI / 180))) * 1.15,
+    );
+    const bounds = [
+      (Math.min(...lats) - latPadding).toFixed(5),
+      (Math.min(...lngs) - lngPadding).toFixed(5),
+      (Math.max(...lats) + latPadding).toFixed(5),
+      (Math.max(...lngs) + lngPadding).toFixed(5),
+    ].join(",");
+    const roadClasses = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link";
+    return "[out:json][timeout:8];(" +
+      "way(" + bounds + ")[highway~\"^(" + roadClasses + ")$\"];" +
+      "way(" + bounds + ")[road_marking~\"^(lane_divider|edge_line|stop_line|crossing_edge)$\"];" +
+      ");out tags geom;";
+  }
   if (mode === "speed") {
     const lat = points[0][0].toFixed(6);
     const lng = points[0][1].toFixed(6);
@@ -124,6 +145,28 @@ function makeQuery(mode, points, radius) {
 }
 
 function makeFallbackQuery(mode, points, radius) {
+  if (mode === "lanes") {
+    const lats = points.map(([lat]) => lat);
+    const lngs = points.map(([, lng]) => lng);
+    const centerLat = lats.reduce((sum, value) => sum + value, 0) / lats.length;
+    const safeRadius = Math.min(radius, 650);
+    const latPadding = Math.max(0.001, safeRadius / 111320 * 1.15);
+    const lngPadding = Math.max(
+      0.001,
+      safeRadius / (111320 * Math.max(0.35, Math.cos(centerLat * Math.PI / 180))) * 1.15,
+    );
+    const bounds = [
+      (Math.min(...lats) - latPadding).toFixed(5),
+      (Math.min(...lngs) - lngPadding).toFixed(5),
+      (Math.max(...lats) + latPadding).toFixed(5),
+      (Math.max(...lngs) + lngPadding).toFixed(5),
+    ].join(",");
+    const roadClasses = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|road|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link";
+    return "[out:json][timeout:4];(" +
+      "way(" + bounds + ")[highway~\"^(" + roadClasses + ")$\"];" +
+      "way(" + bounds + ")[road_marking~\"^(lane_divider|edge_line|stop_line|crossing_edge)$\"];" +
+      ");out tags geom;";
+  }
   if (mode === "speed") {
     const lat = points[0][0].toFixed(6);
     const lng = points[0][1].toFixed(6);
@@ -576,7 +619,7 @@ function getMemoryCache() {
 export async function GET(request) {
   const params = new URL(request.url).searchParams;
   const requestedMode = params.get("mode");
-  const mode = requestedMode === "speed" ? "speed" : requestedMode === "cameras" ? "cameras" : "objects";
+  const mode = requestedMode === "lanes" ? "lanes" : requestedMode === "speed" ? "speed" : requestedMode === "cameras" ? "cameras" : "objects";
   const memoryCache = getMemoryCache();
 
   if (mode === "cameras") {
@@ -616,7 +659,9 @@ export async function GET(request) {
     .join(";");
   const cached = memoryCache.get(cacheKey);
   const cachedAgeMs = cached ? Date.now() - cached.savedAt : Infinity;
-  const cacheTtlMs = cached?.payload?.partial ? PARTIAL_CACHE_TTL_MS : CACHE_TTL_MS;
+  const cacheTtlMs = cached?.payload?.partial
+    ? PARTIAL_CACHE_TTL_MS
+    : mode === "lanes" ? 2 * 60 * 1000 : CACHE_TTL_MS;
   if (cached && cachedAgeMs < cacheTtlMs) {
     return jsonResponse({ ...cached.payload, cached: true });
   }
@@ -636,7 +681,12 @@ export async function GET(request) {
   let payload = null;
   let fallbackUsed = false;
   try {
-    payload = await fetchFromAnyOverpass(query, endpoints);
+    payload = await fetchFromAnyOverpass(
+      query,
+      endpoints,
+      mode === "lanes" ? 9_000 : REQUEST_TIMEOUT_MS,
+      1,
+    );
   } catch (error) {
     lastError = error;
     // A 406/429 is an access/rate-limit signal. Do not immediately issue a second
@@ -647,8 +697,8 @@ export async function GET(request) {
         payload = await fetchFromAnyOverpass(
           makeFallbackQuery(mode, points, radius),
           endpoints,
-          1_500,
-          MAX_OVERPASS_ATTEMPTS,
+          mode === "lanes" ? 5_000 : 1_500,
+          mode === "lanes" ? 1 : MAX_OVERPASS_ATTEMPTS,
         );
       } catch (fallbackError) {
         lastError = fallbackError;
@@ -667,7 +717,14 @@ export async function GET(request) {
       fetchedAt: new Date().toISOString(),
       cached: false,
       count: elements.length,
-      diagnostics: summarizeRoadObjects(elements),
+      diagnostics: mode === "lanes"
+        ? {
+            roadWays: elements.filter(item => item?.type === "way" && item?.tags?.highway).length,
+            mappedLaneCounts: elements.filter(item => item?.tags?.lanes || item?.tags?.["lanes:forward"] || item?.tags?.["lanes:backward"]).length,
+            mappedWidths: elements.filter(item => item?.tags?.width).length,
+            markedLaneWays: elements.filter(item => item?.tags?.lane_markings || item?.tags?.overtaking || item?.tags?.road_marking).length,
+          }
+        : summarizeRoadObjects(elements),
       sources: officialLayers.length ? ["OpenStreetMap / Overpass", "Astana city geoportal parking and underpasses"] : ["OpenStreetMap / Overpass"],
       fallbackUsed,
       partial: Boolean(fallbackUsed || !Array.isArray(payload.elements) || payload.elements.length === 0),
