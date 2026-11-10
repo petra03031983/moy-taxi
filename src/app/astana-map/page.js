@@ -998,11 +998,6 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
       laneCount = lanesTotalTag || defaults.laneCount;
       lanesForward = Math.ceil(laneCount / 2);
       lanesBackward = Math.floor(laneCount / 2);
-      if (!lanesBackward) {
-        lanesForward = 1;
-        lanesBackward = 1;
-        laneCount = 2;
-      }
     }
 
     if (!Number.isFinite(laneCount) || laneCount < 1 || laneCount > 12) continue;
