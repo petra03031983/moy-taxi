@@ -1966,16 +1966,65 @@ export default function AstanaMapPage() {
 
                 if (sourceLayer === "transportation") {
                   const casing = id.includes("casing");
-                  if (/motorway/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#17232D" : "#A87543");
-                  } else if (/trunk|primary/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#192630" : "#897451");
-                  } else if (/secondary|tertiary/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#17232D" : "#586B79");
-                  } else if (/rail/.test(id)) {
-                    setBasePaint(layer, "line-color", "#526877");
-                  } else if (/street|minor|service|track|path|pedestrian|residential/.test(id)) {
-                    setBasePaint(layer, "line-color", casing ? "#111D27" : "#394B57");
+                  const roadClass = [
+                    "motorway", "trunk", "primary", "secondary", "tertiary",
+                    "minor", "residential", "service", "track", "pedestrian", "path",
+                  ].find(name => id.includes(name)) || "minor";
+                  const roadScale = {
+                    motorway: 1.9,
+                    trunk: 1.75,
+                    primary: 1.6,
+                    secondary: 1.45,
+                    tertiary: 1.3,
+                    minor: 1.18,
+                    residential: 1.18,
+                    service: 1.05,
+                    track: 0.98,
+                    pedestrian: 0.88,
+                    path: 0.82,
+                  }[roadClass] || 1;
+
+                  // Draw the outer road casing wider first, then the asphalt surface
+                  // on top. This makes both carriageways and junction approaches legible.
+                  const roadWidthStops = casing
+                    ? [
+                        9, 0.8 * roadScale,
+                        11, 1.55 * roadScale,
+                        13, 2.8 * roadScale,
+                        15, 5.1 * roadScale,
+                        17, 8.4 * roadScale,
+                        19, 12.5 * roadScale,
+                        20, 15.5 * roadScale,
+                      ]
+                    : [
+                        9, 0.45 * roadScale,
+                        11, 0.9 * roadScale,
+                        13, 1.75 * roadScale,
+                        15, 3.6 * roadScale,
+                        17, 6.3 * roadScale,
+                        19, 9.6 * roadScale,
+                        20, 12.2 * roadScale,
+                      ];
+                  setBasePaint(layer, "line-width", [
+                    "interpolate", ["linear"], ["zoom"],
+                    ...roadWidthStops,
+                  ]);
+                  setBasePaint(layer, "line-opacity", casing ? 0.98 : 1);
+
+                  if (/rail/.test(id)) {
+                    setBasePaint(layer, "line-color", casing ? "#111923" : "#71838E");
+                  } else if (casing) {
+                    setBasePaint(layer, "line-color", "#101923");
+                  } else if (/motorway|trunk/.test(id)) {
+                    setBasePaint(layer, "line-color", "#647783");
+                  } else if (/primary|secondary/.test(id)) {
+                    setBasePaint(layer, "line-color", "#566A77");
+                  } else if (/tertiary|minor|residential/.test(id)) {
+                    setBasePaint(layer, "line-color", "#465A67");
+                  } else if (/service|track/.test(id)) {
+                    setBasePaint(layer, "line-color", "#3D515E");
+                  } else if (/path|pedestrian/.test(id)) {
+                    setBasePaint(layer, "line-color", "#354B58");
                   }
                 }
               }
