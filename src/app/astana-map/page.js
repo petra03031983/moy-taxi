@@ -2030,6 +2030,54 @@ export default function AstanaMapPage() {
               }
             });
 
+            // 2GIS-like center marking for ordinary two-way roads.
+            // OpenMapTiles stores oneway=0 for roads that carry traffic in both directions.
+            // Keep this out of one-way streets, ramps, bridges, tunnels and footpaths.
+            const transportationBaseLayer = styleLayers.find(layer =>
+              layer.type === "line" && String(layer["source-layer"] || "") === "transportation"
+            );
+            if (transportationBaseLayer?.source && !map.getLayer("astana-two-way-road-centerline")) {
+              const transportationStyleIndexes = styleLayers
+                .map((layer, index) => ({ layer, index }))
+                .filter(entry => String(entry.layer["source-layer"] || "") === "transportation")
+                .map(entry => entry.index);
+              const lastTransportationIndex = transportationStyleIndexes.length
+                ? Math.max(...transportationStyleIndexes)
+                : -1;
+              const layerAfterRoads = styleLayers[lastTransportationIndex + 1]?.id || labelLayerId || undefined;
+              map.addLayer({
+                id: "astana-two-way-road-centerline",
+                type: "line",
+                source: transportationBaseLayer.source,
+                "source-layer": "transportation",
+                minzoom: 15,
+                filter: [
+                  "all",
+                  ["==", "$type", "LineString"],
+                  ["!in", "brunnel", "bridge", "tunnel"],
+                  ["in", "class", "minor", "tertiary", "secondary", "primary", "trunk"],
+                  ["==", "oneway", 0],
+                  ["!=", "ramp", 1],
+                ],
+                layout: {
+                  "line-cap": "butt",
+                  "line-join": "round",
+                },
+                paint: {
+                  "line-color": "#D8E0E6",
+                  "line-opacity": 0.9,
+                  "line-width": [
+                    "interpolate", ["linear"], ["zoom"],
+                    15, 0.65,
+                    17, 0.95,
+                    19, 1.25,
+                    20, 1.45,
+                  ],
+                  "line-dasharray": [4, 3],
+                },
+              }, layerAfterRoads);
+            }
+
             // Draw recognizable navigation symbols once and use them as actual map icons.
             // These replace colored circles and single-letter labels on the 3D/4D road layer.
             const roundRect = (ctx, x, y, width, height, radius) => {
