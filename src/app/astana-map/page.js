@@ -859,6 +859,218 @@ function buildCrosswalkStripePolygons(lat, lng, bearingDegrees, idPrefix = "cros
   });
 }
 
+const ASTANA_LANE_ROAD_CLASSES = new Set([
+  "motorway", "trunk", "primary", "secondary", "tertiary",
+  "unclassified", "residential", "living_street", "service", "road", "track",
+  "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link",
+]);
+
+function parseLaneCount(value) {
+  const match = String(value ?? "").trim().match(/^\\s*(\\d+(?:[.,]\\d+)?)/);
+  if (!match) return null;
+  const number = Number(match[1].replace(",", "."));
+  return Number.isFinite(number) && number >= 1 && number <= 12 ? Math.max(1, Math.round(number)) : null;
+}
+
+function parseRoadWidthMeters(value) {
+  const raw = String(value ?? "").trim().toLowerCase().replace(",", ".");
+  const match = raw.match(/^\\s*(\\d+(?:\\.\\d+)?)(?:\\s*(m|meter|meters|метр|метра|метров|ft|feet|foot|'))?/);
+  if (!match) return null;
+  let width = Number(match[1]);
+  if (!Number.isFinite(width)) return null;
+  if (["ft", "feet", "foot", "'"].includes(match[2])) width *= 0.3048;
+  return width >= 2.4 && width <= 55 ? width : null;
+}
+
+function roadLaneDefaults(highway, oneWay) {
+  const laneWidth = /motorway|trunk/.test(highway)
+    ? 3.6
+    : /primary|secondary/.test(highway)
+      ? 3.35
+      : /tertiary|unclassified|residential/.test(highway)
+        ? 3.05
+        : /living_street/.test(highway)
+          ? 2.85
+          : 2.75;
+  const defaultCount = oneWay
+    ? (/motorway|trunk|primary|secondary/.test(highway) ? 2 : 1)
+    : (/motorway|trunk|primary/.test(highway) ? 4 : 2);
+  return { laneWidth, laneCount: defaultCount };
+}
+
+function offsetRoadPolylineMeters(points, offsetMeters) {
+  if (!Array.isArray(points) || points.length < 2 || !Number.isFinite(offsetMeters)) return [];
+  return points.map((point, index) => {
+    const previous = points[Math.max(0, index - 1)];
+    const next = points[Math.min(points.length - 1, index + 1)];
+    const latitude = Number(point.lat);
+    const longitude = Number(point.lon);
+    const averageLatitude = latitude * Math.PI / 180;
+    const metersPerLongitude = 111320 * Math.max(0.15, Math.cos(averageLatitude));
+    const east = (Number(next.lon) - Number(previous.lon)) * metersPerLongitude;
+    const north = (Number(next.lat) - Number(previous.lat)) * 110540;
+    const length = Math.hypot(east, north);
+    if (!Number.isFinite(length) || length < 0.01) return [longitude, latitude];
+    const normalEast = -north / length;
+    const normalNorth = east / length;
+    return [
+      longitude + (normalEast * offsetMeters) / metersPerLongitude,
+      latitude + (normalNorth * offsetMeters) / 110540,
+    ];
+  });
+}
+
+function buildAstanaLaneRoadGeoJson(elements = []) {
+  const surfaceFeatures = [];
+  const markingFeatures = [];
+  const seenRoadIds = new Set();
+
+  const addMarking = (coordinates, kind, id, properties = {}) => {
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return;
+    markingFeatures.push({
+      type: "Feature",
+      properties: { id: String(id || "road-marking"), kind, ...properties },
+      geometry: { type: "LineString", coordinates },
+    });
+  };
+
+  for (const element of Array.isArray(elements) ? elements : []) {
+    const tags = element?.tags || {};
+    const geometry = Array.isArray(element?.geometry) ? element.geometry : [];
+    const points = [];
+    for (const point of geometry) {
+      const lat = Number(point?.lat);
+      const lon = Number(point?.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      const previous = points[points.length - 1];
+      if (previous && Math.abs(previous.lat - lat) < 1e-9 && Math.abs(previous.lon - lon) < 1e-9) continue;
+      points.push({ lat, lon });
+    }
+    if (points.length < 2) continue;
+
+    const roadMarking = String(tags.road_marking || "").toLowerCase();
+    if (roadMarking) {
+      const stroke = String(tags.stroke || "").toLowerCase();
+      const id = "osm-marking-" + String(element.id || markingFeatures.length);
+      if (roadMarking === "edge_line") {
+        addMarking(points.map(point => [point.lon, point.lat]), "edge", id);
+      } else if (roadMarking === "stop_line" || roadMarking === "lane_divider" || roadMarking === "crossing_edge") {
+        const isDouble = stroke === "double_solid" || stroke === "double_dashed";
+        const kind = stroke.includes("dashed") ? "dashed" : "solid";
+        if (isDouble) {
+          for (const offset of [-0.14, 0.14]) {
+            addMarking(offsetRoadPolylineMeters(points, offset), kind, id + "-" + offset);
+          }
+        } else {
+          addMarking(points.map(point => [point.lon, point.lat]), kind, id);
+        }
+      }
+      continue;
+    }
+
+    const highway = String(tags.highway || "").toLowerCase();
+    if (!ASTANA_LANE_ROAD_CLASSES.has(highway)) continue;
+    const roadId = String(element.id || "");
+    if (roadId && seenRoadIds.has(roadId)) continue;
+    if (roadId) seenRoadIds.add(roadId);
+
+    const onewayTag = String(tags.oneway || "").toLowerCase();
+    const oneWay = ["yes", "1", "true", "-1"].includes(onewayTag) ||
+      highway === "motorway" || highway === "motorway_link" ||
+      String(tags.junction || "").toLowerCase() === "roundabout";
+
+    const defaults = roadLaneDefaults(highway, oneWay);
+    const lanesTotalTag = parseLaneCount(tags.lanes);
+    const lanesForwardTag = parseLaneCount(tags["lanes:forward"]);
+    const lanesBackwardTag = parseLaneCount(tags["lanes:backward"]);
+    let lanesForward = 0;
+    let lanesBackward = 0;
+    let laneCount = 0;
+
+    if (oneWay) {
+      laneCount = lanesTotalTag || lanesForwardTag || lanesBackwardTag || defaults.laneCount;
+      lanesForward = laneCount;
+    } else if (lanesForwardTag || lanesBackwardTag) {
+      lanesForward = lanesForwardTag || 1;
+      lanesBackward = lanesBackwardTag || 1;
+      laneCount = lanesForward + lanesBackward;
+    } else {
+      laneCount = lanesTotalTag || defaults.laneCount;
+      lanesForward = Math.ceil(laneCount / 2);
+      lanesBackward = Math.floor(laneCount / 2);
+      if (!lanesBackward) {
+        lanesForward = 1;
+        lanesBackward = 1;
+        laneCount = 2;
+      }
+    }
+
+    if (!Number.isFinite(laneCount) || laneCount < 1 || laneCount > 12) continue;
+    const explicitWidth = parseRoadWidthMeters(tags.width);
+    const roadWidth = explicitWidth || laneCount * defaults.laneWidth;
+    if (!Number.isFinite(roadWidth) || roadWidth < 2.4 || roadWidth > 55) continue;
+    const halfWidth = roadWidth / 2;
+    const leftEdge = offsetRoadPolylineMeters(points, halfWidth);
+    const rightEdge = offsetRoadPolylineMeters(points, -halfWidth);
+    if (leftEdge.length < 2 || rightEdge.length < 2) continue;
+
+    const ring = [...leftEdge, ...rightEdge.slice().reverse()];
+    if (ring.length < 4) continue;
+    ring.push(ring[0]);
+    const featureId = "osm-road-" + (roadId || surfaceFeatures.length);
+    surfaceFeatures.push({
+      type: "Feature",
+      properties: {
+        id: featureId,
+        highway,
+        lanes: laneCount,
+        lanesForward,
+        lanesBackward,
+        oneway: oneWay ? 1 : 0,
+        roadWidth: Number(roadWidth.toFixed(2)),
+        surface: String(tags.surface || ""),
+      },
+      geometry: { type: "Polygon", coordinates: [ring] },
+    });
+
+    addMarking(leftEdge, "edge", featureId + "-edge-left");
+    addMarking(rightEdge, "edge", featureId + "-edge-right");
+
+    const laneMarkings = String(tags.lane_markings || "").toLowerCase();
+    if (laneMarkings === "no" || laneMarkings === "none" || laneCount < 2) continue;
+
+    const overtaking = [
+      tags.overtaking,
+      tags["overtaking:forward"],
+      tags["overtaking:backward"],
+    ].map(value => String(value || "").toLowerCase());
+    const centerIsSolid = overtaking.includes("no");
+    const laneChangesRestricted = String(tags.change || "").toLowerCase() === "no";
+
+    for (let boundary = 1; boundary < laneCount; boundary += 1) {
+      const offset = -halfWidth + (roadWidth * boundary) / laneCount;
+      const coordinates = offsetRoadPolylineMeters(points, offset);
+      const isDirectionalCenter = !oneWay && boundary === lanesBackward;
+      const kind = isDirectionalCenter
+        ? centerIsSolid ? "solid" : "dashed"
+        : laneChangesRestricted ? "solid" : "dashed";
+      addMarking(coordinates, kind, featureId + "-lane-" + boundary, {
+        highway,
+        centerDivider: isDirectionalCenter,
+      });
+    }
+  }
+
+  return {
+    surfaces: { type: "FeatureCollection", features: surfaceFeatures },
+    markings: { type: "FeatureCollection", features: markingFeatures },
+    counts: {
+      roads: surfaceFeatures.length,
+      markings: markingFeatures.length,
+    },
+  };
+}
+
 function isRoadObjectCoordinateUsable(item) {
   if (!item || !Number.isFinite(Number(item.lat)) || !Number.isFinite(Number(item.lng))) return false;
 
