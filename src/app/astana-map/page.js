@@ -866,7 +866,7 @@ const ASTANA_LANE_ROAD_CLASSES = new Set([
 ]);
 
 function parseLaneCount(value) {
-  const match = String(value ?? "").trim().match(/^\\s*(\\d+(?:[.,]\\d+)?)/);
+  const match = String(value ?? "").trim().match(/^\s*(\d+(?:[.,]\d+)?)/);
   if (!match) return null;
   const number = Number(match[1].replace(",", "."));
   return Number.isFinite(number) && number >= 1 && number <= 12 ? Math.max(1, Math.round(number)) : null;
@@ -874,7 +874,7 @@ function parseLaneCount(value) {
 
 function parseRoadWidthMeters(value) {
   const raw = String(value ?? "").trim().toLowerCase().replace(",", ".");
-  const match = raw.match(/^\\s*(\\d+(?:\\.\\d+)?)(?:\\s*(m|meter|meters|метр|метра|метров|ft|feet|foot|'))?/);
+  const match = raw.match(/^\s*(\d+(?:\.\d+)?)(?:\s*(m|meter|meters|метр|метра|метров|ft|feet|foot|'))?/);
   if (!match) return null;
   let width = Number(match[1]);
   if (!Number.isFinite(width)) return null;
