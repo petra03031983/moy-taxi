@@ -861,7 +861,7 @@ function buildCrosswalkStripePolygons(lat, lng, bearingDegrees, idPrefix = "cros
 
 const ASTANA_LANE_ROAD_CLASSES = new Set([
   "motorway", "trunk", "primary", "secondary", "tertiary",
-  "unclassified", "residential", "living_street", "service", "road", "track",
+  "unclassified", "residential", "living_street", "service", "road", "track", "minor", "street",
   "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link",
 ]);
 
@@ -887,7 +887,7 @@ function roadLaneDefaults(highway, oneWay) {
     ? 3.6
     : /primary|secondary/.test(highway)
       ? 3.35
-      : /tertiary|unclassified|residential/.test(highway)
+      : /tertiary|unclassified|residential|minor|street/.test(highway)
         ? 3.05
         : /living_street/.test(highway)
           ? 2.85
@@ -2049,7 +2049,6 @@ export default function AstanaMapPage() {
     let start3dTimer = null;
     let mapInstance = null;
     let laneRefreshTimer = null;
-    let laneRequestController = null;
     let laneLastViewKey = "";
 
     const failTo2D = () => {
@@ -2241,6 +2240,20 @@ export default function AstanaMapPage() {
             });
 
             const firstBuildingLayerId = styleLayers.find(layer => layer.type === "fill-extrusion")?.id || labelLayerId;
+            const transportationLineIndexes = styleLayers
+              .map((layer, index) => ({ layer, index }))
+              .filter(entry => entry.layer.type === "line" &&
+                String(entry.layer["source-layer"] || "").toLowerCase() === "transportation")
+              .map(entry => entry.index);
+            const lastTransportationLineIndex = transportationLineIndexes.length
+              ? Math.max(...transportationLineIndexes)
+              : -1;
+            const roadSurfaceInsertionId = lastTransportationLineIndex >= 0
+              ? (styleLayers[lastTransportationLineIndex + 1]?.id || firstBuildingLayerId)
+              : firstBuildingLayerId;
+            const transportationLineLayerIds = transportationLineIndexes
+              .map(index => styleLayers[index]?.id)
+              .filter(id => id && map.getLayer(id));
             map.addSource("astana-lane-road-surfaces", {
               type: "geojson",
               data: emptyCollection,
@@ -2252,7 +2265,7 @@ export default function AstanaMapPage() {
               attribution: "© OpenStreetMap contributors",
             });
             const addLaneRoadLayer = layer => {
-              if (firstBuildingLayerId) map.addLayer(layer, firstBuildingLayerId);
+              if (roadSurfaceInsertionId) map.addLayer(layer, roadSurfaceInsertionId);
               else map.addLayer(layer);
             };
             addLaneRoadLayer({
@@ -2275,7 +2288,7 @@ export default function AstanaMapPage() {
                   "#354650",
                 ],
                 "fill-opacity": 0.98,
-                "fill-outline-color": "#1B2A34",
+                "fill-outline-color": "rgba(10,20,29,0.34)",
               },
             });
             addLaneRoadLayer({
@@ -2832,7 +2845,7 @@ export default function AstanaMapPage() {
             map.on("mouseenter", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = "pointer"; });
             map.on("mouseleave", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = ""; });
 
-            const refreshLaneRoadNetwork = async () => {
+            const refreshLaneRoadNetwork = () => {
               if (cancelled || map3dRef.current !== map) return;
               const surfacesSource = map.getSource("astana-lane-road-surfaces");
               const markingsSource = map.getSource("astana-lane-road-markings");
@@ -2845,69 +2858,101 @@ export default function AstanaMapPage() {
                 laneLastViewKey = "";
                 return;
               }
+              if (!transportationLineLayerIds.length) return;
 
-              const center = map.getCenter();
-              const bounds = map.getBounds();
-              const corners = [
-                [bounds.getNorth(), bounds.getEast()],
-                [bounds.getNorth(), bounds.getWest()],
-                [bounds.getSouth(), bounds.getEast()],
-                [bounds.getSouth(), bounds.getWest()],
-              ];
-              const radiusFromCenter = Math.max(...corners.map(([lat, lng]) => {
-                const north = (Number(lat) - center.lat) * 110540;
-                const east = (Number(lng) - center.lng) * 111320 * Math.cos(center.lat * Math.PI / 180);
-                return Math.hypot(north, east);
-              }));
-              const radius = Math.max(650, Math.min(900, Math.ceil(radiusFromCenter + 140)));
+              const canvas = map.getCanvas();
               const viewCell = [
-                Math.round(center.lat * 160),
-                Math.round(center.lng * 160),
+                Math.round(map.getCenter().lat * 160),
+                Math.round(map.getCenter().lng * 160),
                 Math.floor(zoom * 2),
-                radius,
+                canvas.clientWidth,
+                canvas.clientHeight,
               ].join(":");
               if (viewCell === laneLastViewKey) return;
 
-              laneRequestController?.abort();
-              const controller = new AbortController();
-              laneRequestController = controller;
               try {
-                const params = new URLSearchParams({
-                  mode: "lanes",
-                  lat: center.lat.toFixed(6),
-                  lng: center.lng.toFixed(6),
-                  radius: String(radius),
-                });
-                const response = await fetch("/api/road-data?" + params.toString(), {
-                  method: "GET",
-                  credentials: "same-origin",
-                  headers: { Accept: "application/json" },
-                  cache: "no-store",
-                  signal: controller.signal,
-                });
-                const payload = await response.json().catch(() => null);
-                if (!response.ok || !Array.isArray(payload?.elements)) {
-                  throw new Error(payload?.error || "Данные геометрии дорог временно недоступны.");
+                const renderedRoadFeatures = map.queryRenderedFeatures(
+                  [[0, 0], [canvas.clientWidth, canvas.clientHeight]],
+                  { layers: transportationLineLayerIds },
+                );
+                const osmWays = [];
+                const seen = new Set();
+
+                for (const feature of renderedRoadFeatures || []) {
+                  const geometry = feature?.geometry;
+                  if (!geometry || !["LineString", "MultiLineString"].includes(geometry.type)) continue;
+                  const properties = feature.properties || {};
+                  const candidates = [
+                    String(properties.subclass || "").toLowerCase(),
+                    String(properties.class || "").toLowerCase(),
+                  ];
+                  const highway = candidates.find(value => ASTANA_LANE_ROAD_CLASSES.has(value));
+                  if (!highway) continue;
+
+                  const coordinateGroups = geometry.type === "LineString"
+                    ? [geometry.coordinates]
+                    : geometry.coordinates || [];
+                  for (const coordinates of coordinateGroups) {
+                    if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
+                    const first = coordinates[0];
+                    const last = coordinates[coordinates.length - 1];
+                    const fallbackId = [
+                      highway,
+                      Number(first?.[0]).toFixed(6),
+                      Number(first?.[1]).toFixed(6),
+                      Number(last?.[0]).toFixed(6),
+                      Number(last?.[1]).toFixed(6),
+                    ].join(":");
+                    const featureId = String(feature.id ?? fallbackId);
+                    const uniqueKey = String(feature.sourceLayer || "transportation") + ":" + featureId + ":" + fallbackId;
+                    if (seen.has(uniqueKey)) continue;
+                    seen.add(uniqueKey);
+
+                    const tags = {
+                      highway,
+                      oneway: properties.oneway === true || properties.oneway === 1
+                        ? "yes"
+                        : String(properties.oneway ?? ""),
+                      brunnel: String(properties.brunnel || ""),
+                      ramp: properties.ramp === true || properties.ramp === 1 ? "1" : "",
+                      lanes: properties.lanes,
+                      "lanes:forward": properties.lanes_forward,
+                      "lanes:backward": properties.lanes_backward,
+                      width: properties.width,
+                      surface: String(properties.surface || ""),
+                      overtaking: String(properties.overtaking || ""),
+                      lane_markings: String(properties.lane_markings || ""),
+                      change: String(properties.change || ""),
+                      junction: String(properties.junction || ""),
+                    };
+                    osmWays.push({
+                      type: "way",
+                      id: featureId,
+                      tags,
+                      geometry: coordinates.map(coordinate => ({
+                        lon: Number(coordinate[0]),
+                        lat: Number(coordinate[1]),
+                      })),
+                    });
+                  }
                 }
-                if (cancelled || controller.signal.aborted || map3dRef.current !== map) return;
-                const roadGeoJson = buildAstanaLaneRoadGeoJson(payload.elements);
+
+                if (!osmWays.length) {
+                  // Keep the previous data until the vector road tiles for this view are ready.
+                  return;
+                }
+                const roadGeoJson = buildAstanaLaneRoadGeoJson(osmWays);
                 surfacesSource.setData(roadGeoJson.surfaces);
                 markingsSource.setData(roadGeoJson.markings);
                 laneLastViewKey = viewCell;
-                console.info("[Astana Guide] Road surfaces and lane markings loaded", {
-                  source: payload.source || "OpenStreetMap / Overpass",
-                  ways: roadGeoJson.counts.roads,
+                console.info("[Astana Guide] Local vector-tile road geometry rendered", {
+                  vectorRoadFeatures: renderedRoadFeatures.length,
+                  roads: roadGeoJson.counts.roads,
                   markings: roadGeoJson.counts.markings,
-                  mappedLaneCounts: payload.diagnostics?.mappedLaneCounts ?? 0,
-                  mappedWidths: payload.diagnostics?.mappedWidths ?? 0,
-                  partial: Boolean(payload.partial),
+                  source: "OpenFreeMap / OpenMapTiles / OpenStreetMap",
                 });
               } catch (error) {
-                if (error?.name !== "AbortError") {
-                  console.warn("[Astana Guide] Lane geometry unavailable; keeping base road map", String(error?.message || error));
-                }
-              } finally {
-                if (laneRequestController === controller) laneRequestController = null;
+                console.warn("[Astana Guide] Local road geometry render failed", String(error?.message || error));
               }
             };
             const scheduleLaneRoadRefresh = () => {
@@ -2919,6 +2964,7 @@ export default function AstanaMapPage() {
             };
             map.on("moveend", scheduleLaneRoadRefresh);
             map.on("zoomend", scheduleLaneRoadRefresh);
+            map.on("idle", scheduleLaneRoadRefresh);
             void refreshLaneRoadNetwork();
 
             map.on("moveend", () => {
@@ -3002,7 +3048,6 @@ export default function AstanaMapPage() {
       if (start3dTimer !== null) window.clearTimeout(start3dTimer);
       if (loadTimer !== null) window.clearTimeout(loadTimer);
       if (laneRefreshTimer !== null) window.clearTimeout(laneRefreshTimer);
-      laneRequestController?.abort();
       if (mapInstance) mapInstance.remove();
       if (map3dRef.current === mapInstance) map3dRef.current = null;
       setMap3dReady(false);
