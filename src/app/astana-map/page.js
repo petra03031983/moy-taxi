@@ -883,19 +883,32 @@ function parseRoadWidthMeters(value) {
 }
 
 function roadLaneDefaults(highway, oneWay) {
+  // Defaults are per carriageway when the vector tiles omit OSM lane tags.
+  // Major roads must not collapse to two lanes: expressways get four per side,
+  // primary roads three, secondary roads two, and local streets one.
   const laneWidth = /motorway|trunk/.test(highway)
-    ? 3.6
+    ? 3.65
     : /primary|secondary/.test(highway)
-      ? 3.35
+      ? 3.45
       : /tertiary|unclassified|residential|minor|street/.test(highway)
-        ? 3.05
+        ? 3.15
         : /living_street/.test(highway)
-          ? 2.85
-          : 2.75;
-  const defaultCount = oneWay
-    ? (/motorway|trunk|primary|secondary/.test(highway) ? 2 : 1)
-    : (/motorway|trunk|primary/.test(highway) ? 4 : 2);
-  return { laneWidth, laneCount: defaultCount };
+          ? 2.9
+          : 2.8;
+  const lanesPerCarriageway = /motorway|trunk/.test(highway)
+    ? 4
+    : /primary/.test(highway)
+      ? 3
+      : /secondary/.test(highway)
+        ? 2
+        : /tertiary/.test(highway)
+          ? 2
+          : 1;
+  return {
+    laneWidth,
+    laneCount: oneWay ? lanesPerCarriageway : lanesPerCarriageway * 2,
+    lanesPerCarriageway,
+  };
 }
 
 function offsetRoadPolylineMeters(points, offsetMeters) {
@@ -971,6 +984,12 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
     const highway = String(tags.highway || "").toLowerCase();
     if (!ASTANA_LANE_ROAD_CLASSES.has(highway)) continue;
     const roadId = String(element.id || "");
+    const roadName = String(
+      tags.name || tags["name:ru"] || tags["name:kk"] || tags.official_name || ""
+    ).normalize("NFKC").toLowerCase().replace(/ё/g, "е");
+    const isEightLaneAstanaCorridor =
+      /чингиз\\s+айтматов|шынгыс\\s+айтматов|ch[iy]ng?iz\\s+aitmatov/.test(roadName) ||
+      /нургиса\\s+тлендиев|нұрғиса\\s+тілендиев|nurgis[ay]\\s+tlendiev/.test(roadName);
     if (roadId && seenRoadIds.has(roadId)) continue;
     if (roadId) seenRoadIds.add(roadId);
 
@@ -983,6 +1002,7 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
     const lanesTotalTag = parseLaneCount(tags.lanes);
     const lanesForwardTag = parseLaneCount(tags["lanes:forward"]);
     const lanesBackwardTag = parseLaneCount(tags["lanes:backward"]);
+    const busLaneTag = parseLaneCount(tags["lanes:bus"] ?? tags["lanes:psv"]);
     let lanesForward = 0;
     let lanesBackward = 0;
     let laneCount = 0;
@@ -999,6 +1019,24 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
       lanesForward = Math.ceil(laneCount / 2);
       lanesBackward = Math.floor(laneCount / 2);
     }
+
+    // These two city corridors are documented as eight-lane roads (four lanes
+    // in each direction). The fourth outer lane is reserved for buses in the
+    // screenshots supplied for this project, so preserve all four lanes even
+    // when a local OSM segment is only tagged with three general-purpose lanes.
+    if (isEightLaneAstanaCorridor) {
+      if (oneWay) {
+        laneCount = Math.max(laneCount, 4);
+        lanesForward = laneCount;
+      } else {
+        laneCount = Math.max(laneCount, 8);
+        lanesForward = Math.max(lanesForward, 4);
+        lanesBackward = Math.max(lanesBackward, 4);
+      }
+    }
+    const hasBusLane = isEightLaneAstanaCorridor || busLaneTag > 0 ||
+      /^(lane|yes|designated)$/.test(String(tags.busway || tags["busway:both"] || "").toLowerCase());
+    const busLaneCount = hasBusLane ? Math.max(1, busLaneTag || 1) : 0;
 
     if (!Number.isFinite(laneCount) || laneCount < 1 || laneCount > 12) continue;
     const explicitWidth = parseRoadWidthMeters(tags.width);
@@ -1024,6 +1062,8 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
         oneway: oneWay ? 1 : 0,
         roadWidth: Number(roadWidth.toFixed(2)),
         surface: String(tags.surface || ""),
+        roadName,
+        busLaneCount,
       },
       geometry: { type: "Polygon", coordinates: [ring] },
     });
@@ -1046,12 +1086,20 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
       const offset = -halfWidth + (roadWidth * boundary) / laneCount;
       const coordinates = offsetRoadPolylineMeters(points, offset);
       const isDirectionalCenter = !oneWay && boundary === lanesBackward;
-      const kind = isDirectionalCenter
-        ? centerIsSolid ? "solid" : "dashed"
-        : laneChangesRestricted ? "solid" : "dashed";
+      const isBusLaneDivider = busLaneCount > 0 && (
+        oneWay
+          ? boundary === laneCount - busLaneCount
+          : boundary === 1 || boundary === laneCount - 1
+      );
+      const kind = isBusLaneDivider
+        ? "bus"
+        : isDirectionalCenter
+          ? (centerIsSolid || /motorway|trunk/.test(highway) ? "solid" : "dashed")
+          : laneChangesRestricted ? "solid" : "dashed";
       addMarking(coordinates, kind, featureId + "-lane-" + boundary, {
         highway,
         centerDivider: isDirectionalCenter,
+        busLaneDivider: isBusLaneDivider,
       });
     }
   }
