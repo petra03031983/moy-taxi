@@ -1091,10 +1091,23 @@ function buildAstanaLaneRoadGeoJson(elements = []) {
           ? boundary === laneCount - busLaneCount
           : boundary === 1 || boundary === laneCount - 1
       );
+      const centerMustBeDouble = isDirectionalCenter &&
+        (centerIsSolid || /motorway|trunk/.test(highway));
+      if (centerMustBeDouble) {
+        for (const offsetShift of [-0.16, 0.16]) {
+          addMarking(
+            offsetRoadPolylineMeters(points, offset + offsetShift),
+            "solid",
+            featureId + "-center-double-" + boundary + "-" + offsetShift,
+            { highway, centerDivider: true, doubleSolid: true },
+          );
+        }
+        continue;
+      }
       const kind = isBusLaneDivider
         ? "bus"
         : isDirectionalCenter
-          ? (centerIsSolid || /motorway|trunk/.test(highway) ? "solid" : "dashed")
+          ? "dashed"
           : laneChangesRestricted ? "solid" : "dashed";
       addMarking(coordinates, kind, featureId + "-lane-" + boundary, {
         highway,
@@ -2379,6 +2392,19 @@ export default function AstanaMapPage() {
                 "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.9, 17, 1.35, 20, 1.8],
               },
             });
+            addLaneRoadLayer({
+              id: "astana-lane-road-bus-lane-markings",
+              type: "line",
+              source: "astana-lane-road-markings",
+              minzoom: 14.4,
+              filter: ["==", ["get", "kind"], "bus"],
+              layout: { "line-cap": "butt", "line-join": "round" },
+              paint: {
+                "line-color": "#B9D9E8",
+                "line-opacity": 0.98,
+                "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1.2, 17, 1.8, 20, 2.3],
+              },
+            });
 
             // Draw recognizable navigation symbols once and use them as actual map icons.
             // These replace colored circles and single-letter labels on the 3D/4D road layer.
@@ -2972,6 +2998,10 @@ export default function AstanaMapPage() {
                       lane_markings: String(properties.lane_markings || ""),
                       change: String(properties.change || ""),
                       junction: String(properties.junction || ""),
+                      busway: String(properties.busway || properties["busway:both"] || ""),
+                      "lanes:bus": properties.lanes_bus,
+                      "lanes:psv": properties.lanes_psv,
+                      name: String(properties.name || properties["name:ru"] || properties["name:kk"] || ""),
                     };
                     osmWays.push({
                       type: "way",
