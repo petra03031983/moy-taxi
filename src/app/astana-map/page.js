@@ -2111,6 +2111,10 @@ export default function AstanaMapPage() {
     let mapInstance = null;
     let laneRefreshTimer = null;
     let laneLastViewKey = "";
+    let laneRawRequestController = null;
+    let laneRawRequestCell = "";
+    let laneRawAttemptAt = 0;
+    const laneRawCache = new Map();
 
     const failTo2D = () => {
       if (cancelled) return;
@@ -3019,16 +3023,88 @@ export default function AstanaMapPage() {
                   // Keep the previous data until the vector road tiles for this view are ready.
                   return;
                 }
-                const roadGeoJson = buildAstanaLaneRoadGeoJson(osmWays);
-                surfacesSource.setData(roadGeoJson.surfaces);
-                markingsSource.setData(roadGeoJson.markings);
+                const localRoadGeoJson = buildAstanaLaneRoadGeoJson(osmWays);
+                surfacesSource.setData(localRoadGeoJson.surfaces);
+                markingsSource.setData(localRoadGeoJson.markings);
                 laneLastViewKey = viewCell;
                 console.info("[Astana Guide] Local vector-tile road geometry rendered", {
                   vectorRoadFeatures: renderedRoadFeatures.length,
-                  roads: roadGeoJson.counts.roads,
-                  markings: roadGeoJson.counts.markings,
+                  roads: localRoadGeoJson.counts.roads,
+                  markings: localRoadGeoJson.counts.markings,
                   source: "OpenFreeMap / OpenMapTiles / OpenStreetMap",
                 });
+
+                // Best-effort enrichment: fetch the original OSM ways with their
+                // lanes / lanes:forward / lanes:backward / bus lane tags. Vector
+                // tiles deliberately omit most of these detailed OSM attributes.
+                const center = map.getCenter();
+                const rawCell = [
+                  Math.round(center.lat * 150),
+                  Math.round(center.lng * 150),
+                  Math.floor(zoom),
+                ].join(":");
+                const cachedRaw = laneRawCache.get(rawCell);
+                if (cachedRaw) {
+                  surfacesSource.setData(cachedRaw.surfaces);
+                  markingsSource.setData(cachedRaw.markings);
+                } else if (
+                  laneRawRequestCell !== rawCell &&
+                  (laneRawRequestCell === "" || Date.now() - laneRawAttemptAt > 120_000)
+                ) {
+                  laneRawRequestController?.abort();
+                  const controller = new AbortController();
+                  laneRawRequestController = controller;
+                  laneRawRequestCell = rawCell;
+                  laneRawAttemptAt = Date.now();
+                  const rawParams = new URLSearchParams({
+                    mode: "lanes",
+                    lat: center.lat.toFixed(6),
+                    lng: center.lng.toFixed(6),
+                    radius: "900",
+                  });
+                  fetch("/api/road-data?" + rawParams.toString(), {
+                    method: "GET",
+                    credentials: "same-origin",
+                    headers: { Accept: "application/json" },
+                    cache: "no-store",
+                    signal: controller.signal,
+                  }).then(async response => {
+                    const payload = await response.json().catch(() => null);
+                    if (!response.ok || !Array.isArray(payload?.elements)) {
+                      throw new Error(payload?.error || "Подробные полосы OSM временно недоступны.");
+                    }
+                    if (cancelled || controller.signal.aborted || map3dRef.current !== map) return;
+                    const currentCenter = map.getCenter();
+                    const currentRawCell = [
+                      Math.round(currentCenter.lat * 150),
+                      Math.round(currentCenter.lng * 150),
+                      Math.floor(map.getZoom()),
+                    ].join(":");
+                    if (currentRawCell !== rawCell) return;
+                    const detailedRoadGeoJson = buildAstanaLaneRoadGeoJson(payload.elements);
+                    if (!detailedRoadGeoJson.counts.roads) return;
+                    laneRawCache.set(rawCell, detailedRoadGeoJson);
+                    if (laneRawCache.size > 24) {
+                      const firstKey = laneRawCache.keys().next().value;
+                      if (firstKey !== undefined) laneRawCache.delete(firstKey);
+                    }
+                    surfacesSource.setData(detailedRoadGeoJson.surfaces);
+                    markingsSource.setData(detailedRoadGeoJson.markings);
+                    console.info("[Astana Guide] Detailed OSM lanes applied", {
+                      roads: detailedRoadGeoJson.counts.roads,
+                      markings: detailedRoadGeoJson.counts.markings,
+                      exactLaneTags: payload.diagnostics?.mappedLaneCounts ?? 0,
+                      widths: payload.diagnostics?.mappedWidths ?? 0,
+                      source: payload.source || "OpenStreetMap / Overpass",
+                    });
+                  }).catch(error => {
+                    if (error?.name !== "AbortError") {
+                      console.warn("[Astana Guide] Detailed OSM lane tags unavailable; using vector road defaults", String(error?.message || error));
+                    }
+                  }).finally(() => {
+                    if (laneRawRequestController === controller) laneRawRequestController = null;
+                  });
+                }
               } catch (error) {
                 console.warn("[Astana Guide] Local road geometry render failed", String(error?.message || error));
               }
@@ -3126,6 +3202,7 @@ export default function AstanaMapPage() {
       if (start3dTimer !== null) window.clearTimeout(start3dTimer);
       if (loadTimer !== null) window.clearTimeout(loadTimer);
       if (laneRefreshTimer !== null) window.clearTimeout(laneRefreshTimer);
+      laneRawRequestController?.abort();
       if (mapInstance) mapInstance.remove();
       if (map3dRef.current === mapInstance) map3dRef.current = null;
       setMap3dReady(false);
