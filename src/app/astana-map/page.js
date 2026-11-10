@@ -2053,6 +2053,9 @@ export default function AstanaMapPage() {
     let loadTimer = null;
     let start3dTimer = null;
     let mapInstance = null;
+    let laneRefreshTimer = null;
+    let laneRequestController = null;
+    let laneLastViewKey = "";
 
     const failTo2D = () => {
       if (cancelled) return;
@@ -2242,53 +2245,84 @@ export default function AstanaMapPage() {
               }
             });
 
-            // 2GIS-like center marking for ordinary two-way roads.
-            // OpenMapTiles stores oneway=0 for roads that carry traffic in both directions.
-            // Keep this out of one-way streets, ramps, bridges, tunnels and footpaths.
-            const transportationBaseLayer = styleLayers.find(layer =>
-              layer.type === "line" && String(layer["source-layer"] || "") === "transportation"
-            );
-            if (transportationBaseLayer?.source && !map.getLayer("astana-two-way-road-centerline")) {
-              const transportationStyleIndexes = styleLayers
-                .map((layer, index) => ({ layer, index }))
-                .filter(entry => String(entry.layer["source-layer"] || "") === "transportation")
-                .map(entry => entry.index);
-              const lastTransportationIndex = transportationStyleIndexes.length
-                ? Math.max(...transportationStyleIndexes)
-                : -1;
-              const layerAfterRoads = styleLayers[lastTransportationIndex + 1]?.id || labelLayerId || undefined;
-              map.addLayer({
-                id: "astana-two-way-road-centerline",
-                type: "line",
-                source: transportationBaseLayer.source,
-                "source-layer": "transportation",
-                minzoom: 15,
-                filter: [
-                  "all",
-                  ["==", "$type", "LineString"],
-                  ["!in", "brunnel", "bridge", "tunnel"],
-                  ["in", "class", "minor", "tertiary", "secondary", "primary", "trunk"],
-                  ["==", "oneway", 0],
-                  ["!=", "ramp", 1],
+            const firstBuildingLayerId = styleLayers.find(layer => layer.type === "fill-extrusion")?.id || labelLayerId;
+            map.addSource("astana-lane-road-surfaces", {
+              type: "geojson",
+              data: emptyCollection,
+              attribution: "© OpenStreetMap contributors",
+            });
+            map.addSource("astana-lane-road-markings", {
+              type: "geojson",
+              data: emptyCollection,
+              attribution: "© OpenStreetMap contributors",
+            });
+            const addLaneRoadLayer = layer => {
+              if (firstBuildingLayerId) map.addLayer(layer, firstBuildingLayerId);
+              else map.addLayer(layer);
+            };
+            addLaneRoadLayer({
+              id: "astana-lane-road-surface",
+              type: "fill",
+              source: "astana-lane-road-surfaces",
+              minzoom: 14.4,
+              paint: {
+                "fill-color": [
+                  "match", ["get", "highway"],
+                  "motorway", "#455762",
+                  "trunk", "#43545F",
+                  "primary", "#40515C",
+                  "secondary", "#3D4D58",
+                  "tertiary", "#394A55",
+                  "residential", "#34454F",
+                  "living_street", "#33434D",
+                  "service", "#303F49",
+                  "track", "#39433F",
+                  "#354650",
                 ],
-                layout: {
-                  "line-cap": "butt",
-                  "line-join": "round",
-                },
-                paint: {
-                  "line-color": "#D8E0E6",
-                  "line-opacity": 0.9,
-                  "line-width": [
-                    "interpolate", ["linear"], ["zoom"],
-                    15, 0.65,
-                    17, 0.95,
-                    19, 1.25,
-                    20, 1.45,
-                  ],
-                  "line-dasharray": [4, 3],
-                },
-              }, layerAfterRoads);
-            }
+                "fill-opacity": 0.98,
+                "fill-outline-color": "#1B2A34",
+              },
+            });
+            addLaneRoadLayer({
+              id: "astana-lane-road-edges",
+              type: "line",
+              source: "astana-lane-road-markings",
+              minzoom: 14.4,
+              filter: ["==", ["get", "kind"], "edge"],
+              layout: { "line-cap": "round", "line-join": "round" },
+              paint: {
+                "line-color": "#AEBBC3",
+                "line-opacity": 0.64,
+                "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.65, 17, 1.0, 20, 1.35],
+              },
+            });
+            addLaneRoadLayer({
+              id: "astana-lane-road-dashed-markings",
+              type: "line",
+              source: "astana-lane-road-markings",
+              minzoom: 14.4,
+              filter: ["==", ["get", "kind"], "dashed"],
+              layout: { "line-cap": "butt", "line-join": "round" },
+              paint: {
+                "line-color": "#F0F3F5",
+                "line-opacity": 0.88,
+                "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.7, 17, 1.15, 20, 1.55],
+                "line-dasharray": [2.8, 2.1],
+              },
+            });
+            addLaneRoadLayer({
+              id: "astana-lane-road-solid-markings",
+              type: "line",
+              source: "astana-lane-road-markings",
+              minzoom: 14.4,
+              filter: ["==", ["get", "kind"], "solid"],
+              layout: { "line-cap": "butt", "line-join": "round" },
+              paint: {
+                "line-color": "#F4F6F7",
+                "line-opacity": 0.95,
+                "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.9, 17, 1.35, 20, 1.8],
+              },
+            });
 
             // Draw recognizable navigation symbols once and use them as actual map icons.
             // These replace colored circles and single-letter labels on the 3D/4D road layer.
@@ -2803,6 +2837,95 @@ export default function AstanaMapPage() {
             map.on("mouseenter", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = "pointer"; });
             map.on("mouseleave", "moy3d-road-object-icons", () => { map.getCanvas().style.cursor = ""; });
 
+            const refreshLaneRoadNetwork = async () => {
+              if (cancelled || map3dRef.current !== map) return;
+              const surfacesSource = map.getSource("astana-lane-road-surfaces");
+              const markingsSource = map.getSource("astana-lane-road-markings");
+              if (!surfacesSource || !markingsSource) return;
+
+              const zoom = Number(map.getZoom());
+              if (!Number.isFinite(zoom) || zoom < 14.4) {
+                surfacesSource.setData(emptyCollection);
+                markingsSource.setData(emptyCollection);
+                laneLastViewKey = "";
+                return;
+              }
+
+              const center = map.getCenter();
+              const bounds = map.getBounds();
+              const corners = [
+                [bounds.getNorth(), bounds.getEast()],
+                [bounds.getNorth(), bounds.getWest()],
+                [bounds.getSouth(), bounds.getEast()],
+                [bounds.getSouth(), bounds.getWest()],
+              ];
+              const radiusFromCenter = Math.max(...corners.map(([lat, lng]) => {
+                const north = (Number(lat) - center.lat) * 110540;
+                const east = (Number(lng) - center.lng) * 111320 * Math.cos(center.lat * Math.PI / 180);
+                return Math.hypot(north, east);
+              }));
+              const radius = Math.max(650, Math.min(900, Math.ceil(radiusFromCenter + 140)));
+              const viewCell = [
+                Math.round(center.lat * 160),
+                Math.round(center.lng * 160),
+                Math.floor(zoom * 2),
+                radius,
+              ].join(":");
+              if (viewCell === laneLastViewKey) return;
+
+              laneRequestController?.abort();
+              const controller = new AbortController();
+              laneRequestController = controller;
+              try {
+                const params = new URLSearchParams({
+                  mode: "lanes",
+                  lat: center.lat.toFixed(6),
+                  lng: center.lng.toFixed(6),
+                  radius: String(radius),
+                });
+                const response = await fetch("/api/road-data?" + params.toString(), {
+                  method: "GET",
+                  credentials: "same-origin",
+                  headers: { Accept: "application/json" },
+                  cache: "no-store",
+                  signal: controller.signal,
+                });
+                const payload = await response.json().catch(() => null);
+                if (!response.ok || !Array.isArray(payload?.elements)) {
+                  throw new Error(payload?.error || "Данные геометрии дорог временно недоступны.");
+                }
+                if (cancelled || controller.signal.aborted || map3dRef.current !== map) return;
+                const roadGeoJson = buildAstanaLaneRoadGeoJson(payload.elements);
+                surfacesSource.setData(roadGeoJson.surfaces);
+                markingsSource.setData(roadGeoJson.markings);
+                laneLastViewKey = viewCell;
+                console.info("[Astana Guide] Road surfaces and lane markings loaded", {
+                  source: payload.source || "OpenStreetMap / Overpass",
+                  ways: roadGeoJson.counts.roads,
+                  markings: roadGeoJson.counts.markings,
+                  mappedLaneCounts: payload.diagnostics?.mappedLaneCounts ?? 0,
+                  mappedWidths: payload.diagnostics?.mappedWidths ?? 0,
+                  partial: Boolean(payload.partial),
+                });
+              } catch (error) {
+                if (error?.name !== "AbortError") {
+                  console.warn("[Astana Guide] Lane geometry unavailable; keeping base road map", String(error?.message || error));
+                }
+              } finally {
+                if (laneRequestController === controller) laneRequestController = null;
+              }
+            };
+            const scheduleLaneRoadRefresh = () => {
+              if (laneRefreshTimer !== null) window.clearTimeout(laneRefreshTimer);
+              laneRefreshTimer = window.setTimeout(() => {
+                laneRefreshTimer = null;
+                void refreshLaneRoadNetwork();
+              }, 750);
+            };
+            map.on("moveend", scheduleLaneRoadRefresh);
+            map.on("zoomend", scheduleLaneRoadRefresh);
+            void refreshLaneRoadNetwork();
+
             map.on("moveend", () => {
               if (cancelled || !map3dEnabledRef.current || map3dSyncRef.current || !mapRef.current) return;
               const center = map.getCenter();
@@ -2883,6 +3006,8 @@ export default function AstanaMapPage() {
       map3dReadyRef.current = false;
       if (start3dTimer !== null) window.clearTimeout(start3dTimer);
       if (loadTimer !== null) window.clearTimeout(loadTimer);
+      if (laneRefreshTimer !== null) window.clearTimeout(laneRefreshTimer);
+      laneRequestController?.abort();
       if (mapInstance) mapInstance.remove();
       if (map3dRef.current === mapInstance) map3dRef.current = null;
       setMap3dReady(false);
