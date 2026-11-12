@@ -9,7 +9,7 @@ function normalizeTariffModes(value:any){const v=value&&typeof value==="object"&
 function publicDriver(d:any){return {public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),photo_url:d.photo_url||"",is_online:Boolean(d.is_online)}}
 function pub(d:any){return {id:d.id,account_number:d.account_number||null,public_code:d.public_code,name:d.name,phone:d.phone,car_model:d.car_model||"",car_plate:d.car_plate||"",car_color:d.car_color||"",vehicle_class:vehicleClass(d.vehicle_class),tariff_modes:normalizeTariffModes(d.tariff_modes),photo_url:d.photo_url||"",wallet_balance:Number(d.wallet_balance||0),is_online:Boolean(d.is_online),current_lat:d.current_lat??null,current_lng:d.current_lng??null,location_updated_at:d.location_updated_at||null,documents_verified:Boolean(d.documents_verified)}}
 function isDeliveryOrder(o:any){const t=String(o?.order_type||o?.service_type||o?.kind||"").toLocaleLowerCase("ru-RU");return Boolean(o&&(o.is_delivery||o.is_cargo||o.cargo_type||["delivery","parcel","courier","cargo","freight","truck","грузовой","грузоперевозка"].includes(t)||o.courier_type))}
-function driverCanServeOrder(d:any,o:any){const modes=normalizeTariffModes(d?.tariff_modes),cls=vehicleClass(o?.vehicle_class),driverClass=vehicleClass(d?.vehicle_class);if(isDeliveryOrder(o))return modes.parcels;if(cls==="economy")return modes.economy;if(cls==="minivan")return modes.seats6&&driverClass==="minivan";return modes.comfort&&["comfort","minivan"].includes(driverClass)}
+function driverCanServeOrder(d:any,o:any){if(isDeliveryOrder(o))return normalizeTariffModes(d?.tariff_modes).parcels;return true}
 async function db(){const u=Deno.env.get("SUPABASE_URL"),k=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");if(!u||!k)throw new Error("Server configuration is incomplete");return createClient(u,k,{auth:{persistSession:false,autoRefreshToken:false}})}
 function normalizeMapCacheText(value:string){return String(value||"").trim().toLocaleLowerCase("ru-RU").replace(/\s+/g," ")}
 function roundedMapPoint(point:any,digits=3){if(!point)return null;const lat=Number(point.lat),lng=Number(point.lng);if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat>90||lng < -180||lng>180)return null;const scale=10**digits;return [Math.round(lat*scale)/scale,Math.round(lng*scale)/scale]}
@@ -105,42 +105,51 @@ function routingProviderFailure(message:string,cooldownMs:number){
  return error;
 }
 async function roadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number},key:string){
- const url="https://routing.api.2gis.com/routing/7.0.0/global?key="+encodeURIComponent(key);
- let response:Response;
- try{
-  response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({
-   points:[{type:"stop",lon:a.lng,lat:a.lat,start:true},{type:"stop",lon:b.lng,lat:b.lat}],
-   transport:"driving",output:"detailed",locale:"ru",route_mode:"fastest",traffic_mode:"jam"
-  })});
- }catch{
-  throw routingProviderFailure("Сервис маршрутов 2ГИС временно недоступен. Попробуй ещё раз.",5*60*1000);
- }
- if(!response.ok){
-  const body=await response.text().catch(()=> "");
-  console.error("2GIS Routing API error",response.status,body.slice(0,500));
-  const limitFailure=response.status===429||/quota|limit|exceed|too many|rate.?limit/i.test(body);
-  const authFailure=response.status===401||response.status===403;
-  if(limitFailure||authFailure||response.status===408||response.status>=500){
-   const cooldownMs=limitFailure?12*60*60*1000:authFailure?60*60*1000:5*60*1000;
-   throw routingProviderFailure(
-    authFailure?"2ГИС отклонил API-ключ или у ключа нет доступа к Routing API. Проверь права ключа в кабинете 2ГИС.":"2ГИС Routing API временно ограничил или не обслуживает запросы.",
-    cooldownMs
-   );
+  const url="https://routing.api.2gis.com/routing/7.0.0/global?key="+encodeURIComponent(key);
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6000);
+  try{
+    const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({
+      points:[{type:"stop",lon:a.lng,lat:a.lat,start:true},{type:"stop",lon:b.lng,lat:b.lat}],
+      transport:"driving",output:"detailed",locale:"ru",route_mode:"fastest",traffic_mode:"jam"
+    }),signal:controller.signal});
+    if(!response.ok){
+      const body=await response.text().catch(()=> "");
+      console.error("2GIS Routing API error",response.status,body.slice(0,500));
+      const limitFailure=response.status===429||/quota|limit|exceed|too many|rate.?limit/i.test(body);
+      const authFailure=response.status===401||response.status===403;
+      if(limitFailure||authFailure||response.status===408||response.status>=500){
+        const cooldownMs=limitFailure?12*60*60*1000:authFailure?60*60*1000:5*60*1000;
+        throw routingProviderFailure(
+          authFailure?"2ГИС отклонил API-ключ или у ключа нет доступа к Routing API. Проверь права ключа в кабинете 2ГИС.":"2ГИС Routing API временно ограничил или не обслуживает запросы.",
+          cooldownMs
+        );
+      }
+      throw new Error("2ГИС не смог построить маршрут. Попробуй уточнить адрес.");
+    }
+    const data=await response.json(),route=data?.result?.[0];
+    if(data?.status!=="OK"||!Number.isFinite(Number(route?.total_distance))||Number(route.total_distance)<=0){
+      const errorText=String(data?.message||data?.error||"");
+      console.error("2GIS route not found",data?.status,errorText);
+      if(/quota|limit|exceed|too many|rate.?limit/i.test(errorText)){
+        throw routingProviderFailure("2ГИС Routing API сообщил об ограничении запросов.",12*60*60*1000);
+      }
+      throw new Error("2ГИС не нашёл автомобильный маршрут между этими точками. Проверь адрес назначения.");
+    }
+    const distanceKm=Number(route.total_distance)/1000;
+    if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адрес.");
+    return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.total_duration||0)/60)),geometry:get2gisRouteGeometry(route)};
+  }catch(e){
+    if((e as any)?.routeProviderFailure)throw e;
+    if((e as any)?.name==="AbortError"){
+      throw routingProviderFailure("2ГИС слишком долго строил маршрут; переключаемся на резервный сервис.",5*60*1000);
+    }
+    if(e instanceof TypeError){
+      throw routingProviderFailure("Сервис маршрутов 2ГИС временно недоступен.",5*60*1000);
+    }
+    throw e;
+  }finally{
+    clearTimeout(timer);
   }
-  throw new Error("2ГИС не смог построить маршрут. Попробуй уточнить адрес.");
- }
- const data=await response.json(),route=data?.result?.[0];
- if(data?.status!=="OK"||!Number.isFinite(Number(route?.total_distance))||Number(route.total_distance)<=0){
-  const errorText=String(data?.message||data?.error||"");
-  console.error("2GIS route not found",data?.status,errorText);
-  if(/quota|limit|exceed|too many|rate.?limit/i.test(errorText)){
-   throw routingProviderFailure("2ГИС Routing API сообщил об ограничении запросов.",12*60*60*1000);
-  }
-  throw new Error("2ГИС не нашёл автомобильный маршрут между этими точками. Проверь адрес назначения.");
- }
- const distanceKm=Number(route.total_distance)/1000;
- if(distanceKm>2000)throw new Error("Маршрут получился слишком длинным. Проверь адрес.");
- return {distanceKm,durationMin:Math.max(1,Math.ceil(Number(route.total_duration||0)/60)),geometry:get2gisRouteGeometry(route)};
 }
 async function osrmRoadDistance(a:{lat:number,lng:number},b:{lat:number,lng:number}){
  const url="https://router.project-osrm.org/route/v1/driving/"+a.lng+","+a.lat+";"+b.lng+","+b.lat+"?overview=full&geometries=geojson&steps=false";
@@ -158,26 +167,46 @@ async function osrmRoadDistance(a:{lat:number,lng:number},b:{lat:number,lng:numb
   return {distanceKm,durationMin:Math.max(1,Math.ceil((Number.isFinite(durationSeconds)?durationSeconds:0)/60)),geometry,provider:"osrm_fallback"};
  }finally{clearTimeout(timer)}
 }
+function hasUsableRouteGeometry(geometry:any){
+ if(!Array.isArray(geometry))return false;
+ const valid=geometry.filter((pair:any)=>Array.isArray(pair)&&pair.length>=2&&Number.isFinite(Number(pair[0]))&&Number.isFinite(Number(pair[1])));
+ return valid.length>1;
+}
 async function resilientRoadDistance(c:any,a:{lat:number,lng:number},b:{lat:number,lng:number},key:string){
  const input=routeCacheInput(a,b);
  const cached=await readMapCache(c,"route",input);
- if(cached&&Number(cached.distanceKm)>0&&Number(cached.distanceKm)<=2000&&Array.isArray(cached.geometry))return {...cached,cached:true};
+ // A distance without at least two valid geometry points is not a complete map route.
+ if(cached&&Number(cached.distanceKm)>0&&Number(cached.distanceKm)<=2000&&hasUsableRouteGeometry(cached.geometry))return {...cached,cached:true};
 
  // Store the circuit-breaker state in the existing shared cache so separate Edge Function instances respect it.
  const circuitInput={provider:"2gis-routing"};
  const circuit=await readMapCache(c,"routing_circuit",circuitInput);
  if(Number(circuit?.open_until)>Date.now()){
   const fallback=await osrmRoadDistance(a,b);
-  const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС Routing API временно пропускается после ошибки или ограничения запросов. Расстояние и цена рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
-  await writeMapCache(c,"route",input,result,60*60*1000);
+  const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС Routing API временно пропускается после ошибки или ограничения запросов. Расстояние и время рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
+  if(hasUsableRouteGeometry(result.geometry))await writeMapCache(c,"route",input,result,60*60*1000);
   return result;
  }
 
  try{
   const primary=await roadDistance(a,b,key);
-  const result={...primary,provider:"2gis"};
-  await writeMapCache(c,"route",input,result,5*60*1000);
-  return result;
+  if(hasUsableRouteGeometry(primary.geometry)){
+   const result={...primary,provider:"2gis"};
+   await writeMapCache(c,"route",input,result,5*60*1000);
+   return result;
+  }
+  // 2GIS can return distance/time even if its route-line geometry cannot be extracted.
+  // Request a complete road line from OSRM rather than caching an unusable map.
+  console.warn("2GIS route geometry missing; requesting OSRM road line");
+  try{
+   const fallback=await osrmRoadDistance(a,b);
+   const result={...fallback,provider:"osrm_fallback",route_notice:"Линия A → B построена резервным сервисом маршрутов."};
+   if(hasUsableRouteGeometry(result.geometry))await writeMapCache(c,"route",input,result,60*60*1000);
+   return result;
+  }catch(fallbackError){
+   console.error("Road route geometry fallback unavailable",String(fallbackError));
+   return {...primary,provider:"2gis",geometry:[],route_notice:"Расстояние и время рассчитаны, но линия маршрута временно недоступна. Обнови маршрут через несколько секунд."};
+  }
  }catch(e){
   const providerError=e as Error & {routeProviderFailure?:boolean;routeCircuitTtlMs?:number};
   if(providerError?.routeProviderFailure){
@@ -186,8 +215,8 @@ async function resilientRoadDistance(c:any,a:{lat:number,lng:number},b:{lat:numb
   }
   console.warn("2GIS routing unavailable; using OSRM fallback",String(e));
   const fallback=await osrmRoadDistance(a,b);
-  const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС временно не построил маршрут. Расстояние и цена рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
-  await writeMapCache(c,"route",input,result,60*60*1000);
+  const result={...fallback,provider:"osrm_fallback",route_notice:"2ГИС временно не построил маршрут. Расстояние и время рассчитаны резервным сервисом; пробки и дорожные ограничения 2ГИС не учитываются в расчёте."};
+  if(hasUsableRouteGeometry(result.geometry))await writeMapCache(c,"route",input,result,60*60*1000);
   return result;
  }
 }
